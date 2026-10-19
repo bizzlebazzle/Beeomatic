@@ -84,14 +84,16 @@ function M:conversionDonor(i,items,target)
   return G.purity(i.stack,target)<2 and self:canSpend(i,items) and
     (G.purity(i.stack,target)>0 or G.fertileDonor(i.stack))
 end
-function M:canSpend(i,items,paired,templateUse)
+function M:canSpend(i,items,paired,templateUse,droneCounts)
   if (self:protected(i) and not templateUse) or not B.scanned(i.stack) then return false end
   local s=i.stack; local target=B.species(s.individual.active.species)
   if B.kind(s)=="drone" then
     if templateUse and s.size<=(self.c.templates.reserve or 1) then return false end
     -- Reserve at least one of this exact useful genotype, not merely visible species.
-    local same=0; local identity=B.identity(s)
-    for _,x in ipairs(items) do if B.kind(x.stack)=="drone" and B.identity(x.stack)==identity then same=same+x.stack.size end end
+    local identity=B.identity(s); local same=droneCounts and droneCounts[identity] or 0
+    if not droneCounts then
+      for _,x in ipairs(items) do if B.kind(x.stack)=="drone" and B.identity(x.stack)==identity then same=same+x.stack.size end end
+    end
     return same>self.c.reserveDrones
   end
   if B.kind(s)=="princess" then
@@ -119,11 +121,20 @@ function M:stockJob(species,mode,count,parent)
 end
 function M:select(j,items,template)
   local target=j.species; local genes=template and template.stack.individual.active
+  -- Only this immutable selection snapshot uses these totals. A later dispatch
+  -- scans again so a committed withdrawal cannot be spent a second time.
+  local droneCounts={}
+  for _,i in ipairs(items) do if B.kind(i.stack)=="drone" then
+    local key=B.identity(i.stack); droneCounts[key]=(droneCounts[key] or 0)+i.stack.size
+  end end
+  local function spend(i,paired,templateUse)
+    return self:canSpend(i,items,paired,templateUse,droneCounts)
+  end
   local p=self:best(items,"princess",target,function(i) return G.purity(i.stack,target)>0 end,genes)
   if j.mode=="populate" then
     p=self:best(items,"princess",target,function(i) return G.purity(i.stack,target)>0 and G.fertility(i.stack)>1 end,genes) or p
   end
-  local d=self:best(items,"drone",target,function(i) return G.purity(i.stack,target)>0 and self:canSpend(i,items) end,genes)
+  local d=self:best(items,"drone",target,function(i) return G.purity(i.stack,target)>0 and spend(i) end,genes)
   if j.lineage then
     local found=false
     for _,i in ipairs(items) do if i.endpoint.id==j.lineage.endpoint.id and i.slot==j.lineage.slot and B.kind(i.stack)=="princess" and
@@ -135,7 +146,7 @@ function M:select(j,items,template)
   if p and d then
     -- Same target stabilization may use its only princess, preserving reserve drones.
     if template and G.purity(p.stack,target)==2 and not G.templateMatch(p.stack,genes) and G.purity(d.stack,target)==2 then
-      if self:canSpend(template,items,nil,true) and self:canSpend(p,items) then d=template
+      if spend(template,nil,true) and spend(p) then d=template
       else
         self:stockJob(target,"convert",nil,j)
         return nil,nil,"Waiting for a spare target princess before template crossing"
@@ -153,7 +164,7 @@ function M:select(j,items,template)
   if p and not d then
     -- Preserve a new target princess while reintroducing a known parent drone.
     for _,parent in ipairs(j.route.parents) do
-      d=self:best(items,"drone",target,function(i) return G.purity(i.stack,parent)==2 and self:canSpend(i,items) end,genes)
+      d=self:best(items,"drone",target,function(i) return G.purity(i.stack,parent)==2 and spend(i) end,genes)
       if d then return p,d,nil,target end
     end
   end
@@ -162,7 +173,7 @@ function M:select(j,items,template)
   if p and j.lineage then
     local left,right=j.route.parents[1],j.route.parents[2]
     local donor=G.purity(p.stack,left)==2 and right or left
-    d=self:best(items,"drone",donor,function(i) return G.purity(i.stack,donor)==2 and self:canSpend(i,items) end)
+    d=self:best(items,"drone",donor,function(i) return G.purity(i.stack,donor)==2 and spend(i) end)
     if d then return p,d,nil,donor end
   end
   -- Prepare both parent species before spending a princess on a new mutation.
@@ -187,8 +198,8 @@ function M:select(j,items,template)
   -- Start/recover a mutation from actual parent stock. Try both directions.
   for n=1,2 do
     local left,right=j.route.parents[n],j.route.parents[3-n]
-    p=self:best(items,"princess",left,function(i) return G.purity(i.stack,left)==2 and self:canSpend(i,items) end)
-    d=self:best(items,"drone",right,function(i) return G.purity(i.stack,right)==2 and self:canSpend(i,items) end)
+    p=self:best(items,"princess",left,function(i) return G.purity(i.stack,left)==2 and spend(i) end)
+    d=self:best(items,"drone",right,function(i) return G.purity(i.stack,right)==2 and spend(i) end)
     if p and d then return p,d,nil,target end
   end
   -- Automatically create surplus stock using the same scheduler. No recursive restarts.
@@ -249,7 +260,7 @@ function M:dispatch(j)
   for _,i in ipairs({p,d}) do
     if i.network then
       local k=U.location(i.endpoint,i.slot); assert(not self.state.reservations[k],"ME stack already leased")
-      self.state.reservations[k]={owner=j.id,identity=B.identity(i.stack)}; self.save()
+      self.state.reservations[k]={owner=j.id,identity=B.identity(i.stack)}
     else self.inv:reserve(i,j.id) end
   end
   j.machine=a.id; j.state="PREPARING"; j.expectedPrincess=U.copy(p.stack); j.cycleTarget=cycleTarget

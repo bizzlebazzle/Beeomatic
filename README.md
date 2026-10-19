@@ -50,6 +50,8 @@ and `back`. Alveary registration also saves its own stages, so it resumes after
 an interruption. Use `Beeomatic alveary add` to add a machine without repeating
 storage/scanner setup. Each housing retains its own slot map and climate.
 
+See the [movement performance audit](docs/PERFORMANCE.md) for resource costs and optimizations.
+
 See [installation and migration](docs/INSTALLATION.md), [hardware](docs/HARDWARE.md),
 [commands](docs/COMMANDS.md), [architecture](docs/ARCHITECTURE.md),
 [API evidence](docs/API_COMPATIBILITY.md), [troubleshooting](docs/TROUBLESHOOTING.md)

@@ -77,3 +77,50 @@ test("structural equality compares all genes without allocating serialized copie
   end)
   U.encode=encode; assert(success,why)
 end)
+
+test("selection reserve accounting is linear and rebuilt after stock changes",function()
+  local w=W.new(); w:build()
+  local items={{endpoint={id="hub"},slot=1,stack=W.bee("Spirit","princess")}}
+  for n=1,80 do
+    local stack=W.bee("Spirit","drone",2); stack.tag="variant"..n
+    items[#items+1]={endpoint={id="hub"},slot=n+1,stack=stack}
+  end
+  local job={species="spirit",mode="populate"}
+  local identity=B.identity; local calls=0
+  B.identity=function(stack) calls=calls+1; return identity(stack) end
+  local success,p,d=pcall(w.scheduler.select,w.scheduler,job,items)
+  B.identity=identity
+  ok(success,p); ok(p); ok(d); ok(calls<=3*#items,"selection repeated full genotype scans: "..calls)
+  for n=2,#items do items[n].stack.size=1 end
+  local _,nextDrone=w.scheduler:select(job,items)
+  eq(nextDrone,nil)
+end)
+
+test("selection adds split stacks of the same exact genotype before protecting reserves",function()
+  local w=W.new(); w:build()
+  local drone=W.bee("Spirit","drone",1); drone.tag="same-genotype"
+  local items={{endpoint={id="hub"},slot=1,stack=W.bee("Spirit","princess")},
+    {endpoint={id="hub"},slot=2,stack=drone},{endpoint={id="hub"},slot=3,stack=U.copy(drone)}}
+  local _,selected=w.scheduler:select({species="spirit",mode="populate"},items)
+  ok(selected)
+  items[3].stack.tag="other-genotype"
+  local _,protected=w.scheduler:select({species="spirit",mode="populate"},items)
+  eq(protected,nil)
+end)
+
+test("network leases and PREPARING assignment are saved before materialization",function()
+  local w=ME.new(); w.hideGenomes=false; w.c.minDrones=2
+  w:addStock(ME.bee("Spirit","princess")); w:addStock(ME.bee("Spirit","drone",8))
+  local job=W.job(w,"job","Spirit","populate"); job.count=32
+  local saved; w.scheduler.save=function() saved=U.copy(w.state) end
+  local materialize=w.storage.materialize; local checked=0
+  w.storage.materialize=function(self,item,...)
+    eq(saved.jobs[1].state,"PREPARING"); ok(saved.jobs[1].machine)
+    if checked==0 then
+      local leases=0; for _,lease in pairs(saved.reservations) do if lease.owner==job.id then leases=leases+1 end end
+      eq(leases,2)
+    end
+    checked=checked+1; return materialize(self,item,...)
+  end
+  w.scheduler:dispatch(job); eq(checked,2); eq(job.state,"RUNNING")
+end)
