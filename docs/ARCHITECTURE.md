@@ -16,6 +16,17 @@ accept injected components/clocks so they can be exercised under Lua 5.2/5.3.
 | `storage/chest` | Optional standalone chest mode |
 | `storage/ae2`, `storage/ae2_export` | Compatibility for saved legacy export-bus configurations |
 
+The planner discovers each prerequisite species once, stopping at verified pairs
+or spare drones that can seed princess conversion. It settles achievable species
+in increasing cost; a mutation route becomes a candidate only after both parents
+have settled. Route costs retain chance, environment and configured preference
+ranking. Shared ancestors reuse one plan node, and cycles need an achievable
+entrance from stock. The selected nodes become one job per species, with parents
+before their children. `maxPlanExpansion` bounds distinct species inspected,
+rather than recursive paths; planning and failure reporting periodically yield
+to OpenOS. Missing founders and unresolved cycles are reported without expanding
+the same dependency repeatedly.
+
 ## Startup and scanning
 
 On every worker start/resume, Interface mode closes the dispatch gate and enters

@@ -1,4 +1,29 @@
 local W=require("tests.mocks.world"); local B=require("lib.bees"); local U=require("lib.util")
+test("breeding a known mutated target recovers its princess from drones before stabilization",function()
+  local w=W.new(); w:addMachine("a"); w:build()
+  w.c.confirmCycles=1; w.c.minDrones=2
+  w.inventories.hub[1]=W.bee("Forest","princess")
+  w.inventories.hub[2]=W.bee("Forest","princess")
+  w.inventories.hub[3]=W.bee("Spirit","drone",32)
+  local m=require("lib.mutations").new({getBeeParents=function()
+    return {W.route("Missing","Impossible")}
+  end},{})
+  local plan=assert(require("lib.planner").plan("spirit",m,w.storage:scan(),w.c))
+  require("lib.jobs").create(w.state,plan,"breed")
+  for tick=1,40 do
+    local _,status=w.scheduler:step()
+    if status=="DONE" then break end
+    for _,j in ipairs(w.state.jobs) do if j.state=="RUNNING" then
+      w:finish(j.machine,W.bee("Spirit","princess"),W.bee("Spirit","drone",4))
+    end end
+    w.time=w.time+5
+  end
+  ok(w.state.finished,require("lib.ui.status").render(w.state,w.c,true))
+  eq(w.state.jobs[1].mode,"convert"); eq(w.state.jobs[2].mode,"breed")
+  ok(B.count(w.storage:scan(),"spirit","princess",true)>=1)
+  ok(B.count(w.storage:scan(),"forest","princess",true)>=1)
+end)
+
 test("Spirit plan executes missing prerequisites through stabilization and reserve conversion",function()
   local w=W.new(); w:addMachine("a"); w:addMachine("b"); w:build()
   w.c.confirmCycles=2; w.c.minDrones=4

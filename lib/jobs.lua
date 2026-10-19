@@ -7,12 +7,21 @@ function M.create(state,plan,mode,count,flags)
   local bySpecies={}
   for _,node in ipairs(plan.order) do
     if not node.available or node.species==plan.target then
+      local conversion
+      if node.species==plan.target and node.conversion and mode~="convert" then
+        -- Recover the target princess before breeding/populating/imprinting it.
+        state.nextId=state.nextId+1
+        conversion={id="job"..state.nextId,species=node.species,mode="convert",
+          dependencies={},state="WAITING",cycles=0,confirmed=0}
+        state.jobs[#state.jobs+1]=conversion
+      end
       state.nextId=state.nextId+1
       local job={id="job"..state.nextId,species=node.species,
         mode=node.species==plan.target and mode or (node.conversion and "convert" or "breed"),
         route=node.route,dependencies={},state="WAITING",cycles=0,confirmed=0,
         count=node.species==plan.target and count or nil}
       for _,ch in ipairs(node.children) do if bySpecies[ch.species] then job.dependencies[#job.dependencies+1]=bySpecies[ch.species] end end
+      if conversion then job.dependencies[#job.dependencies+1]=conversion.id end
       state.jobs[#state.jobs+1]=job; bySpecies[node.species]=job.id
     end
   end
