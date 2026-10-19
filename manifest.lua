@@ -15,6 +15,7 @@ return {
   "lib/jobs.lua",
   "lib/mutations.lua",
   "lib/persistence.lua",
+  "lib/state_codec.lua",
   "lib/planner.lua",
   "lib/robot.lua",
   "lib/scanner.lua",
