@@ -1,140 +1,88 @@
 # Validation and in-game acceptance
 
-Development target: GTNH **2.9.0 Beta 3**; OpenComputers **1.12.61-GTNH**,
-Forestry **4.11.37**, AE2 **rv3-beta-1050-GTNH**, Gendustry **1.9.13-GTNH**.
-These versions are verified from the release manifest and OC/Forestry tagged source.
-The full application has not yet run in-game. Manual component tests on the user's
-server confirmed physical genetic inspection, exact database NBT copy, the broken
-imperative callback, and normal redstone export with an exact-NBT receipt.
-The computer's local left output (side 5) also activated the north-side wire with
-the computer facing east. A transposer transfer moved one exact-NBT drone from
-buffer side 5 to archive side 3, emptied the buffer, and exposed that same drone
-to ME after adding the archive storage bus. The complete OC-controlled export
-cycle and application breeding remain unverified.
-The same transposer now accesses the nine-slot alveary on side 4. Separate manual
-witnesses showed a Meadows Princess in slot 1 with `getQueen()` non-nil and a
-Wintry Drone in slot 2 with `getDrone()` non-nil. The housing component reports
-type `items` on this server; registration checks its methods rather than its type.
-Transposer princess insertion moved one item and was visible through the housing
-adapter. After drone insertion, a Meadows Queen formed with a short mating delay
-and reported `canBreed() == true`. The completed manual cycle left both inputs
-empty, Honey Comb in slot 3, Meadows Drone in slot 4 and Meadows Princess in slot
-5. Slots 6-9 were empty; their output roles have not been witnessed. Output
-extraction subsequently reported 9 combs, 2 drones and 1 princess moved from slots
-3-5 to archive slots 10-12. A complete application-controlled breeding cycle
-remains unverified.
+Target: GTNH **2.9.0 Beta 3**, OpenComputers **1.12.61-GTNH**, Forestry **4.11.37**,
+AE2 **rv3-beta-1050-GTNH**, Gendustry **1.9.13-GTNH**. The source contracts are
+recorded in [API compatibility](API_COMPATIBILITY.md). **No Minecraft runtime is
+attached to this development workspace. The new Interface/scanner application
+flow still requires in-game acceptance.**
 
-In-game application startup reached `/home/Beeomatic/Beeomatic.lua` but failed to
-resolve `lib.cli`; its reported search paths did not include the installation root.
-The installer now writes that known root directly into `/usr/bin/Beeomatic`, which
-sets module paths and calls the CLI without inferring a root from debug metadata.
-This change still needs an in-game retest.
+## Automated checks
 
-Current automated result: **102 tests passed, zero failures, on each of Lua 5.2 and Lua 5.3**. This
-includes the public command path, persistent foreground events, installer copy and
-upgrade preservation, and exact selection of a non-first same-label ME variant.
-Download tests cover consistent revision selection, saved-data preservation,
-missing release files, invalid Lua and manifest path traversal.
-Compact-download testing also installs and upgrades with a simulated 512 KiB hard
-drive and 1 KiB temporary filesystem, checks staging-file cleanup on success and
-download failure, and ensures docs/tests/examples/robot helpers are not requested.
-OpenOS file mocks return no values from successful `close()`, matching the observed
-bootstrap failure. Writes explicitly check `flush()` before closing; installer and
-state-save tests also verify that a flush error preserves the previous generation.
-Mock `loadfile` uses OpenOS-style `=path` chunk names. Regression checks cover
-an absolute offline installer path and both `=path` and `@path` application
-launchers; the online installer receives its staging directory explicitly.
-The generated installed command also loads the real installed modules with a
-fresh module cache, an unrelated working directory and a custom root with spaces.
-Setup picker tests cover method-based filtering, saved names after configuration
-reload, invalid input, refresh, newly connected components, pagination, missing
-saved addresses, interruption, read-only bounded inventory previews and omission
-of diagnostic documentation during normal setup. The revised wizard still needs
-an in-game UI acceptance check.
-Endpoint tests also cover skipping a lone named transposer, distinct prompts for
-consecutive inventory roles, menu-number-to-world-side mapping, invalid choices,
-refreshing inventory lists and attaching an inventory after an empty discovery.
-Heading checks cover colour restoration (including output failure), palette colour
-preservation and plain-text fallback on monochrome or unavailable terminals. Export
-mode checks cover explanation before selection, invalid-input retry, the redstone
-default and preservation of an existing explicit callback configuration.
-Export-direction tests cover all six names, numeric world sides, saved defaults
-and invalid-input retry. Direction semantics were checked against the pinned
-`DriverExportBus.scala` and `part-bus-beta3.scala` sources: the side selects the
-part on the ME cable host, with the receiving inventory outward along that side.
+Current result: **134 tests, zero failures on each of Lua 5.2 and Lua 5.3**.
+Run `python tests/run.py` in the development workspace. It syntax-checks every
+project Lua file, then runs the suite on both engines using local Lupa runtimes.
+Alternatively run `lua tests/run.lua` with a compatible runtime. These dependencies
+stay on the development PC and are not installed on the OpenComputer.
 
-Run automated tests on a development machine with Lua 5.2:
+Interface coverage includes:
 
-```sh
-lua tests/run.lua
-```
+- Exact NBT selection among same-label variants and bounded requested quantities.
+- Automatic source refill, return drain before readback, full/offline storage,
+  interrupted requests, proven partial acceptance, and crash recovery with/without
+  sufficient acceptance proof.
+- Startup inspection of already-analysed bees without spending analysis supplies,
+  all units across multiple raw drone batches, missing scanner, new external raw
+  variants, initial housing leftovers and untracked analyser specimen slots.
+- One shared scanner, analysis changing NBT, quantity ownership through merged
+  stacks and two independent alvearies retaining their own offspring.
+- Restart immediately after accepted scanner input and after committed return;
+  collection recovery after the bounded physical history has expired.
+- The public CLI through saved configuration/state, foreground events and initial
+  drone preparation, breeding, offspring scanning and completion.
+- Fresh Interface-first setup, bound transposers, direct analyser output slots
+  with consumables untouched, `back`, resumed registration and port pruning.
+- The Interface doctor probe and refusal to migrate unresolved saved work.
 
-Or on this Windows workspace, where a local Lupa runtime was installed:
+Existing checks also cover route planning, purity/templates, climate/tolerances,
+reserves, chest transfers, gated routing, legacy export recovery, persistence,
+callable OC proxy tables, component discovery, installation/download revision
+consistency and failure preservation. Installation tests verify retired files
+receive `.previous` backups while user state and unrelated files remain intact.
+The mocked downloader still exercises a 512 KiB hard drive and 1 KiB `/tmp`.
 
-```powershell
-python tests/run.py
-```
+## New Interface acceptance
 
-The Python wrapper imports `lupa.lua52` and `lupa.lua53`, syntax-checks every project Lua file and
-runs the same test suite on both engines. Component mocks use callable tables and
-indirect (`false`) method metadata, matching the user's observed OpenOS proxies.
-To provision another development host, install Lupa
-(`python -m pip install --target .tools lupa`). That is a development dependency,
-not a Minecraft installation requirement.
+1. Stop the worker, back up `data/`, install/update and reboot to clear cached Lua
+   modules. Build the [hardware topology](HARDWARE.md), run setup and doctor.
+2. Verify every saved Interface adapter corresponds to the transposer's chosen
+   physical inventory. Remove fuzzy/crafting upgrades and unrelated filters;
+   exclude other automation from reserved bees. Verify AE channels, power and
+   cell capacity. Do not attach storage buses to these ports.
+3. With at least two identical analysed drones in ME, run
+   `Beeomatic doctor --interface PORT_ID` for each port, including the scanner.
+   Observe the two-unit request, one-unit extraction, stock cleanup, return and
+   unchanged final exact ME count. Repeat with same-label genetic variants.
+4. Test the actual analyser input/output slots and consumables. For standard pinned
+   Forestry, source indices are inputs 3-8, outputs 9-12, specimen 1 and honey
+   container 2. Witness one isolated batch returning analysed with the same count.
+5. Put analysed and unanalysed drones in ME, including more than one stack and
+   different same-label variants. Start a small job. Confirm `PREPARING_STOCK`
+   remains active until every initial drone is analysed, and no alveary receives
+   parents early. Already-analysed variants should only need physical inspection.
+6. Run two alvearies with a shared drone genotype. Observe distinct requested
+   units, correctly assigned parents, combs returning directly to ME, and raw
+   offspring passing through the one scanner before becoming usable. Confirm
+   founder/template reserves and each job's princess lineage remain protected.
+7. Exercise full ME storage, missing honey/power and slow stock delivery with
+   expendable bees. Confirm accepted stock remains in the journal/local buffer
+   and unaccepted outputs remain in the housing. Repair and resume.
+8. Interrupt at stock receipt, parent insertion, scanner input and scanner return.
+   Stop any old worker, then use `resume --recover`. Confirm no duplicate insertion
+   or lost ownership. Ambiguous outcomes must pause for audit. Use doctor adoption
+   only after checking the real matching queen/offspring pair.
+9. Confirm interrupted setup resumes, `back` revisits the expected stage, and adding
+   an alveary does not repeat the shared storage/scanner registration.
 
-The suites cover runtime route selection; recursive missing Ethereal/Aware planning;
-alternate routes and cycles; purity/full equivalence/templates; directional climate
-tolerances; multi-machine compatibility; exact identities and reservations;
-failed/interrupted transfers; AE2 export and database selection; full archives;
-conversion and population; concurrent jobs; delayed/timed-out scans; active queen
-restart and partial insertion; missing machines; special conditions; resumable
-setup checkpoints; and multi-stage Spirit execution preserving founder reserves.
-Mocks use Forestry active/inactive species tables, percentage mutation chances,
-special-condition strings, OpenComputers inventory callbacks and AE2's boolean
-export result. Native breeder mocks deliberately use **11 slots, princess 4,
-drone 2, outputs 6/8/10**, so apiary input/output assumptions would fail tests.
+## Previous manual evidence
 
-## Required acceptance on the actual server
+Earlier tests on the user's server confirmed exact database NBT copying and
+physical bee genetics, the broken `exportIntoSlot` callback, normal redstone export,
+buffer-to-archive transfer and a storage bus exposing that archive in ME. Those
+results concern the retained [legacy backend](LEGACY_AE2.md), not this Interface flow.
 
-1. Back up computer data and use expendable analyzed stock. Run `doctor --probe`.
-   Confirm the exact exposed methods and full addresses. Verify multiple blocks of
-   one alveary are not mistaken for independent machines.
-2. For each alveary, witness princess and drone input roles separately without
-   mating, then witness an expendable full cycle. Verify output slots, products,
-   frame/upgrade exclusion, extraction permissions, actual climate and association
-   between adapter and transposer views. Empty or restore test inventories.
-3. Configure one native machine and chest first. Run a common, low-cost mutation.
-   Check that actual transfer amounts and queen formation agree with journal
-   receipts, results are archived, hybrids are analyzed, and completion requires
-   stable pure princess/drone offspring across the configured confirmation cycles.
-4. Fill archive/output space and block a transfer. Verify source stock remains and
-   the job pauses with a useful diagnosis. Restore space, run `doctor`, then resume.
-5. Pause/interrupt during an active queen and restart the computer. Verify no second
-   insertion, queen loss, output replay or double allocation. Test the documented
-   partial-insertion adoption/retry workflow only with expendable stock.
-6. Register a second machine with a different climate. Request independent
-   prerequisites and confirm exclusive machine assignment, climate filtering,
-   founder reserves and fair progress. Disconnect one machine and verify another
-   running operation can still progress.
-7. Validate the scanner's one-stack, count-preserving, isolated input/output
-   provenance. Test loss of power/honey, delayed output, blocked return slot and
-   restart after analysis. Keep automation disabled until this passes.
-8. For AE2, enable exact NBT exposure, use a dedicated database/subnet and remove
-   fuzzy export upgrades. Store two same-label drones with different inactive
-   alleles. Verify the requested genotype is copied to the database and exported,
-   including when the matching entry is not first. Confirm automatic export is
-   controlled only by the configured OC output, the isolated buffer is not exposed
-   back to ME, and archive/storage-bus counts are deduplicated. Test network outage,
-   export failure and space exhaustion.
-9. If using `routed`, test gate OFF holding both caste stacks, gate ON delivering
-   only to its configured breeder, complete isolated output return, stalled pipe
-   timeout and restart while items are in transit. Do not enable without proof of
-   isolation and correct routing polarity.
-10. Test a real special mutation. Confirm each requirement at the selected alveary;
-    verify a robot reply cannot satisfy unrelated conditions. Revoke confirmations
-    when world/equipment conditions change. Finally run `plan spirit`, then
-    `breed spirit`, and compare the runtime-confirmed recipe tree to actual GTNH data.
-
-These checks concern physical machine behavior and server settings that mocks
-cannot establish. Do not describe the release as hardware-validated until these
-steps have passed on the intended installation.
+The nine-slot alveary was manually observed with princess/queen in slot 1, drone
+in slot 2, and products/offspring in slots 3-5. A princess insertion was witnessed,
+a queen formed after drone insertion, and one complete cycle's combs/drones/princess
+were extracted. Slots 6-9 remain individually unverified. Component type `items`
+was observed; registration correctly relies on methods rather than type names.
+The full application and revised wizard still require the acceptance steps above.

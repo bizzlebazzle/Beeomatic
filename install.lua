@@ -26,6 +26,14 @@ for _,relative in ipairs(files) do
     local text=f:read("*a"); f:close(); writeAtomic(target,text)
   end
 end
+-- Retire only known obsolete program files; retain one recoverable generation.
+for _,relative in ipairs({"lib/storage/base.lua","lib/breeders/base.lua","tools/probe.lua"}) do
+  local path=dest.."/"..relative
+  if fs.exists(path) then
+    if fs.exists(path..".previous") then assert(fs.remove(path..".previous")) end
+    assert(fs.rename(path,path..".previous"))
+  end
+end
 -- The installer knows the root; do not infer it from runtime debug chunk names.
 writeAtomic("/usr/bin/Beeomatic","local root="..string.format("%q",dest).."\n"..
   'package.path=root.."/?.lua;"..root.."/?/init.lua;"..package.path\n'..

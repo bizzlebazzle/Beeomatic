@@ -8,6 +8,7 @@ Beeomatic setup
 Beeomatic setup --reconfigure
 Beeomatic doctor
 Beeomatic doctor --probe
+Beeomatic doctor --interface scanner_port
 Beeomatic plan spirit
 Beeomatic breed spirit
 Beeomatic breed spirit --noFinalImprint
@@ -34,8 +35,9 @@ Beeomatic help
 
 `plan` reads runtime routes and actual storage without moving items. Missing hive
 stock, unknown species and dependency cycles produce diagnostics. Unanalyzed
-network stock can remain unresolved in a read-only plan; `breed` performs catalog
-inspection/scanning before planning. A mutation preference is a tie-breaking
+network stock can remain unresolved in a read-only plan; every breeding worker
+start/resume verifies all initial drones before dispatch. `PREPARING_STOCK`
+inspects unknown variants and completes required analysis at the shared station. A mutation preference is a tie-breaking
 preference among runtime-confirmed routes, not a recipe assertion. Spirit's
 Ethereal/Aware preference is ignored if the runtime does not return that pair.
 
@@ -87,10 +89,11 @@ Beeomatic doctor --retry job3
 `--adopt` is an explicit operator instruction after inspecting that job's actual
 queen or complete offspring pair. It continues observation/collection and does not
 repeat insertion. A consumed-drone transfer can only be adopted with source-count
-evidence and the expected queen genome. For routed machines, the operator must
+or a durable Interface acceptance receipt and the expected queen genome. For routed machines, the operator must
 verify the real queen through the GUI because staging inventories cannot establish
 caste inside the housing. `--retry` requires an empty machine, reconciled journal
-and restored recorded source items. Neither command discards bees.
+and restored recorded source items in chest/legacy mode. In Interface mode it
+returns unconsumed local requests to ME before reselection. Neither command discards bees.
 
 To replan after changed stock/routes: drain existing work with `stop`, resolve any
 reserved machines, and issue `breed TARGET` again. The completed stopped plan stays
@@ -98,3 +101,11 @@ in the journal until replaced. The `--noFinalImprint` and `--onlyFinalImprint` f
 affect optional reference-drone crossing only; ordinary breeding works without
 templates. Full genome equivalence is configured separately from species purity
 using `fullEquivalence=true` in `data/config.lua` while the worker is stopped.
+
+`doctor --interface PORT_ID` operates on the saved local port while the worker is
+stopped. It needs two identical analysed drones, requests two, transfers one into
+its unconfigured return slot, clears/refunds local stock and checks that the original
+exact network count returns. `doctor --probe` remains the read-only capability dump.
+Use `setup --reconfigure` only after old work is finished or fully drained and
+journals are reconciled. Setup offers `me`/`chest`; existing export-bus configurations
+remain supported for recovery without exposing old export questions in new setup.

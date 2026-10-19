@@ -1,158 +1,112 @@
 # Physical construction and topology
 
-The direct backend needs, per alveary, an OC adapter against an assembled alveary
-block and a transposer touching a valid inventory face. The adapter supplies bee
-and mutation information; the transposer supplies item access. Do not expect an
-adapter to transfer items. Connect both to the computer with OC cable.
+## ME Interface storage (default)
+
+Each alveary needs a housing adapter and a transposer touching both its inventory
+and a **full-block ME Interface**. Each Interface connects to the same powered ME
+network and real storage cells. Give every Interface its own adapter on the OC
+network. Add an OC database dedicated to Beeomatic. A network reader can be one
+of those Interfaces or a controller adapter exposing `getItemsInNetwork`/`store`.
 
 ```text
-                    OC cable to computer
-                     |             |
-              [Adapter]       [Transposer]
-                  |               |    |
-             [Alveary] -----------+    +-- [Archive chest]
+                      MAIN ME NETWORK + cells
+                         |             |
+                   [Interface A]  [Interface B]  ...
+                         |             |
+                   [Transposer A] [Transposer B]
+                         |             |
+                     [Alveary A]    [Alveary B]
+
+MAIN ME NETWORK -- [Scanner Interface] -- [Scanner transposer] -- [Analyser]
 ```
 
-This is a topology diagram, not a promise that arbitrary faces work. The wizard
-prints the selected addresses and actual sides after probing your installation.
+OC cable connects all adapters, transposers and the database to the controller.
+AE cable connects the Interfaces to ME. Every port has a unique ID/address; two
+ports are separate inventories, not two views of a shared chest. No shared archive,
+storage bus, export bus, export buffer or export redstone circuit is required.
+Do not put a storage bus on these Interfaces or working alvearies. Keep this
+worker in sole control of reserved bees and Interface filters; other consumers
+must not remove reserved bee stock.
+
+Setup assigns local Interface slots **1 princess, 2 drones, 9 returns**. Requests
+use exact database-derived NBT and request only the needed count. Stocked slots
+refill automatically after extraction; Beeomatic clears its request and lets the
+refill return to ME. Keep return slots unconfigured. Products and offspring enter
+those slots and drain into ME. Full/offline ME preserves accepted local contents
+and pauses further collection. Keep all relevant chunks loaded and allow enough
+AE channels, power and cell capacity for each port.
+
 Side numbers are world directions relative to the transposer: **0 down, 1 up,
-2 north, 3 south, 4 west, 5 east**. They are not screen directions or the front of
-the computer. Slots in OpenComputers are one-based.
+2 north, 3 south, 4 west, 5 east**. Slots are one-based. Adapter addresses identify
+components; they do not transfer items. Each housing's actual input/output map
+must be witnessed. Register an assembled alveary once, even if multiple adapters
+can observe blocks of the same multiblock.
 
-For multiple machines, each transposer should reach the **same physical archive**.
-Use accessible faces of a suitably sized shared inventory or a multiblock storage
-inventory whose multiple block views you have verified to expose the same slots.
-A normal chest has finitely many usable faces; do not pretend arbitrarily many
-transposers can fit around one block. Give views of the same inventory the same
-`id` and verify identical slot contents. Never reuse that ID for separate chests.
-Separate archive IDs are supported for inspection, but chest mode cannot teleport
-bees between disconnected inventories. A job pauses if its selected stock is in
-an unreachable archive. Scale the physical hub or use the AE2 bridge described
-below. Every alveary retains its own input/output map, environment and address.
+## One shared scanner
 
-Build different climates as required. Read **working** temperature and humidity,
-including alveary climate upgrades. Configure actual flower-provider IDs seen in
-an analyzed bee's `individual.active.flowerProvider`; names such as `flowers` are
-IDs, not assumptions about which blocks a particular species accepts. Verify sky,
-rain and day/night operation. `daylightManaged` means you have explicitly verified
-how this installation handles the bee's activity schedule; the program does not
-set the Minecraft time or bypass the bee's traits. A queen that cannot work will
-report obstruction and eventually hit the configured timeout.
+Give the scanner station its own Interface and transposer on the same ME and OC
+networks. The transposer reaches the analyser's exposed input/output inventory,
+or dedicated isolated staging inventories with external routes through it.
+There is one reserved batch in this path at a time. No unrelated bees may enter.
+Supply honey/power/consumables separately, outside the registered bee slots.
 
-## When direct inventory access is unavailable
+Pinned Forestry source defines a twelve-slot analyser: specimen **1**, honey
+container **2**, automated input **3-8**, output **9-12** (OC indices). Slot 1 is
+internal processing, not an automation input. These are source observations;
+confirm the actual machine, faces and inventory before configuring it. The
+scanner inspects all visible bee slots for unrelated stock when idle and extracts
+only the configured output slots. Consumable slots are left alone.
 
-Choose `routed` during alveary registration. Keep the housing adapter but provide
-dedicated input and output staging inventories accessible to the transposer:
+Startup enters `PREPARING_STOCK`: unknown exact variants are physically inspected,
+and all unanalysed drones are analysed before breeding starts. ME item records can
+omit genomes even when the physical bee is already analysed; those bees are
+inspected and catalogued without spending analyser supplies. Large quantities
+are processed in stack-sized batches. An unavailable scanner blocks readiness.
+New offspring can wait temporarily in AE during operation but are excluded from
+breeding until inspected/analysed. A restart repeats the initial readiness check.
 
-```text
-archive <---> transposer <---> input staging
-                    |              |
-                    |       two caste-selective routes
-                    |        controlled by ONE gate
-                    |              |
-              output staging <--- alveary + adapter
+After setup, put at least two identical analysed drones in ME and run:
+
+```sh
+Beeomatic doctor --interface port_temperate
+Beeomatic doctor --interface scanner_port
 ```
 
-The route from each input staging slot must accept the correct caste and deliver
-it to that single alveary. Both input routes MUST be stopped at gate level `off`,
-so princess and drone receipts can be verified before routing starts. The gate is
-an explicitly addressed OC redstone component with `setOutput(side,level)`.
-Validate the external pipes, filters, redstone polarity and chunk behavior using
-expendable stock. The separate output chest must receive only this machine's
-offspring/products. Disable automatic rebreeding loops. Inputs and output must be
-isolated from every other job and from the archive. Beeomatic waits for empty
-staging inputs, no housing queen/drone, and a complete offspring pair in the output
-chest. Transit and machine activity share the bounded cycle timeout.
+Use the port IDs you actually saved. The probe requests two drones, transfers one
+to an unconfigured return slot, clears the stock request, and verifies the original
+exact ME count is restored. It records the successful probe in state. Stop the
+worker and finish/reconcile pending requests first; keep other bee automation
+idle during this conservation test. Repeat for each registered port. This probe
+does not prove the analyser or a complete breeding cycle works; complete the
+[in-game acceptance](VALIDATION.md) as well.
 
-## AE2 dedicated subnet
+## Climates and routed housings
 
-Required: powered dedicated ME subnet and storage, ME storage bus on the physical
-archive, interface or controller exposed through an adapter, a **dedicated OC
-database**, and a separately exposed ME export bus feeding an isolated buffer.
-For Beta 3 redstone export mode, add an OC Redstone Card/output and a dedicated
-redstone connection to the export bus.
+Read each alveary's actual working temperature/humidity, including upgrades.
+Enter flower-provider IDs from analysed genetics and verify sky, rain and day/night
+operation. The housing API cannot report all these facts. `canBreed()` does not
+prove every mutation requirement. Revoke attestations when the world changes.
 
-```text
-ME storage / subnet -- storage bus -- archive <---> breeder transposers
-          |
-          +-- ME interface/controller -- OC adapter -- OC cable
-          |
-          +-- export bus --> isolated buffer <---> bridge transposer <---> archive
-                       OC adapter         |
-                                 dedicated database on OC network
-```
+If direct inventory access is unavailable, the `routed` backend retains a housing
+adapter and uses isolated input/output staging with caste-selective external pipes.
+Both input routes must stop behind the configured OC redstone gate while parent
+receipts are checked. Disable automatic rebreeding. Bind the output inventory to
+that machine only. Redstone output sides follow the controller's local orientation;
+verify them physically rather than reusing transposer world sides.
 
-The buffer must not be exposed to ME by another storage/import bus. Set the bus's
-AE2 Redstone Card to **active with signal**, remove fuzzy/crafting upgrades and
-clear all filters. The dedicated OC output must be the ONLY source of enabling
-signal; remove the testing lever before automatic control. Register the OC
-redstone component address and output face independently from the export-bus face.
-**Redstone Card side numbers follow the computer's local orientation**: the pinned
-OC implementation calls `redstone.toGlobal()` before accessing the physical face.
-Do not assume that side 2 powers world north as it does for a transposer. Identify
-the computer's front and verify the actual powered face with the output enabled;
-only then save the redstone side and attest the circuit.
-Output zero must disable the bus; output 15 must enable it. Verify the entire
-physical circuit before attesting `exportGate.verified` in setup.
+## Chest mode and older installations
 
-Beta 3 setup defaults to **redstone mode**, avoiding the broken imperative
-`exportIntoSlot` callback. Beeomatic reads back the exact database-derived filter
-before enabling the signal. It polls every second, holding the signal until a real
-receipt appears; it does not assume a short pulse or require acceleration cards.
-The configurable maximum wait defaults to 60 seconds. On receipt, error, Ctrl+C,
-pause/stop key or timeout it attempts signal OFF and filter cleanup. It rechecks
-all buffer slots, verifies exact NBT/source counts, and archives every matching
-stack, including excess exported during a polling interval. The whole buffer must
-start empty and have no other automation. Following a power interruption, recovery
-first disables the saved output/filter and reconciles actual buffer/archive stock
-before any new export. Ensure the physical circuit does not introduce delayed
-exports or route items from elsewhere after the bus has been disabled.
+Standalone chest mode remains available. Each breeder/scanner transposer needs a
+verified view of the same physical archive, or stock can be unreachable. Identical
+IDs mean the same real inventory; do not reuse an ID for disconnected chests.
+This optional mode retains its own archive scanner contract.
 
-Callback mode remains for installations where the imperative method has actually
-passed an export test. Never switch mechanisms automatically after a missing
-receipt: an uncertain first export must be reconciled first.
+Existing export-bus configurations still load through the compatibility backend.
+See [legacy hardware](LEGACY_AE2.md) and [migration](INSTALLATION.md). The new setup
+contains no export-bus or redstone-export prompts.
 
-Beeomatic temporarily uses filter slot 1 and clears it after each request.
-Database capacity is entered
-explicitly; the database must not be used by another script. Same-label genetic
-variants need enough database entries to copy the candidate group before choosing
-the exact NBT match. A capacity mismatch pauses rather than selecting loosely.
-
-Results are transferred into the **real archive chest** and verified there. Its
-storage bus makes those bees part of ME storage. There is no racing asynchronous
-import bus on that chest. On Beta 3, network item records can lack Forestry genetic
-data: unknown records are exported to the archive for inspection and catalogued.
-Allow enough physical archive space for this discovery, offspring, products and
-protected reserves. Space exhaustion preserves sources and pauses collection.
-
-The bridge transposer needs a view of the same physical archive used by the
-selected breeder. Other breeder transposers can use their own views of that hub.
-Disconnected archives need suitable physical bridge topology; there is no
-arbitrary transfer between OC components. Do not put storage buses on working
-alvearies. Only Beeomatic may modify the dedicated export bus/database while jobs
-run. Avoid manual item movement while a transfer is in progress.
-
-## Scanner, templates and foundation helper
-
-The scanner path is optional. Supply a dedicated input staging chest, a supported
-scanner/analyzer with its power and consumables, external routing, and a dedicated
-output chest. The scanner transposer must reach both staging chests and the same
-archive. One complete reserved stack enters at a time, and output must merge into
-one analyzed stack of identical caste/count/individual identity. No unrelated
-items may enter. Beeomatic records the original archive slot and returns the
-analyzed stack there. If this layout cannot be validated, scan bees manually and
-leave automation disabled.
-
-Templates are analyzed reference **drones in a registered archive slot**, made
-with Gendustry if desired. Imprinting is ordinary selective crossing; no unsupported
-Gendustry machine RPC is used. Species purity and non-species template traits are
-verified independently, and template reserve drones are protected.
-
-An optional stationary robot can serve one registered alveary foundation position.
-Run `robot-helper.lua LOCAL_MODEM CONTROLLER_MODEM PORT` on that robot with a
-`robot-foundations.lua` file returning a map of exact runtime requirement strings
-to reference block inventory slots. Its front must face the intended foundation
-position. It will compare/place, **never dig**. Modem addresses and ports must match
-setup. `doctor --robot ID` requests whitelisted foundation actions; you still use
-`doctor --confirm ID` after inspecting the actual condition. Replies are scoped to
-sender, nonce and requirement, and cannot approve unrelated mutation conditions.
+Templates use an analysed reference drone. In Interface mode, setup records its
+exact NBT identity from a temporary witness inventory; return the drone to ME.
+The reserve is protected by genotype/count, not a permanent ME slot. The optional
+foundation robot remains a separately registered, addressed helper; it never digs
+or automatically attests arbitrary mutation conditions.

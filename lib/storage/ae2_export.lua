@@ -1,3 +1,4 @@
+-- Legacy saved-configuration support only; new Interface mode does not load this.
 -- Exact-filter export control. Redstone mode uses normal AE2 ticks, waiting for
 -- physical receipts instead of assuming a fixed pulse or bus transfer speed.
 local B=require("lib.bees"); local U=require("lib.util")

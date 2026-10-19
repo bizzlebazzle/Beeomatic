@@ -55,6 +55,44 @@ NONE is not treated as a valid operating climate. UP/DOWN/BOTH tolerance directi
 matters. Active traits determine current operation; both species alleles determine
 purity. Every selected princess is rechecked before another cycle.
 
+## ME Interface backend
+
+The default backend is now `storage.kind="me_interface"`. The pinned
+[DriverBlockInterface](https://github.com/GTNewHorizons/OpenComputers/blob/1.12.61-GTNH/src/main/scala/li/cil/oc/integration/appeng/DriverBlockInterface.scala)
+exposes `getInterfaceConfiguration(slot)` and
+`setInterfaceConfiguration(slot, databaseAddress, entry, quantity)`.
+[InterfaceEnvironmentBase](https://github.com/GTNewHorizons/OpenComputers/blob/1.12.61-GTNH/src/main/scala/li/cil/oc/integration/appeng/internal/InterfaceEnvironmentBase.scala)
+uses the named `config` inventory, which pinned
+[DualityInterface](https://github.com/GTNewHorizons/Applied-Energistics-2-Unofficial/blob/rv3-beta-1050-GTNH/src/main/java/appeng/helpers/DualityInterface.java)
+still exposes. Clearing with only the slot removes its stock request. These
+callbacks therefore avoid the export bus's specific configuration-inventory bug.
+
+Quantity is one-based/default one and capped at the item stack limit by
+[DatabaseAccess](https://github.com/GTNewHorizons/OpenComputers/blob/1.12.61-GTNH/src/main/scala/li/cil/oc/util/DatabaseAccess.scala).
+The Interface has nine local inventory/config slots. Requests replenish and
+unconfigured contents return to network storage asynchronously. The backend
+uses per-port journals and durable returned transfer counts rather than assuming
+stable local source/destination deltas. It rejects loose identity selection,
+manual stock filters and insufficient same-label database capacity.
+
+The pinned Forestry
+[InventoryAnalyzer](https://github.com/GTNewHorizons/ForestryMC/blob/4.11.37/src/main/java/forestry/core/inventory/InventoryAnalyzer.java)
+defines OC input slots 3-8, output slots 9-12, internal specimen 1 and honey
+container 2. Input accepts genetic items; extraction is restricted to outputs.
+[TileAnalyzer](https://github.com/GTNewHorizons/ForestryMC/blob/4.11.37/src/main/java/forestry/core/tiles/TileAnalyzer.java)
+moves an input stack to its internal specimen slot and writes analysed NBT before
+returning the stack through its outputs. It uses honey and energy for analysis.
+Confirm actual slot access in-game; setup requires witnessed input/output slots.
+
+On every start/resume the shared station inspects uncatalogued exact identities
+and analyses unscanned initial drones before normal dispatch. ME records lacking
+chromosomes are not treated as proof that analysis is needed. Temporary unscanned
+offspring are allowed in ME but excluded from selection. No Interface/analyser
+in-game success is claimed yet; `doctor --interface PORT_ID` is the new bounded
+stock/return probe. See [validation](VALIDATION.md).
+
+## Legacy export-bus backend (saved configurations only)
+
 AE2 export requires a dedicated subnet, database, exact NBT, no fuzzy export
 upgrade, an empty isolated export buffer and an export bus inhibited except under
 explicit OC redstone control. Callback mode additionally requires the imperative
@@ -117,12 +155,11 @@ bus ticks exported one Wintry Drone to the isolated chest, and its compressed NB
 matched the original exactly. A very brief pulse had produced no receipt; no
 fixed warm-up duration or acceleration-card behavior is inferred from that test.
 
-The Lua backend now implements explicit `exportMode="redstone"`, configured by
-setup with a verified OC `redstone` output (`getOutput`/`setOutput`, checked in
+The Lua backend now implements explicit `exportMode="redstone"`, configured in saved installations with a verified OC `redstone` output (`getOutput`/`setOutput`, checked in
 the pinned `RedstoneVanilla.scala`). It waits for receipts with a timeout, shuts
 down on errors/interruption, and reconciles buffer/archive contents after restart.
-Legacy configuration without an export mode retains callback mode; reconfigure
-AE2 storage to opt into the workaround and register its physical signal circuit.
+Legacy configuration without an export mode retains callback mode; retain its existing circuit until old work is reconciled, then migrate using
+`setup --reconfigure` and select `me`.
 Manual normal export is verified; automated OC signal wiring and full breeding
 still require in-game acceptance. Both paths retain exact-NBT database selection.
 

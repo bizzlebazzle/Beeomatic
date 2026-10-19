@@ -20,6 +20,22 @@ test("reconfiguration refuses to migrate saved unresolved movements",function()
     eq(files["/project/data/config.lua"],"return "..U.encode(w.c))
   end)
 end)
+test("installer retires obsolete program files while preserving backups and user files",function()
+  local w=W.new(); w:addMachine("a"); w:build()
+  O.with(w,function(files)
+    files["/home/Test/lib/storage/base.lua"]="old storage contract"
+    files["/home/Test/lib/breeders/base.lua"]="old breeder contract"
+    files["/home/Test/tools/probe.lua"]="old probe"
+    files["/home/Test/tools/custom.lua"]="user helper"
+    files["/home/Test/data/state.lua"]="user state"
+    assert(loadfile("install.lua"))("/home/Test")
+    eq(files["/home/Test/lib/storage/base.lua"],nil)
+    eq(files["/home/Test/lib/storage/base.lua.previous"],"old storage contract")
+    eq(files["/home/Test/lib/breeders/base.lua.previous"],"old breeder contract")
+    eq(files["/home/Test/tools/probe.lua.previous"],"old probe")
+    eq(files["/home/Test/tools/custom.lua"],"user helper"); eq(files["/home/Test/data/state.lua"],"user state")
+  end)
+end)
 test("public Beeomatic breed spirit completes through CLI persistence and foreground events",function()
   local w=W.new(); w:addMachine("a"); w:addMachine("b"); w:build(); w.c.minDrones=4
   for slot=1,10 do w.inventories.hub[slot]=W.bee(slot<=5 and "Forest" or "Meadows","princess") end

@@ -1,9 +1,15 @@
 # ME Interface storage redesign (research and proposal)
 
 Research date: 2026-10-19. Target: GTNH 2.9.0 Beta 3, OpenComputers
-1.12.61-GTNH, AE2 rv3-beta-1050-GTNH. This document proposes a replacement;
-the application still implements the archive/export-bus design. No runtime,
-setup, configuration or saved-state changes are part of this research commit.
+1.12.61-GTNH, AE2 rv3-beta-1050-GTNH.
+
+Implementation status: Interface storage, quantity receipts, shared scanning,
+mandatory initial drone preparation, resumable setup and the bounded Interface
+probe are implemented and tested. The legacy backend remains for saved jobs and
+migration. Unused contract modules and duplicate standalone probe were retired.
+See [validation](VALIDATION.md) for current automated results and required in-game
+acceptance. The implementation/commit sequence below records the original plan;
+hardware acceptance is still outstanding.
 
 ## Decision and scope
 
@@ -231,4 +237,5 @@ In-game acceptance must demonstrate two independent alvearies drawing from ME,
 products returning to ME, offspring passing through one shared scanner, protected
 stock remaining unavailable to other jobs, and restart without duplicate insertion.
 Normal operation must begin only after all initial drones are verified analysed.
-No implementation or hardware success is claimed by this planning document.
+This design document records the intended contracts. The implementation now exists;
+its mocked validation and remaining hardware acceptance are tracked in VALIDATION.md.

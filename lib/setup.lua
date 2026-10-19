@@ -276,10 +276,11 @@ function M.new(config,components,inv,save,read,out)
       s.input=self:endpoint("Analyser input (or isolated input staging)",s.input,s.storage.transposer)
       s.output=self:endpoint("Analyser output (or isolated output staging)",s.output,s.storage.transposer)
       assert(s.storage.transposer==s.input.transposer and s.output.transposer==s.input.transposer,"scanner staging needs a common transposer")
-      s.inputSlot=self:number("Input staging slot",1,self.inv:size(s.input),1)
+      s.inputSlot=self:number("Witnessed input slot (Forestry analyser: 3)",1,self.inv:size(s.input),s.inputSlot)
       if self.c.storage.kind=="me_interface" then
+        local previous=s.outputSlots and table.concat(s.outputSlots,",") or nil
         s.outputSlots={}
-        local text=self:ask("Analyser output slots only, comma separated (exclude honey/consumables)",s.input.side==s.output.side and nil or "1")
+        local text=self:ask("Witnessed output slots (Forestry analyser: 9,10,11,12; exclude consumables)",previous)
         for n in text:gmatch("%d+") do s.outputSlots[#s.outputSlots+1]=U.assertNumber(n,1,self.inv:size(s.output)) end
         assert(#s.outputSlots>0,"scanner output slots required")
         for _,slot in ipairs(s.outputSlots) do

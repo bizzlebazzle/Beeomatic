@@ -1,126 +1,70 @@
 # Beeomatic
 
-Modular OpenComputers/OpenOS bee breeding for **GTNH 2.9.0 Beta 3**. It discovers
-Forestry mutation routes, schedules independent prerequisites across registered
-alvearies, retains useful genetics, stabilizes target stock, and journals physical
-item movements. Chest storage works independently; exact-NBT AE2 subnet storage,
-isolated scanning, reference-drone imprinting and a foundation robot are optional.
+OpenComputers/OpenOS bee breeding for **GTNH 2.9.0 Beta 3**. Beeomatic discovers
+Forestry mutation routes, schedules work across multiple alvearies, retains useful
+genetics and protects founder/reserve stock. It journals physical item movement
+and keeps jobs recoverable after interruptions.
 
-The application and mocked Lua 5.2 tests are implemented. **Actual in-game hardware
-acceptance is still required**; see [validation](docs/VALIDATION.md). Source-verified
-integration versions and genuine limits are recorded in
-[API compatibility](docs/API_COMPATIBILITY.md).
+**ME Interface storage is the default.** Each alveary has a local Interface and
+transposer; bees and products live in real ME storage. One shared analyser station
+inspects/analyses bees. No shared archive chest or export bus is required.
 
-```sh
-lua install.lua /home/Beeomatic
-Beeomatic setup
-Beeomatic doctor
-Beeomatic plan spirit
-Beeomatic breed spirit
-```
+On every start/resume, all initial drones must be verified analysed before breeding
+begins. During operation, offspring may queue temporarily in AE, but pending bees
+cannot be selected for breeding. Already-analysed bees whose ME records omit genes
+are physically inspected and catalogued without unnecessary analysis.
 
-For offline installation, copy only the paths listed in `manifest.lua`, preserving
-their directories. Tests and documentation stay on the PC. The compact release
-is approximately 105 KiB of file contents (31 files), plus filesystem overhead and
-runtime data. Internet Card installation from the public
-[GitHub repository](https://github.com/bizzlebazzle/Beeomatic) is also supported:
+The implementation passes mocked Lua 5.2 and 5.3 tests. **The new Interface flow
+still requires in-game acceptance**; source verification and mocks cannot certify
+your installed hardware. See [validation](docs/VALIDATION.md).
 
 ```sh
 cd /home
 wget https://raw.githubusercontent.com/bizzlebazzle/Beeomatic/master/get.lua
 lua get.lua
+Beeomatic setup
+Beeomatic doctor
+Beeomatic doctor --interface port_temperate
+Beeomatic plan spirit
+Beeomatic breed spirit
 ```
 
-The downloader fetches one consistent Git revision before installing and preserves
-existing data. The main installed command is `Beeomatic`.
-Use `Beeomatic help` for commands or see [installation](docs/INSTALLATION.md),
-[physical hardware/layout](docs/HARDWARE.md), [commands](docs/COMMANDS.md),
-[architecture](docs/ARCHITECTURE.md), [troubleshooting](docs/TROUBLESHOOTING.md), and
-the [reference implementation review](docs/REFERENCE_REVIEW.md).
+Use your saved port ID for the probe. Stop Beeomatic before updating with `update`
+and reboot afterward. For offline installation, copy the files in `manifest.lua`
+and run `lua install.lua /home/Beeomatic`. Existing `data/` is preserved.
 
-After installing this version, run `update` at the OpenOS shell to download a
-fresh `/home/get.lua` and run it. Stop Beeomatic before updating and reboot after.
+Setup uses numbered component/inventory choices, saved names, section checkpoints
+and `back`. Alveary registration also saves its own stages, so it resumes after
+an interruption. Use `Beeomatic alveary add` to add a machine without repeating
+storage/scanner setup. Each housing retains its own slot map and climate.
 
-`breed spirit` uses the recipes returned by your server. Ethereal + Aware is a
-preferred route only when Forestry actually reports it. Missing dependencies are
-planned recursively. The scheduler can populate parent drones and convert spare
-princesses without separate user commands. Hive founders, adequate spare princesses,
-reserve drones, compatible climates, scanning access and mutation conditions must
-exist physically. The program cannot create hive stock from nothing.
+See [installation and migration](docs/INSTALLATION.md), [hardware](docs/HARDWARE.md),
+[commands](docs/COMMANDS.md), [architecture](docs/ARCHITECTURE.md),
+[API evidence](docs/API_COMPATIBILITY.md), [troubleshooting](docs/TROUBLESHOOTING.md)
+and the [design](docs/ME_INTERFACE_PLAN.md). [config.example.lua](config.example.lua)
+shows three independent alveary ports and one shared scanner; it is deliberately
+unverified and must not overwrite existing configuration/state.
 
-Default completion requires a pure target princess and pure compatible drones,
-minimum stock, and two consecutive confirmed stable offspring cycles. All-gene
-equivalence is a separate option. All offspring/products are archived; no destructive
-discard policy runs by default. Source leases, machine reservations and protected
-princess lineages prevent competing jobs from sharing the same selected item.
+`breed spirit` uses the server's actual recipes. Ethereal + Aware is preferred only
+when Forestry reports that route. Prerequisites are planned recursively. Population
+and spare-princess conversion use the same scheduler. Hive founders, spare
+princesses, reserve drones, compatible climates and mutation requirements must
+exist physically; the program cannot create founders from nothing.
 
-The foreground worker handles `p`, `r`, `q` and Ctrl+C, with persistent mailbox
-control from another OpenOS shell where available. `resume` reconciles actual
-inventories and saved work. Ambiguous transfers require an audit instead of replay.
+Completion requires a pure target princess, pure compatible drones, minimum stock
+and two consecutive stable offspring cycles by default. Full gene equivalence and
+reference-drone imprinting are additional options. No destructive discard policy
+runs. Exact identity/quantity ownership survives ME stack merging and analysis
+changing NBT; each job keeps its own princess lineage while active.
 
-Typical multi-alveary registration:
+The foreground worker supports `p`, `r`, `q`, Ctrl+C and persistent mailbox control
+from another shell. `resume` reconciles inventories and pending receipts. Ambiguous
+movement pauses for audit instead of replaying an insertion.
 
-```lua
--- Structure only; use setup for real addresses, sides, climate and slot witnesses.
-alvearies = {
-  {id="temperate_1", name="Temperate Alveary", priority=1, enabled=true,
-    environment={temperature="NORMAL", humidity="NORMAL", verified=false}},
-  {id="hot_dry_1", name="Hot Dry Alveary", priority=2, enabled=true,
-    environment={temperature="HOT", humidity="ARID", verified=false}},
-  {id="cold_damp_1", name="Cold Damp Alveary", priority=3, enabled=true,
-    environment={temperature="COLD", humidity="DAMP", verified=false}},
-}
-```
+Chest-only storage remains optional. Existing `kind="ae2"` export-bus installations
+retain a compatibility backend so their jobs/journals can be reconciled before
+migration. New setup uses `kind="me_interface"`; the old export prompts are removed.
 
-[config.example.lua](config.example.lua) includes the complete defaults-based
-structure with separate transposers and explicit unverified slot maps. Runtime
-configuration lives in `data/config.lua`; job state, journal and mailbox live in
-`data/`. Never copy the example over an existing installation's state.
-
-Project tree:
-
-```text
-Beeomatic/
-  Beeomatic                 # source-folder launcher
-  Beeomatic.lua             # installed entry point
-  install.lua
-  manifest.lua
-  config.example.lua
-  robot-helper.lua
-  README.md
-  lib/
-    util.lua, cli.lua, setup.lua, config.lua, components.lua
-    bees.lua, genetics.lua, mutations.lua, planner.lua, environment.lua
-    inventory.lua, persistence.lua, jobs.lua, scheduler.lua
-    scanner.lua, templates.lua, robot.lua
-    storage/  base.lua, chest.lua, ae2.lua, ae2_export.lua
-    breeders/ base.lua, factory.lua, alveary.lua, routed.lua
-    ui/       status.lua, diagnostics.lua
-  tools/probe.lua
-  tests/
-    run.lua, run.py
-    mocks/world.lua, mocks/openos.lua
-    test_planner.lua, test_genetics.lua, test_environment.lua
-    test_storage.lua, test_scheduler.lua, test_recovery.lua
-    test_scanner.lua, test_setup.lua, test_integration.lua, test_cli.lua
-  docs/
-    INSTALLATION.md, HARDWARE.md, COMMANDS.md, ARCHITECTURE.md
-    TROUBLESHOOTING.md, API_COMPATIBILITY.md, REFERENCE_REVIEW.md
-    VALIDATION.md, API_EVIDENCE.json
-```
-
-Development check in this workspace: `python tests/run.py` runs Lua 5.2 and Lua 5.3.
-Current validation: **102 tests passed on each engine**, including the public CLI Spirit workflow,
-installer upgrades, exact selection of a second same-label AE2 genetic variant,
-concurrent machines, protected reserves and interrupted transfer recovery.
-Local `.tools/` and downloaded `research/` are ignored and not installed. No external
-Lua library is needed on the Minecraft computer.
-
-Multiplayer testing found the GTNH 2.9 Beta 3 `exportIntoSlot` **config=null**
-integration bug. Normal redstone-controlled export was then verified manually with
-an exact-NBT receipt. Setup now defaults to `exportMode="redstone"` for AE2: a
-dedicated OC redstone output stays enabled until real receipts arrive or a timeout
-expires. It shuts down and clears the exact filter before archiving all receipts.
-The automated OC signal path still needs in-game wiring validation. Callback mode
-remains available for installations with a working integration; it is not an
-automatic fallback after an uncertain export.
+Development check: `python tests/run.py` syntax-checks and tests on Lua 5.2 and 5.3.
+Tests/docs/research and development dependencies are excluded from the installation
+manifest. No third-party Lua library is needed on the Minecraft computer.

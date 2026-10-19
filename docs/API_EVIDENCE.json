@@ -64,7 +64,14 @@
     },
     "alvearyInputWitnesses": {
       "componentTypeObserved": "items",
-      "methodsObserved": ["canBreed", "getQueen", "getBeeParents", "getBeeBreedingData", "listAllSpecies", "getDrone"],
+      "methodsObserved": [
+        "canBreed",
+        "getQueen",
+        "getBeeParents",
+        "getBeeBreedingData",
+        "listAllSpecies",
+        "getDrone"
+      ],
       "transposerSide": 4,
       "inventorySlots": 9,
       "princessSlot": 1,
@@ -87,10 +94,52 @@
         "combs": 9,
         "drones": 2,
         "princesses": 1,
-        "archiveDestinationSlots": [10, 11, 12]
+        "archiveDestinationSlots": [
+          10,
+          11,
+          12
+        ]
       }
     },
     "automatedOcRedstoneValidated": false,
     "applicationBreedingValidated": false
+  },
+  "interfaceRedesign": {
+    "sourceVerified": true,
+    "hardwareTested": false,
+    "backend": "me_interface",
+    "ocSources": [
+      "integration/appeng/DriverBlockInterface.scala",
+      "integration/appeng/internal/InterfaceEnvironmentBase.scala",
+      "util/DatabaseAccess.scala",
+      "util/InventoryUtils.scala"
+    ],
+    "aeSource": "src/main/java/appeng/helpers/DualityInterface.java",
+    "forestrySources": [
+      "src/main/java/forestry/core/inventory/InventoryAnalyzer.java",
+      "src/main/java/forestry/core/tiles/TileAnalyzer.java"
+    ],
+    "stockSlots": 9,
+    "analyserOcSlots": {
+      "specimen": 1,
+      "honeyContainer": 2,
+      "inputs": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "outputs": [
+        9,
+        10,
+        11,
+        12
+      ]
+    },
+    "initialDronesMustBeAnalysed": true,
+    "temporaryUnanalysedAeStorageAllowed": true,
+    "hardwareProbe": "Beeomatic doctor --interface PORT_ID"
   }
 }

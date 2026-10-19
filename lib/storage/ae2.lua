@@ -1,3 +1,5 @@
+-- Compatibility backend for saved kind="ae2" configurations. New setup uses
+-- me_interface; retain this path to finish/reconcile old jobs before migration.
 local Chest=require("lib.storage.chest"); local B=require("lib.bees"); local U=require("lib.util")
 local Export=require("lib.storage.ae2_export")
 local M={}; M.__index=M

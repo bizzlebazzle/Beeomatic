@@ -31,16 +31,10 @@ removed after success or failure; empty staging directories can remain for reuse
 The downloader does not use `/tmp`, which can be a much smaller filesystem than
 the hard drive.
 
-The compact release contains 31 files, approximately **105 KiB of file contents**
-before filesystem allocation overhead. This includes all application modules,
-`install.lua` and `manifest.lua`. It excludes documentation, tests, mocks, research,
-the example configuration, the repository launcher, the separate robot helper and
-the redundant standalone probe (use `Beeomatic doctor --probe`). The downloaded
-`/home/get.lua` bootstrap remains separate. All tests run on the development PC
-before pushing; they are not needed on the OpenComputer. Documentation remains on
-GitHub. Download staging and one previous installed generation require additional
-temporary disk space, and runtime data grows with use. A second drive is not
-required for the program files themselves.
+The release installs only the runtime paths in `manifest.lua`. Documentation,
+tests, research, example configuration and robot helpers stay on the development
+PC. Download staging, one previous installed generation and runtime data need
+additional disk space. The downloader avoids the smaller `/tmp` filesystem.
 
 To select a specific revision instead, run `lua get.lua FULL_COMMIT_SHA`.
 An optional second argument selects an absolute installation directory.
@@ -102,7 +96,7 @@ component. It then lists only newly discovered compatible components for selecti
 Use `R` to return to the complete list. Enter retains an available current selection.
 When registering an inventory, a lone already named compatible transposer is reused
 automatically. Otherwise, choose the transposer first. A separate numbered menu then
-asks which attached inventory serves the named role (archive, alveary, buffer, etc.).
+asks which attached inventory serves the named role (Interface, alveary, analyser, etc.).
 Select its inventory menu number, not its world-side number; directions and contents
 are identification hints. Empty inventories can be selected. `R` refreshes this
 inventory menu without returning to transposer selection. The saved side remains
@@ -113,25 +107,22 @@ refresh; previews never move items. Full method documentation is available separ
 through `Beeomatic doctor --probe` and is not printed during normal setup.
 Component-picker and inventory headings use cyan on colour terminals, restoring
 the previous text colour immediately afterward. Monochrome terminals retain `==`
-heading markers. The ME export-control question explains both modes before asking:
-`redstone` enables the bus using the wired OC Redstone Card and watches the physical
-buffer for receipts; `callback` invokes `exportIntoSlot` directly. Use `redstone`
-on the tested Beta 3 server, where the callback failed with `config=null`.
-The export direction runs from the ME cable block carrying the bus, through the
-export bus, towards the buffer chest. It is a world direction: `down` (0), `up`
-(1), `north` (2), `south` (3), `west` (4), `east` (5). Setup accepts either the name
-or number. For example, a buffer chest south of the cable block means `south`/3.
-Use the cable-to-chest direction, not the adapter's orientation or a transposer side.
+heading markers. ME Interface setup asks for the network reader and dedicated
+database once, then binds a local Interface to each alveary's known transposer.
+Each port uses stock slots 1/2 and unconfigured return slot 9. The shared scanner
+has a separate Interface and transposer on the same ME network.
 After upgrading program files, reboot the OpenComputer before testing to clear
 OpenOS's cached application modules.
 
-Register a physical archive, each housing, its transposer view,
+Register each Interface port, housing and transposer view,
 actual slot roles and operating environment. The wizard performs read-only input
 witness checks using test stock that you place manually. It never inserts test
 bees automatically. Output mapping, climate, route isolation and environmental
 facts require explicit in-game verification and are marked unverified until then.
 
-Setup saves completed sections as it progresses. If interrupted, run `setup` again.
+Setup saves completed sections and each alveary registration stage. Type `back`
+to revisit the previous stage/section. If interrupted, run `setup` again; an
+unfinished `alveary add` also resumes its saved registration.
 Use `setup --reconfigure` to repeat the stages while retaining existing machines;
 use `alveary add` to add a machine independently. To correct a registered machine's
 slot or climate mapping, stop the worker and edit `data/config.lua`, or remove its
@@ -147,13 +138,45 @@ where those resources permit them. Its default policy keeps one pure princess pe
 species and one useful drone per genotype, so an operation can pause for spare
 stock even when it could make progress by risking the last reserve.
 
-For AE2, follow [HARDWARE.md](HARDWARE.md) before selecting that backend. Your server
-must expose exact compressed item NBT (`allowItemStackNBTTags=true`) for autonomous
-network export. Chest-only operation does not require AE2 or that server setting.
-The tested Beta 3 imperative export callback is broken; setup's default redstone
-mode uses ordinary AE2 export with a verified OC Redstone Card circuit and a
-receipt-based wait. Configure a longer timeout if an unaccelerated bus needs it.
+For ME Interfaces, follow [HARDWARE.md](HARDWARE.md). Your server must expose exact
+compressed item NBT (`allowItemStackNBTTags=true`). Use real ME storage cells, a
+dedicated OC database, one full-block Interface per alveary and one shared scanner.
+Supply honey/power separately. On each start/resume, `PREPARING_STOCK` physically
+inspects unknown variants and analyses all initial drones before dispatch.
+Temporary raw offspring in AE remain unavailable until inspected/analysed.
 
-After installation, complete the release-specific in-game acceptance procedure in
-[VALIDATION.md](VALIDATION.md). Automated tests validate program behavior against
-mocks; they do not certify an actual Minecraft installation.
+After setup, test every saved port with at least two identical analysed drones
+available in ME:
+
+```sh
+Beeomatic doctor --interface port_temperate
+Beeomatic doctor --interface scanner_port
+```
+
+Substitute your actual IDs. The probe returns all test drones and checks the exact
+ME count. Verify the shared analyser separately, then complete the acceptance
+steps in [VALIDATION.md](VALIDATION.md) before valuable breeding work.
+
+## Migrating an existing export-bus installation
+
+Existing `storage.kind="ae2"` configurations keep their working compatibility
+backend. No automatic conversion of saved jobs or transfer journals occurs.
+
+1. Finish or drain old work with the existing hardware connected. Use `doctor`
+   to reconcile pending exports/movements; resolve reserved machines and scanner
+   batches. Do not remove the old gate/export buffer while their journal is pending.
+2. Stop the worker and back up `data/`, including `.bak` files. Update and reboot.
+3. Build the Interface ports and one shared scanner station. Run
+   `Beeomatic setup --reconfigure`, select `me`, and register the new local port
+   for each existing alveary. Housing slots/climate registrations are retained.
+   Old scanner/template settings are reset because their archive references do
+   not apply to the new topology. Interrupted port remapping resumes on rerun.
+4. Test ports/scanner, then start a job. Initial drone preparation runs before
+   breeding. Legacy export hardware can be retired after its old work is reconciled.
+
+Reconfiguration refuses unresolved movements, scanner requests or owned batches.
+An explicit completed drain releases idle logical ME lineage reservations. Old
+export/redstone prompts have been removed from setup. The legacy modules remain
+only to run/recover saved old configurations; see [legacy hardware](LEGACY_AE2.md).
+The installer retires the unused base-contract modules and standalone probe,
+keeping `.previous` backups. It preserves user data and unrelated files.

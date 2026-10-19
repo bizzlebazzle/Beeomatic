@@ -1,30 +1,55 @@
-# Architecture and safety boundaries
+# Architecture and recovery
 
-`Beeomatic.lua` locates its own installation and loads `lib/cli.lua`. The CLI owns
-the foreground loop and mailbox; its services receive injected components, clock,
-storage and persistence so the same logic runs under Lua 5.2 mocks.
+`Beeomatic.lua` loads `lib/cli.lua` from its installed root. The foreground worker
+owns component access, scheduling, mailbox control and persistence. Services
+accept injected components/clocks so they can be exercised under Lua 5.2/5.3.
 
 | Modules | Responsibility |
-|---|---|
-| `components`, `ui/diagnostics`, `setup`, `config` | Enumerate every address, inspect methods/inventories, collect verified configuration |
-| `bees`, `genetics` | Caste/genome normalization, purity, desired traits, exact identity, separate full equivalence |
-| `mutations`, `planner` | Runtime routes, aliases, cycle-bounded dependency expansion, inventory/climate/requirements/probability costs |
-| `inventory`, `persistence` | Source leases, write-ahead movement intent, verified receipts, two-generation state replacement |
-| `storage/chest`, `storage/ae2`, `storage/ae2_export` | Reachable inventories, exact database selection, callback or redstone receipt control, network reconciliation |
-| `breeders/alveary`, `breeders/routed`, `breeders/factory` | Native or gated-staging hardware lifecycle behind one interface |
-| `jobs`, `scheduler` | Dependencies, fair dispatch, exclusive machine allocation, replenishment/conversion, bounded cycles, lineage protection |
-| `scanner`, `templates`, `robot` | Isolated scanning provenance, reference-drone crossing, addressed condition-specific requests |
-| `ui/status` | Persisted runtime status; no fabricated inventory/climate measurements |
+| --- | --- |
+| `components`, `setup`, `config`, `ui/diagnostics` | Capability discovery, resumable registration and hardware checks |
+| `bees`, `genetics`, `mutations`, `planner` | Exact identity, chromosomes, runtime routes and bounded prerequisite planning |
+| `inventory`, `storage/receipts`, `persistence` | Physical transfer intents/receipts, logical batch updates and saved generations |
+| `storage/me_interface` | Per-port exact quantity requests, refill cleanup, returns, network catalogue and probe |
+| `scanner`, `scanner_me` | Chest scanner compatibility and shared ME inspection/analysis state machine |
+| `jobs`, `scheduler`, `templates` | Fair dispatch, exclusive machines, quantity ownership, lineage and genotype reserves |
+| `breeders/alveary`, `breeders/routed`, `breeders/factory` | Direct inventory or isolated gated routes |
+| `storage/chest` | Optional standalone chest mode |
+| `storage/ae2`, `storage/ae2_export` | Compatibility for saved legacy export-bus configurations |
 
-The scheduler rotates its starting job on each tick. Independent dependencies can
-run concurrently up to `concurrency`. Each machine has at most one job, and each
-source selection is reserved before movement. Transfers execute serially in the
-single worker: after a verified withdrawal, the remaining stack is a fresh pool of
-unallocated units, so two jobs can safely use distinct drones from the same stack.
-An active job's princess lineage remains protected between cycles. Machine leases
-and unresolved movements survive interruption.
+## Startup and scanning
 
-State transitions:
+On every worker start/resume, Interface mode closes the dispatch gate and enters
+`PREPARING_STOCK`. Recovery inspects pending movement first. Unknown variants are
+materialised at the shared scanner port to read physical genetics. An analysed
+item whose ME conversion omits genomes is catalogued by exact NBT and returned
+without analysis. Unanalysed items go through the isolated analyser in bounded
+stack-sized batches. Readiness requires analysed initial drone stock, no unresolved
+batch and no untracked bees in registered analyser inventories. Initial raw drones
+in idle housing outputs are collected; active jobs keep ownership of their results.
+
+Shared scanner phases:
+
+```text
+REQUESTING -> INSPECTED -> return/rescan
+     |
+     +-> INSERTING -> PROCESSING -> RETURNING -> rescan
+```
+
+Input acceptance and output return update scanner phase evidence in the same save
+as the transfer receipt. Restart after either boundary does not repeat the move.
+Analysis changes NBT; an explicit identity mapping preserves owned quantities.
+During operation, new raw offspring and external unknown variants are quarantined
+until inspection/analysis. Existing queens can keep running while the scanner is
+busy; new dispatch waits. A missing scanner or uncertain batch blocks readiness.
+
+## ME ownership and scheduler
+
+A single worker serialises physical transfers; independent cycles run concurrently.
+Network stock is grouped by full item identity. Port-local stock is also inspected;
+ports must not have storage buses exposing them again. `meBatches` allocates exact
+quantities to collection receipts and job owners, leaving the remainder available.
+Each Interface has its own unique inventory/component identity. Stocked buffers
+are transient and never used as permanent lineage locations.
 
 ```text
 WAITING -> PREPARING -> RUNNING -> COLLECTING -> ASSESSING -> WAITING / DONE
@@ -32,64 +57,39 @@ WAITING -> PREPARING -> RUNNING -> COLLECTING -> ASSESSING -> WAITING / DONE
              +-----------+-----------+------------+--> PAUSED
 ```
 
-Before insertion the worker checks route conditions, the actual parents' active
-genomes and a free verified machine. Both species alleles affect progress/purity.
-Every subsequent cycle checks the actual next princess again. Directional climate
-tolerances are respected. Future offspring cannot be assumed to inherit identical
-climate genes; an incompatible next generation remains archived and pauses that
-operation until a suitable machine exists.
+Each job assesses only its own receipt roots, even when identical offspring merge
+in ME or analysis splits/transforms a batch. The chosen princess batch stays owned
+between cycles. Committed insertion spends only selected units; logical source
+leases are then released so another job can use other drones in the same stack.
+Drone/template reserves are exact-genotype quantities. Completed jobs and explicit
+fully drained stops release their remaining batch ownership without discarding bees.
 
-The native lifecycle requires no housing/input queen or drone plus a princess AND
-drones in the configured output slots. Empty input alone is never enough. The
-routed lifecycle also accounts for staging occupancy and bounded pipe transit.
-Forestry's `canBreed()` is general workability, not proof of every mutation rule.
+## Transfers and restart
 
-Collection archives all products/offspring, merging only matching exposed exact
-identities where an entire receipt fits. It never discards the last useful stock.
-If new genomes are unavailable, scanning occurs one isolated stack at a time.
-Assessment uses the job's own collected results. Consecutive stable offspring
-cycles are required (`confirmCycles=2` by default), as are pure target princesses,
-pure compatible drones and minimum stock. `fullEquivalence` additionally requires
-all exposed chromosomes to agree across both active/inactive genomes of the pair.
-Template criteria apply independently to non-species genes.
+Ordinary inventories retain strict source/destination delta checks. An Interface
+can refill a source or drain a destination before readback, so managed operations
+also use the returned transfer count and a persisted acceptance receipt. Intent is
+saved before configuring stock or moving items; the callback result is saved before
+subsequent reads. The receipt's ownership/analysis updates commit with the journal.
+A queen transition can witness the final drone insertion.
 
-The planner can use existing drones to schedule spare-princess conversion and can
-request population helpers before a parent is consumed. One pure princess per
-species and useful drone reserves are protected by default. Fertility <= 1 cannot
-produce net drone growth and is diagnosed. Useful hybrids are scored above
-non-target stock; lost mutations recover using the protected lineage and available
-parent/reserve drones without recursion. Every job has a finite cycle budget.
+A source refilling is not evidence of failure, and an empty return slot is not
+proof by itself that a deposit succeeded. Recovery uses durable callback receipts
+and remaining physical evidence. Proven partial acceptance records only the accepted quantity; the scanner
+finishes that smaller batch and later processes the remainder. Missing proof or
+mixed uncertain outcomes
+pause for audit instead of replay. No atomicity across Lua disk writes and Minecraft
+is claimed. Collector receipts can be reconstructed after a crash; logical batch
+records survive the bounded physical transaction history.
 
-Each transfer writes source identity/count, destination identity/count, requested
-quantity, owner and sequence before invoking hardware. Receipt verification checks
-the actual source delta, destination delta and returned transfer count. A queen
-transition can specifically witness final drone insertion. Known failed, committed
-and partial transfers can be reconciled from physical evidence. Ambiguous movements
-block further transfers and are never blindly replayed. Collector receipts are
-saved individually; a receipt committed immediately before a crash is reconstructed
-from the journal sequence. Scanner NBT changes use isolated provenance and stable
-return locations, rather than pretending pre/post-analysis NBT is identical.
+Requests remain journalled through configuration, receipt and refill return.
+An interruption keeps a bounded stock request for recovery. Consumed requests and
+orphan probe requests are cleared during reconciliation; unfinished parent requests
+remain associated with the interrupted job. `doctor --adopt`/`--retry` provide
+explicit recovery after checking the actual machine. Reconfiguration is blocked
+while transfers, scanner batches, stock requests or owned work remain unresolved.
 
-State uses data-only Lua tables with an empty load environment. A temporary file
-is read back, the old primary is renamed to `.bak`, and the temporary generation
-is renamed into place. A readable backup is used if the primary is damaged. This
-does not claim filesystem-level `fsync`, which OpenOS does not expose here. Preserve
-both generations when investigating a power-loss recovery.
-
-Redstone ME export persists intent before changing a filter or enabling a signal.
-The signal remains on until an isolated receipt arrives or the maximum observation
-window expires; slow normal bus ticks are supported. The worker stops the signal
-and clears the filter before reading final receipts or archiving. Multiple exact
-stacks are preserved. Recovery uses saved bus/gate/bridge addresses, source counts,
-buffer contents and committed archive movements rather than replaying an export.
-An empty buffer with proven unchanged source counts can resolve a no-movement
-timeout. Unknown stock or mismatched counts remain blocked. This bounded wait
-yields through OpenOS events and handles Ctrl+C/pause/stop; ordinary scheduler
-observation and mailbox handling resume after the export wait finishes.
-
-Config and hardware-dependent facts remain separate from job state. The inspected
-GTNH APIs do not expose live operating climate/flowers/biome or comprehensive
-machine-readable mutation constraints. These facts require explicit in-game
-attestation and must be revoked when the physical installation changes. The
-program cannot prove arbitrary natural-language conditions or guarantee real
-machine behavior without the acceptance tests in `VALIDATION.md`.
+Persistence uses data-only Lua, temporary-file readback and a `.bak` generation.
+OpenOS does not provide filesystem `fsync` here. Preserve both generations when
+investigating power loss. Configuration facts (climate/flowers/requirements) remain
+explicit in-game attestations because the housing API does not expose them all.
