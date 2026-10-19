@@ -275,8 +275,6 @@ function M.new(config,components,inv,save,read,out)
             humidity=self:ask("Humidity: ARID NORMAL DAMP"):upper(),biome=previous.biome,dimension=previous.dimension}
           local e=a.environment
           self.out("Each bee's required flower type is shown in alveary status. Supply those flowers in-world.")
-          e.daylightManaged=self:yes("Does this installation support the required day/night schedule?",false)
-          e.rainProtected=self:yes("Is operation protected from rain?",false)
           e.skyAccess=self:yes("Does the bee housing have valid sky access?",false)
           e.verified=self:yes("Have you verified this operating environment in-game?",false)
           e.provenance="manual in-game attestation"; a.confirmed={}

@@ -91,6 +91,9 @@ Setup does not ask for biome, dimension or flower lists. Status shows the curren
 princess/queen and drone in each alveary, with the flower type required by each
 bee's active genes. Unanalysed bees show an unknown requirement until analysed.
 Supply the displayed flowers in-world and verify sky, rain and day/night operation.
+Lighting and rain shields are configured physically; setup asks no upgrade,
+day/night or rain questions, and old declarations do not block scheduling.
+The worker observes the housing's actual workability while the queen is present.
 Flower availability is checked by actual housing operation, not a configured list.
 The housing API cannot report all these facts. `canBreed()` does not
 prove every mutation requirement. Revoke attestations when the world changes.

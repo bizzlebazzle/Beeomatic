@@ -19,7 +19,7 @@ function M.bee(species,kind,n,inactive,overrides)
 end
 function M.environment(temp,hum)
   return {temperature=temp or "NORMAL",humidity=hum or "NORMAL",verified=true,
-    daylightManaged=true,rainProtected=true,skyAccess=true,flowers={flowers=true}}
+    skyAccess=true}
 end
 function M.new()
   local w={inventories={},proxies={},time=0,saves=0,moves=0,state={jobs={},reservations={},transactions={}},c=Config.defaults()}

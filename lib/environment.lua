@@ -16,9 +16,8 @@ function M.bee(s,e)
   local g=s.individual.active; local species=g.species
   if not M.tolerance(species.temperature,e.temperature,g.temperatureTolerance,temps) then return false,"temperature "..tostring(species.temperature).." tolerance "..tostring(g.temperatureTolerance) end
   if not M.tolerance(species.humidity,e.humidity,g.humidityTolerance,hums) then return false,"humidity "..tostring(species.humidity).." tolerance "..tostring(g.humidityTolerance) end
-  -- Permanent all-day/all-weather installation must support these traits or be explicitly attested.
-  if not g.nocturnal and not e.daylightManaged then return false,"day/night operation not verified" end
-  if not g.tolerantFlyer and not e.rainProtected then return false,"rain protection not verified" end
+  -- Day/night and rain workability is observed through the housing. Lighting
+  -- and rain shields are installed in-world and need no setup declarations.
   if not g.caveDwelling and not e.skyAccess then return false,"sky access required" end
   -- Flower requirements come from bee genetics and are displayed with the live
   -- housing. Actual availability is checked by the housing, not a setup list.

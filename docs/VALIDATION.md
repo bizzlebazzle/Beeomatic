@@ -39,6 +39,8 @@ Interface coverage includes:
   block scheduling. Live status shows separate resident bee flower requirements,
   labels unknown raw-bee requirements, isolates missing housings and does not
   rewrite worker state or move items during a status query.
+- Day/night, lighting and rain-shield questions are omitted. Missing or false old
+  daylight/rain declarations do not reject otherwise compatible bees.
 
 Existing checks also cover route planning, purity/templates, climate/tolerances,
 reserves, chest transfers, gated routing, legacy export recovery, persistence,

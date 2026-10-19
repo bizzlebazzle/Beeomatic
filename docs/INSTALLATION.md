@@ -121,8 +121,9 @@ placement checks use one manually placed bee at a time to associate the inventor
 with its housing adapter; analysis is not required for these checks. Failed reads
 explain what was found and retry without exiting setup. Custom routed staging
 slots, climate and route isolation still require explicit configuration/verification.
-Setup asks for working temperature/humidity and day/night, rain and sky conditions;
-it does not ask for biome, dimension or flower-provider IDs. Beeomatic displays
+Setup asks for working temperature/humidity and sky access. It does not ask for
+biome, dimension, flower-provider IDs, day/night scheduling, lighting or rain shields.
+Beeomatic displays
 the current bees' required flower types beside each alveary in foreground/status
 output. Supply those flowers physically; no manually maintained flower list is used.
 
