@@ -72,8 +72,17 @@
       "droneSlot": 2,
       "droneWitness": "Wintry Drone",
       "getDroneNonNilWithDroneOnly": true,
-      "outputSlotsWitnessed": false,
-      "completedCycleWitnessed": false
+      "outputSlotsWitnessed": {
+        "3": "Honey Comb",
+        "4": "Meadows Drone",
+        "5": "Meadows Princess"
+      },
+      "princessTransposerInsertionCount": 1,
+      "queenFormationObservedAfterDelay": true,
+      "queenCanBreed": true,
+      "inputsEmptyAfterCycle": true,
+      "completedCycleWitnessed": true,
+      "outputExtractionValidated": false
     },
     "automatedOcRedstoneValidated": false,
     "applicationBreedingValidated": false

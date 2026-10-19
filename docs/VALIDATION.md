@@ -15,7 +15,12 @@ The same transposer now accesses the nine-slot alveary on side 4. Separate manua
 witnesses showed a Meadows Princess in slot 1 with `getQueen()` non-nil and a
 Wintry Drone in slot 2 with `getDrone()` non-nil. The housing component reports
 type `items` on this server; registration checks its methods rather than its type.
-Output slots, sided transfers and a completed breeding cycle remain unverified.
+Transposer princess insertion moved one item and was visible through the housing
+adapter. After drone insertion, a Meadows Queen formed with a short mating delay
+and reported `canBreed() == true`. The completed manual cycle left both inputs
+empty, Honey Comb in slot 3, Meadows Drone in slot 4 and Meadows Princess in slot
+5. Slots 6-9 were empty; their output roles have not been witnessed. Output
+extraction and a complete application-controlled breeding cycle remain unverified.
 
 Current automated result: **76 tests passed, zero failures, on each of Lua 5.2 and Lua 5.3**. This
 includes the public command path, persistent foreground events, installer copy and
