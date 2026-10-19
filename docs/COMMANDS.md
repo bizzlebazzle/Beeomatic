@@ -140,6 +140,15 @@ affect optional reference-drone crossing only; ordinary breeding works without
 templates. Full genome equivalence is configured separately from species purity
 using `fullEquivalence=true` in `data/config.lua` while the worker is stopped.
 
+Population and stability settings are also saved in `data/config.lua`. With the
+worker stopped, set `minDrones=32` and `confirmCycles=3`, then run `Beeomatic resume`
+to reload the configuration. These are the defaults for new setups; updating the
+program preserves existing saved settings, so existing installations must edit
+these values themselves. `minDrones` is the pure-species drone count required to
+complete each stage, and `confirmCycles` is the number of consecutive cycles with
+a qualifying stable offspring pair. An explicit `populate SPECIES COUNT` overrides
+the drone threshold for that population job.
+
 `doctor --interface PORT_ID` operates on the saved local port while the worker is
 stopped. It needs two identical analysed drones, requests two, transfers one into
 its unconfigured return slot, clears/refunds local stock and checks that the original

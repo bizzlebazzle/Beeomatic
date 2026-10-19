@@ -2,8 +2,8 @@ local U=require("lib.util")
 local M={}
 function M.defaults()
   return {version=1,alvearies={},aliases={},componentNames={},preferred={spirit={"ethereal","aware"}},
-    concurrency=2,pollSeconds=5,cycleTimeout=3600,maxCycles=128,minDrones=8,
-    reserveDrones=1,reservePrincesses=1,fullEquivalence=false,confirmCycles=2,
+    concurrency=2,pollSeconds=5,cycleTimeout=3600,maxCycles=128,minDrones=32,
+    reserveDrones=1,reservePrincesses=1,fullEquivalence=false,confirmCycles=3,
     weights={species=1000,fertility=13,temperatureTolerance=4,humidityTolerance=4,
       lifespan=1,nocturnal=2,tolerantFlyer=2,caveDwelling=2},desired={},
     storage={kind="me_interface",endpoints={},databaseSlots=9,timeout=60},scanner={enabled=false},templates={enabled=false},

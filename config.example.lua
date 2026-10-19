@@ -1,5 +1,8 @@
 -- Structure only: run setup and verify actual component addresses, sides and slots.
 local c=require("lib.config").defaults()
+-- Stock required before completing each stage; consecutive stable offspring cycles.
+c.minDrones=32
+c.confirmCycles=3
 c.storage.address="REPLACE-ME-READER"
 c.storage.database="REPLACE-DATABASE"
 c.storage.verified=false
