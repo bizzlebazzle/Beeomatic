@@ -17,6 +17,13 @@ begins. During operation, offspring may queue temporarily in AE, but pending bee
 cannot be selected for breeding. Already-analysed bees whose ME records omit genes
 are physically inspected and catalogued without unnecessary analysis.
 
+New raw bees added to ME during breeding queue for the shared scanner. Unknown
+return variants are physically inspected so raw additions cannot be mistaken for
+analysed returns. Running alvearies continue to be monitored and their finished
+offspring collected while scanning proceeds; new cycles and offspring assessment
+wait until scanning completes. Avoid inserting analysed bees during an external
+scanner batch: their stock increases can be indistinguishable from its returns.
+
 The implementation passes mocked Lua 5.2 and 5.3 tests. **The new Interface flow
 still requires in-game acceptance**; source verification and mocks cannot certify
 your installed hardware. See [validation](docs/VALIDATION.md).

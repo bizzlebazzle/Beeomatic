@@ -121,6 +121,62 @@ test("external scanner refuses ambiguous return variants",function()
   eq(w.state.scan.phase,"PROCESSING")
 end)
 
+test("new raw bees larger than the scanner batch are queued without becoming returns",function()
+  local w=externalScanner(); w:addStock(ME.bee("Spirit","drone",8,true))
+  w.scanner:step(w.storage:scan())
+  local added=ME.bee("Forest","drone",32,true); w:addStock(added)
+  eq(w.scanner:step(w.storage:scan()),false)
+  eq(w.state.scan.phase,"PROCESSING"); eq(w.state.scan.returnChecks[B.identity(added)],false)
+  eq(next(w.state.meRequests),nil); eq(w.cells[B.identity(added)].size,32)
+  w:returnExternal(); w.scanner:step(w.storage:scan()); eq(w.state.scan,nil)
+  -- The ignored variant is still queued, and is analysed by the next batch.
+  w.scanner:step(w.storage:scan()); eq(w.state.scan.identity,B.identity(added))
+  w:returnExternal(); w.scanner:step(w.storage:scan()); eq(w.state.scan,nil)
+  eq(B.count(w.storage:scan(),"Spirit","drone",true),8)
+  eq(B.count(w.storage:scan(),"Forest","drone",true),32)
+end)
+
+test("new raw genotype of the same species does not contaminate a completed return",function()
+  local w=externalScanner(); w:addStock(ME.bee("Spirit","drone",8,true))
+  w.scanner:step(w.storage:scan()); w:returnExternal()
+  local added=ME.bee("Spirit","drone",20,true); added.tag=added.tag.."wild-genotype"
+  w:addStock(added); w.scanner:step(w.storage:scan()); eq(w.state.scan,nil)
+  eq(w.cells[B.identity(added)].size,20); eq(next(w.state.meRequests),nil)
+end)
+
+test("raw additions do not satisfy missing scanner returns or reset their timeout",function()
+  local w=externalScanner(); w:addStock(ME.bee("Spirit","drone",8,true))
+  w.scanner:step(w.storage:scan()); w:addStock(ME.bee("Forest","drone",32,true))
+  w.time=601
+  raises(function() w.scanner:step(w.storage:scan()) end,"batch preserved")
+  eq(w.state.scan.phase,"PROCESSING"); eq(w.state.scan.count,8)
+end)
+
+test("analysed excess returns still require an audit",function()
+  local w=externalScanner(); w:addStock(ME.bee("Spirit","drone",8,true))
+  w.scanner:step(w.storage:scan()); w:returnExternal()
+  w:addStock(ME.bee("Spirit","drone",1))
+  raises(function() w.scanner:step(w.storage:scan()) end,"return count exceeds")
+  eq(w.state.scan.phase,"PROCESSING"); eq(next(w.state.meRequests),nil)
+end)
+
+test("return candidate inspection resumes after a crash before probe cleanup",function()
+  local w=externalScanner(); w:addStock(ME.bee("Spirit","drone",8,true))
+  w.scanner:step(w.storage:scan()); local added=ME.bee("Forest","drone",32,true); w:addStock(added)
+  local save=w.scanner.save; local cut=false
+  w.scanner.save=function()
+    save()
+    if not cut and w.state.scan.returnProbe and w.state.scan.returnProbe.phase=="CLEANUP" then
+      cut=true; error("probe power cut")
+    end
+  end
+  raises(function() w.scanner:step(w.storage:scan()) end,"probe power cut")
+  w.scanner.save=save; w.scheduler:recover()
+  eq(w.scanner:step(w.storage:scan()),false); eq(w.state.scan.returnProbe,nil)
+  eq(next(w.state.meRequests),nil); eq(w.cells[B.identity(added)].size,32)
+  w:returnExternal(); w.scanner:step(w.storage:scan()); eq(w.state.scan,nil); eq(w.moves,1)
+end)
+
 test("external scanner restart after input acceptance never reinserts the batch",function()
   local w=externalScanner(); w:addStock(ME.bee("Spirit","drone",8,true))
   local save=w.inv.save; local cut=false
@@ -313,6 +369,27 @@ test("new external raw drone variants close dispatch until inspected",function()
   eq(w.scheduler:prepareStock(w.storage:scan()),false); eq(w.state.stockPhase,"SCANNING")
   ok(w.state.scan); w:finishScan(); w.scheduler:prepareStock(w.storage:scan())
   ok(w.scheduler:prepareStock(w.storage:scan())); eq(w.state.stockPhase,"READY")
+end)
+
+test("running alveary is monitored and collected while newly added bees scan in the background",function()
+  local w=externalScanner(); w.hideGenomes=false; w.c.minDrones=2; w.c.confirmCycles=1
+  w:addStock(ME.bee("Spirit","princess")); w:addStock(ME.bee("Spirit","drone",8))
+  local j=require("tests.mocks.world").job(w,"job","Spirit","populate")
+  w.scheduler:step(); eq(j.state,"RUNNING"); local machine=j.machine
+  w:addStock(ME.bee("Forest","drone",3,true)); w.scheduler:step()
+  eq(j.state,"RUNNING"); eq(w.state.scan.phase,"PROCESSING"); eq(w.state.stockPhase,"SCANNING")
+  w:addStock(ME.bee("Meadows","drone",32,true)); w.scheduler:step()
+  eq(j.state,"RUNNING"); eq(w.state.error,"Waiting for analysed bees to return through ME")
+  w:finish(machine,ME.bee("Spirit","princess"),ME.bee("Spirit","drone",4,true))
+  w.scheduler:step(); eq(j.state,"ASSESSING"); eq(w.state.pending,nil)
+  for _=1,20 do
+    if w.inventories.analyser[1] then w:returnExternal() end
+    w.scheduler:step()
+    if j.state=="DONE" and not w.state.scan then break end
+  end
+  eq(j.state,"DONE"); eq(w.state.scan,nil); eq(w.state.error,nil)
+  eq(B.count(w.storage:scan(),"Forest","drone",true),3)
+  eq(B.count(w.storage:scan(),"Meadows","drone",true),32)
 end)
 test("untracked initial analyser contents cannot bypass startup",function()
   local w=ME.new(); w.inventories.analyser[1]=ME.bee("Spirit","drone",1,true)

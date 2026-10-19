@@ -56,7 +56,8 @@ function M:finish()
   return false,"Scanner batch returned; rescanning ME stock"
 end
 -- Count both cells and local Interface buffers so refill/cleanup cannot look like
--- a new analysed return. External pipes are the sole producer on this path.
+-- a new analysed return. Other raw insertions are filtered by physical inspection;
+-- external pipes must remain the sole producer of analysed returns on this path.
 function M:snapshot(name,damage)
   local result={}
   local function add(s)
@@ -70,16 +71,38 @@ function M:snapshot(name,damage)
   for _,ep in ipairs(self.storage.config.endpoints) do for _,i in ipairs(self.inv:scan(ep)) do add(i.stack) end end
   return result
 end
+-- ME omits individual data on many installations. Inspect one exact-NBT bee
+-- before treating a new variant as an analysed return. Raw additions stay in ME
+-- for a later batch; analysis changes their identity so this cache cannot hide
+-- the eventual analysed return. Persist the probe so restart reuses its request.
+function M:inspectReturn(q)
+  local probe=q.returnProbe
+  if probe.phase~="CLEANUP" then
+    local physical=self.storage:materialize(probe.item,self.config.storage,"scanner",1)
+    q.returnChecks=q.returnChecks or {}
+    q.returnChecks[B.identity(probe.item.stack)]=B.scanned(physical.stack)
+    probe.phase="CLEANUP"; self.save()
+  end
+  self.storage:cancel("scanner")
+  q.returnProbe=nil; self.save()
+end
 function M:externalResult(q)
+  if q.returnProbe then self:inspectReturn(q) end
   local result
   for key,s in pairs(self:snapshot(q.name,q.damage)) do
     local before=q.before[key] or 0
     local delta=s.size-before
     if key~=q.identity and s.name==q.name and s.damage==q.damage and delta>0 then
-      assert(not result,"multiple possible scanner returns; preserve stock and audit the external path")
-      assert(delta<=q.count,"scanner return count exceeds the reserved batch; audit external insertions")
-      result={network=true,endpoint={id="ME"},slot=key,stack=U.copy(s)}
-      result.stack.size=delta
+      if not q.returnChecks or q.returnChecks[key]==nil then
+        q.returnProbe={item={network=true,endpoint={id="ME"},slot=key,stack=U.copy(s)}}; self.save()
+        self:inspectReturn(q)
+      end
+      if q.returnChecks[key] then
+        assert(not result,"multiple possible scanner returns; preserve stock and audit the external path")
+        assert(delta<=q.count,"scanner return count exceeds the reserved batch; audit external insertions")
+        result={network=true,endpoint={id="ME"},slot=key,stack=U.copy(s)}
+        result.stack.size=delta
+      end
     end
   end
   if not result or result.stack.size<q.count then
@@ -89,7 +112,7 @@ function M:externalResult(q)
   end
   assert(self:empty(),"external scanner input still contains bees after a complete return; audit the path")
   -- Preserve the exact return identity before requesting it for inspection.
-  q.resultItem=result; q.before=nil; q.phase="VERIFYING"; self.save()
+  q.resultItem=result; q.before=nil; q.returnChecks=nil; q.phase="VERIFYING"; self.save()
   return self:verifyExternal(q)
 end
 function M:verifyExternal(q)
