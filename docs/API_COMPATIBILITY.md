@@ -43,7 +43,7 @@ apiary inventory size heuristic is used.
 
 The inspected housing integration exposes no live temperature, humidity, biome,
 dimension, flowers, frames, daylight or weather methods. Beeomatic uses explicitly
-attested climate/sky configuration. Day/night and rain workability are observed
+attested climate configuration. Day/night, rain and sky workability are observed
 through the housing, without setup declarations for lighting or rain shields.
 Setup omits biome/dimension and
 flower lists; flower requirements are read from resident bees' active genomes and

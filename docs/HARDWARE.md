@@ -90,9 +90,10 @@ Read each alveary's actual working temperature/humidity, including upgrades.
 Setup does not ask for biome, dimension or flower lists. Status shows the current
 princess/queen and drone in each alveary, with the flower type required by each
 bee's active genes. Unanalysed bees show an unknown requirement until analysed.
-Supply the displayed flowers in-world and verify sky, rain and day/night operation.
-Lighting and rain shields are configured physically; setup asks no upgrade,
-day/night or rain questions, and old declarations do not block scheduling.
+Supply the displayed flowers in-world. The intended continuous-operation setup
+includes **Alveary Lighting and a Rain Shield** on each alveary. Install and
+maintain these upgrades physically; Beeomatic does not install them. Setup asks
+no upgrade, day/night, rain or sky questions, and old declarations do not block scheduling.
 The worker observes the housing's actual workability while the queen is present.
 Flower availability is checked by actual housing operation, not a configured list.
 The housing API cannot report all these facts. `canBreed()` does not

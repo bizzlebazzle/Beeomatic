@@ -217,7 +217,7 @@ end)
 test("interrupted alveary registration resumes at saved environment stage",function()
   local w=W.new(); local machine=w:addMachine("a"); table.remove(w.c.alvearies)
   w.c.alvearyDraft={stage=4,machine=machine}; w:build()
-  local wizard,out=picker(w,{"NORMAL","NORMAL","yes","yes"})
+  local wizard,out=picker(w,{"NORMAL","NORMAL","yes"})
   wizard.address=function() error("must not repeat hardware selection") end
   wizard:addAlveary(); eq(#w.c.alvearies,1); eq(w.c.alvearyDraft,nil); ok(machine.environment.verified)
   local text=table.concat(out,"\n")
@@ -226,6 +226,7 @@ test("interrupted alveary registration resumes at saved environment stage",funct
   ok(not text:find("day/night schedule",1,true)); ok(not text:find("protected from rain",1,true))
   ok(not text:find("lighting",1,true)); ok(not text:find("rain shield",1,true))
   eq(machine.environment.daylightManaged,nil); eq(machine.environment.rainProtected,nil)
+  ok(not text:find("sky access",1,true)); eq(machine.environment.skyAccess,nil)
 end)
 test("pruning removed alvearies retains the shared scanner port",function()
   local w=require("tests.mocks.me").new(); table.remove(w.c.alvearies,1)
@@ -244,7 +245,7 @@ test("native registration fixes all slots and retries an empty witness without r
   end
   local wizard,out=picker(w,{"",function() w.inventories.a[1]=raw("princess"); return "" end,
     function() w.inventories.a[1]=nil; w.inventories.a[2]=raw("drone"); return "" end,
-    "NORMAL","NORMAL","yes","yes"})
+    "NORMAL","NORMAL","yes"})
   wizard:addAlveary()
   eq(a.slots,{inventorySize=9,princess=1,drone=2,outputs={3,4,5,6,7,8,9},verified=true})
   local text=table.concat(out,"\n")

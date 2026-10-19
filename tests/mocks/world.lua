@@ -18,8 +18,7 @@ function M.bee(species,kind,n,inactive,overrides)
     label=species.." "..kind,individual={type="bee",isAnalyzed=true,ident=sp.uid,active=g,inactive=ig}}
 end
 function M.environment(temp,hum)
-  return {temperature=temp or "NORMAL",humidity=hum or "NORMAL",verified=true,
-    skyAccess=true}
+  return {temperature=temp or "NORMAL",humidity=hum or "NORMAL",verified=true}
 end
 function M.new()
   local w={inventories={},proxies={},time=0,saves=0,moves=0,state={jobs={},reservations={},transactions={}},c=Config.defaults()}
