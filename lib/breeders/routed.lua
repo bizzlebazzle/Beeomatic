@@ -61,10 +61,4 @@ function M:collectResults(storage,owner,onReceipt)
     end
   end; return results
 end
-function M:extractAll(storage,owner)
-  local h=self:housing(); assert(not h.getQueen() and not h.getDrone(),"live breeder must finish before evacuation")
-  self:gate(self.config.routing.gate.off)
-  for _,i in ipairs(self.inv:scan(self.endpoint)) do storage:deposit(i,self.config.storage,owner) end
-  return self:collectResults(storage,owner)
-end
 return M

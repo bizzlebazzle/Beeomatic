@@ -4,14 +4,8 @@ function M.new(config,inv,components)
   return setmetatable({config=config,inv=inv,components=components,
     endpoint={id="breeder/"..config.id,transposer=config.transposer,side=config.side}},M)
 end
-function M:discover() return self.components:discover() end
 function M:housing() return self.components:proxy(self.config.address,{"getQueen","getDrone","getBeeParents","canBreed"}) end
-function M:getEnvironment() return U.copy(self.config.environment) end
 function M:getSlots() return self.config.slots end
-function M:inspect()
-  local p=self:housing()
-  return {items=self.inv:scan(self.endpoint),queen=p.getQueen(),drone=p.getDrone(),canBreed=p.canBreed()}
-end
 function M:validate()
   self:housing(); local size=self.inv:size(self.endpoint); local s=self:getSlots()
   assert(s and s.verified,"verify this alveary's individual slot map with doctor")
@@ -75,11 +69,5 @@ function M:collectResults(storage,owner,onReceipt)
       if onReceipt then onReceipt(r[#r]) end
     end
   end; return r
-end
-function M:extractAll(storage,owner)
-  -- Input extraction is disallowed by Forestry; never claim to evacuate a live queen.
-  assert(not self.inv:get(self.endpoint,self:getSlots().princess) and not self.inv:get(self.endpoint,self:getSlots().drone),
-    "Live input cannot be extracted automatically. Let the cycle finish or remove manually.")
-  return self:collectResults(storage,owner)
 end
 return M
