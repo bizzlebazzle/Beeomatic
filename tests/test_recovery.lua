@@ -1,4 +1,25 @@
 local W=require("tests.mocks.world"); local U=require("lib.util")
+
+test("accepted pending requests cannot replace jobs with live machine assignments",function()
+  local Jobs=require("lib.jobs")
+  for _,assignment in ipairs({"machine","job"}) do
+    local req={target="spirit",mode="breed",flags={}}
+    local state={jobs={{id="old",state="RUNNING",machine=assignment=="job" and "a" or nil}},
+      machines={a=assignment=="machine" and {job="old"} or {}},pendingRequest=req,reservations={keep={owner="old"}}}
+    local before=U.copy(state)
+    raises(function() Jobs.create(state,{target="spirit",order={}},"breed",nil,{},req) end,"machine")
+    eq(state,before)
+  end
+end)
+
+test("job creation still rejects replacement without the accepted pending request",function()
+  local Jobs=require("lib.jobs")
+  local state={jobs={{id="old",state="WAITING"}},machines={},pendingRequest={target="spirit"}}
+  local before=U.copy(state)
+  raises(function() Jobs.create(state,{target="spirit",order={}},"breed") end,"Existing work is preserved")
+  raises(function() Jobs.create(state,{target="spirit",order={}},"breed",nil,nil,{target="spirit"}) end,"Existing work is preserved")
+  eq(state,before)
+end)
 test("restart after successful movement reconciles without replay",function()
   local w=W.new(); w:addMachine("a"); w:build(); w.inventories.hub[1]=W.bee("Forest","drone",8)
   w.throwAfterMove=true

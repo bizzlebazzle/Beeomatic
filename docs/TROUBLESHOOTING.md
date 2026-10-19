@@ -13,6 +13,13 @@ This command works even when saved configuration/state cannot be loaded. A crash
 from before this change cannot be recovered retroactively from this file; reproduce
 it after updating. Failures before the worker starts are outside this crash capture.
 
+If a worker crash reports `lib/jobs.lua: Existing work is preserved` while
+creating a plan, older startup code cleared the stopped flag before replacing a
+drained plan with its already accepted pending request. Update and run
+`Beeomatic resume`; the corrected startup continues the pending request without
+resuming the old plan. Existing machine assignments still block replacement and
+require recovery. No manual state-file edits are needed.
+
 | Report | Action |
 |---|---|
 | Complex `plan` targets fail with `too long without yielding` after scanning completes | The old planner scanned the full inventory repeatedly and compared unrelated princess/drone pairs without yielding to OpenOS. The corrected planner caches verified parent stock, checks relevant pairs and periodically yields during search and stock checks. Reboot after updating and retry `Beeomatic plan spirit`; keep your existing configuration and scanned bee data. |

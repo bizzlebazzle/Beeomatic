@@ -5,6 +5,43 @@ local function withAnswer(answer,fn)
   assert(success,err)
 end
 
+test("a new request after draining stopped jobs completes without resuming the old plan",function()
+  local w=W.new(); w:addMachine("a"); w:build(); w.c.confirmCycles=1; w.c.minDrones=2
+  local old=W.job(w,"old-plan","Forest","populate")
+  old.state="PAUSED"; old.previous="PREPARING"
+  w.state.stopped=true; w.state.target="forest"
+  w.inventories.hub[1]=W.bee("Spirit","princess")
+  w.inventories.hub[2]=W.bee("Spirit","drone",8)
+  O.with(w,function(files,out)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    files["/project/data/state.lua"]="return "..U.encode(w.state)
+    local _,err=require("lib.cli").main("/project",{"populate","spirit","2"})
+    eq(err,nil,err)
+    local state=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
+    ok(state.finished,table.concat(out,"\n")); eq(state.target,"test.speciesspirit")
+    eq(state.pendingRequest,nil); eq(require("lib.jobs").find(state,"old-plan"),nil)
+    eq(files["/project/data/crash.log"],nil); eq(files["/project/data/worker.lock"],nil)
+  end)
+end)
+
+test("resume recovers a pending request stranded by the old stopped-work replacement bug",function()
+  local w=W.new(); w:addMachine("a"); w:build(); w.c.confirmCycles=1; w.c.minDrones=2
+  W.job(w,"old-plan","Forest","populate")
+  w.state.target="forest"; w.state.stopped=false; w.state.finished=false
+  w.state.pendingRequest={target="spirit",mode="populate",count=2,flags={}}
+  w.inventories.hub[1]=W.bee("Spirit","princess")
+  w.inventories.hub[2]=W.bee("Spirit","drone",8)
+  O.with(w,function(files,out)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    files["/project/data/state.lua"]="return "..U.encode(w.state)
+    local _,err=require("lib.cli").main("/project",{"resume"})
+    eq(err,nil,err)
+    local state=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
+    ok(state.finished,table.concat(out,"\n")); eq(state.target,"test.speciesspirit"); eq(state.pendingRequest,nil)
+    eq(require("lib.jobs").find(state,"old-plan"),nil); eq(files["/project/data/worker.lock"],nil)
+  end)
+end)
+
 test("worker crashes save a traceback and keep the original error visible without scrolling",function()
   local w=W.new(); w:addMachine("a"); w:build()
   w.inventories.hub[1]=W.bee("Spirit","princess")

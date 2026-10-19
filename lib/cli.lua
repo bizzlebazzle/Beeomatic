@@ -80,7 +80,12 @@ function M.main(root,args)
     end
     local lf=assert(io.open(lock,"w")); lf:write(tostring(computer.address())); lf:close()
     local ok,err=xpcall(function()
-      scheduler:recover(); scheduler:resume(a[2] and cmd=="resume" and a[2] or nil)
+      scheduler:recover()
+      if state.pendingRequest then
+        -- This request already passed the admission checks. Prepare its stock
+        -- without resuming jobs from the previously drained plan.
+        state.paused=false; state.stopped=false; state.stopping=false; save()
+      else scheduler:resume(a[2] and cmd=="resume" and a[2] or nil) end
       local lastDisplay=""
       while true do
         applyControl()
@@ -96,7 +101,7 @@ function M.main(root,args)
               items=storage:scan()
               local req=state.pendingRequest; local m=mutations(items)
               local plan,e=Planner.plan(req.target,m,items,c); assert(plan,e)
-              Jobs.create(state,plan,req.mode,req.count,req.flags); state.pendingRequest=nil; save()
+              Jobs.create(state,plan,req.mode,req.count,req.flags,req); state.pendingRequest=nil; save()
             end
           end
         else active,status=scheduler:step() end

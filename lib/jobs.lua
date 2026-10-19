@@ -1,7 +1,11 @@
 local M={}
-function M.create(state,plan,mode,count,flags)
-  assert(not state.jobs or #state.jobs==0 or state.finished or state.stopped,"Existing work is preserved; use resume or stop before replacing it")
+function M.create(state,plan,mode,count,flags,acceptedRequest)
+  -- CLI requests are saved only after checking that previous work is finished
+  -- or stopped. Stock preparation/restart may have since cleared those flags.
+  local accepted=acceptedRequest~=nil and acceptedRequest==state.pendingRequest
+  assert(not state.jobs or #state.jobs==0 or state.finished or state.stopped or accepted,"Existing work is preserved; use resume or stop before replacing it")
   for _,m in pairs(state.machines or {}) do assert(not m.job,"A machine is still reserved; recover its job before starting new work") end
+  for _,j in ipairs(state.jobs or {}) do assert(not j.machine,"A job still has a machine; recover it before starting new work") end
   state.jobs={}; state.target=plan.target; state.finished=false; state.paused=false; state.stopping=false; state.stopped=false
   state.flags=flags or {}; state.reservations={}; state.machines={}; state.nextId=0
   local bySpecies={}
