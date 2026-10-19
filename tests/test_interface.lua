@@ -173,3 +173,39 @@ test("startup detects an untracked specimen outside configured analyser input sl
   local w=ME.new(); w.inventories.analyser[4]=ME.bee("Spirit","drone",1,true)
   local _,status=w.scheduler:step(); eq(status,"BLOCKED"); ok(w.state.error:find("untracked shared scanner",1,true))
 end)
+test("collection reconstructs logical roots after physical history has expired",function()
+  local w=ME.new(); w.hideGenomes=false; w.c.minDrones=2; w.c.confirmCycles=1
+  local j=require("tests.mocks.world").job(w,"job","Spirit","populate")
+  j.machine="a"; j.state="COLLECTING"; j.collectionAfter=0; w.state.machines.a={job=j.id,state="COLLECTING"}
+  for slot,s in pairs({[6]=ME.bee("Spirit","princess"),[8]=ME.bee("Spirit","drone",4)}) do
+    w.inventories.a[slot]=s
+    w.storage:deposit({endpoint={id="breeder/a",transposer="tp1",side=3},slot=slot,stack=s},w.c.alvearies[1].storage,j.id)
+  end
+  w.state.transactions={}
+  w.scheduler:step(); eq(j.state,"DONE",require("lib.ui.status").render(w.state,w.c,true))
+end)
+test("a proven partial Interface return records only accepted units",function()
+  local w=ME.new(); local s=ME.bee("Spirit","drone",8); w.inventories.a[8]=s
+  local transfer=w.proxies.tp1.transferItem
+  w.proxies.tp1.transferItem=function(from,to,count,src,dst) return transfer(from,to,math.min(3,count),src,dst) end
+  raises(function() w.storage:deposit({endpoint={id="breeder/a",transposer="tp1",side=3},slot=8,stack=s},w.c.alvearies[1].storage,"job") end,"uncertain")
+  eq(w.inventories.a[8].size,5); ok(w.inv:reconcile())
+  eq(w.state.meBatches["receipt/1"].count,3); eq(w.state.transactions[1].phase,"PARTIAL_RECOVERED")
+  w.proxies.tp1.transferItem=transfer; w:tick()
+  w.storage:deposit({endpoint={id="breeder/a",transposer="tp1",side=3},slot=8,stack=w.inventories.a[8]},w.c.alvearies[1].storage,"job")
+  eq(B.count(w.storage:scan(),"Spirit","drone",true),8)
+end)
+test("partial scanner acceptance resumes the accepted batch and later scans the remainder",function()
+  local w=ME.new(); w:addStock(ME.bee("Spirit","drone",8,true))
+  local transfer=w.proxies["tp-scan"].transferItem
+  w.proxies["tp-scan"].transferItem=function(from,to,count,src,dst) return transfer(from,to,math.min(3,count),src,dst) end
+  raises(function() w.scanner:step(w.storage:scan()) end,"uncertain")
+  w.proxies["tp-scan"].transferItem=transfer
+  w.scheduler:recover(); eq(w.state.scan.count,3); ok(w.state.scan.inserted)
+  for _=1,8 do
+    local ready=w.scheduler:prepareStock(w.storage:scan())
+    if ready then break end
+    if w.inventories.analyser[1] then w:finishScan() end
+  end
+  eq(w.state.stockPhase,"READY"); eq(B.count(w.storage:scan(),"Spirit","drone",true),8)
+end)

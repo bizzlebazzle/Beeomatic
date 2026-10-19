@@ -119,6 +119,7 @@ function M:selectEntry(item)
   error("database did not preserve exact bee NBT")
 end
 function M:materialize(item,ep,owner,count)
+  assert(not self.state.pending and not self.state.pendingExternal,"reconcile unresolved movement before an Interface request")
   assert(item.network,"Interface storage requires a logical ME selection")
   count=count or 1; U.assertNumber(count,1,item.stack.maxSize or 64)
   assert(count<=item.stack.size,"requested more than selected quantity")
@@ -170,6 +171,7 @@ function M:cancel(owner)
   end
 end
 function M:deposit(item,ep,owner)
+  assert(not self.state.pending and not self.state.pendingExternal,"reconcile unresolved movement before an Interface return")
   local slot=ep.returnSlot or 9; local p=self:port(ep)
   local filter,err=p.getInterfaceConfiguration(slot); assert(not err and not filter,"Interface return slot must be unconfigured")
   self:poll(function() return not self.inv:get(ep,slot) end,"Interface return slot blocked")

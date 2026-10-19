@@ -9,7 +9,7 @@ function M.commit(state,tx)
     local request=state.meRequests[U.location(tx.source,tx.slot)]
     assert(request and request.owner==tx.owner and request.identity==tx.identity,"missing managed source request")
     request.consumed=true
-    if tx.scanning and state.scan then state.scan.inserted=true end
+    if tx.scanning and state.scan then state.scan.inserted=true; state.scan.count=tx.count end
     if tx.batchId and not tx.scanning then
       local batch=assert(state.meBatches[tx.batchId],"selected batch disappeared")
       batch.count=batch.count-tx.count; assert(batch.count>=0,"batch overspent")
@@ -17,7 +17,7 @@ function M.commit(state,tx)
     end
   end
   if tx.dest.managed then
-    local stack=assert(tx.stack)
+    local stack=U.copy(assert(tx.stack)); stack.size=tx.count
     if B.scanned(stack) then state.aeCatalog[tx.identity]=U.copy(stack.individual) end
     if tx.transform and tx.transform.batchId then
       local id=tx.transform.batchId; local old=assert(state.meBatches[id],"scanner batch disappeared")
@@ -30,7 +30,7 @@ function M.commit(state,tx)
       end
     elseif B.kind(stack) and tx.owner~="scanner" then
       local id="receipt/"..tx.id
-      state.meBatches[id]={root=id,owner=tx.owner,identity=tx.identity,count=tx.count,stack=U.copy(stack)}
+      state.meBatches[id]={root=id,sequence=tx.id,owner=tx.owner,identity=tx.identity,count=tx.count,stack=U.copy(stack)}
     end
     if tx.owner=="scanner" and tx.transform and state.scan then state.scan.returned=true end
   end

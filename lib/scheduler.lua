@@ -243,6 +243,10 @@ function M:advance(j)
         else receipt({endpoint=tx.dest,slot=tx.destSlot}) end
       end
     end
+    if self.storage.interface then for id,batch in pairs(self.state.meBatches) do
+      local sequence=batch.sequence or tonumber((batch.root or id):match("^receipt/(%d+)")) or 0
+      if batch.owner==j.id and sequence>(j.collectionAfter or math.huge) then receipt({batchId=id,root=batch.root}) end
+    end end
     b:collectResults(self.storage,j.id,receipt)
     j.state="ASSESSING"; j.lastCycle=self.now(); self.state.lastCycle=j.lastCycle; self.save()
   end

@@ -84,12 +84,20 @@ function M:reconcile()
   if tx.source.managed or tx.dest.managed then
     -- A saved callback count is a physical acceptance receipt. Without it, only
     -- a stable ordinary destination/source can independently prove the movement.
+    local accepted=type(tx.returned)=="number" and tx.returned>0 and tx.returned<tx.count and tx.returned or nil
+    if accepted then
+      local sourcePart=not tx.source.managed and src and B.identity(src)==tx.identity and src.size==tx.before-accepted
+      local destPart=not tx.dest.managed and dst and B.identity(dst)==tx.identity and dst.size==(tx.destBefore or 0)+accepted
+      if sourcePart or destPart or tx.scanning then
+        tx.requested=tx.count; tx.count=accepted; tx.partial=true
+      end
+    end
     local sourceProof=(not src and tx.before==tx.count) or
       (src and src.size==tx.before-tx.count and B.identity(src)==tx.identity)
     local destProof=dst and dst.size==(tx.destBefore or 0)+tx.count and B.identity(dst)==tx.identity
     if (tx.returned==tx.count and ((tx.dest.managed and sourceProof) or (tx.source.managed and (destProof or tx.scanning or tx.dest.managed)))) or
       (tx.source.managed and destProof) or (tx.dest.managed and sourceProof and destProof) then
-      tx.phase="COMMITTED_RECOVERED"; Receipts.commit(self.state,tx)
+      tx.phase=tx.partial and "PARTIAL_RECOVERED" or "COMMITTED_RECOVERED"; Receipts.commit(self.state,tx)
       self.state.transactions[#self.state.transactions+1]=tx; self.state.pending=nil
       self.state.reservations[U.location(tx.source,tx.slot)]=nil; self.save(); return true
     end
