@@ -262,9 +262,9 @@ function M.main(root,args)
       end
     end
     local m=mutations(items)
-    local plan=Planner.plan(a[2],m,items,c)
+    local plan,reason=Planner.plan(a[2],m,items,c)
     if not plan then
-      local message="Not enough verified parent stock to reach "..a[2].."."
+      local message=reason or ("Not enough verified parent stock to reach "..a[2]..".")
       print(message); return nil,message
     end
     print(Planner.render(plan)); return

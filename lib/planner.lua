@@ -3,6 +3,32 @@ local M={}
 function M.plan(target,mutations,items,c)
   target=mutations:resolve(target)
   local expanded=0
+  -- OpenOS resets the CPU watchdog when sleeping, even with a zero timeout.
+  -- Count inner-loop work too: one route can inspect thousands of bee stacks.
+  local work=0
+  local function checkpoint()
+    work=work+1
+    if work>=128 then
+      work=0
+      if os.sleep then os.sleep(0) end
+    end
+  end
+  local stockCache={}
+  local function stock(name)
+    if stockCache[name] then return stockCache[name] end
+    local entry={princess={},drone={},counts={princess=0,drone=0}}
+    for _,item in ipairs(items) do
+      checkpoint()
+      local s=item.stack or item; local kind=B.kind(s)
+      if kind=="princess" or kind=="drone" then
+        local n=B.count({s},name,kind,true)
+        entry.counts[kind]=entry.counts[kind]+n
+        if n>0 then entry[kind][#entry[kind]+1]=s end
+      end
+    end
+    stockCache[name]=entry
+    return entry
+  end
   -- Keep leaf failures structured: concatenating every failed subtree repeats
   -- the same missing founders exponentially on large mutation graphs.
   local function failure(message) return {messages={message},seen={[message]=true}} end
@@ -15,8 +41,9 @@ function M.plan(target,mutations,items,c)
     end
     into.omitted=into.omitted or other.omitted
   end
-  local function count(name,kind) return B.count(items,name,kind,true) end
+  local function count(name,kind) return stock(name).counts[kind] end
   local function visit(name,path)
+    checkpoint()
     expanded=expanded+1
     if expanded>(c.maxPlanExpansion or 20000) then return nil,failure("mutation search budget exceeded; provide prerequisite stock") end
     if count(name,"princess")>0 and count(name,"drone")>0 then
@@ -31,6 +58,7 @@ function M.plan(target,mutations,items,c)
     end
     local best,failures=nil,{messages={},seen={}}
     for _,route in ipairs(routes) do
+      checkpoint()
       local children,cost,valid={},100/math.max(0.01,route.chance),true
       for _,parent in ipairs(route.parents) do
         local child,err=visit(parent,nextPath)
@@ -40,27 +68,29 @@ function M.plan(target,mutations,items,c)
       if valid then
         local suitable,unresolved={},{}
         for _,a in ipairs(c.alvearies) do if a.enabled~=false then
+          checkpoint()
           local ok,why=E.mutation(route,a)
           if ok then suitable[#suitable+1]=a.id else unresolved[#unresolved+1]=a.id..": "..why end
         end end
         -- When actual parent genomes exist, route ranking includes their survival
         -- requirements, not merely mutation condition descriptions.
         local knownPair=false; local climate={}
-        for _,p in ipairs(items) do local ps=p.stack or p
-          if B.kind(ps)=="princess" then for _,d in ipairs(items) do local ds=d.stack or d
-            if B.kind(ds)=="drone" and
-              ((B.count({ps},route.parents[1],"princess",true)>0 and B.count({ds},route.parents[2],"drone",true)>0) or
-               (B.count({ps},route.parents[2],"princess",true)>0 and B.count({ds},route.parents[1],"drone",true)>0)) then
+        local function checkPairs(princessSpecies,droneSpecies)
+          for _,ps in ipairs(stock(princessSpecies).princess) do
+            for _,ds in ipairs(stock(droneSpecies).drone) do
+              checkpoint()
               knownPair=true
               for _,a in ipairs(E.select(c.alvearies,route,ps,ds,{})) do climate[a.id]=true end
             end
-          end end
+          end
         end
+        checkPairs(route.parents[1],route.parents[2])
+        if route.parents[1]~=route.parents[2] then checkPairs(route.parents[2],route.parents[1]) end
         if knownPair then suitable=U.keys(climate) end
         if #suitable==0 then cost=cost+100000 end
         local pref=c.preferred[name]
         if not pref then
-          for alias,p in pairs(c.preferred) do if mutations:resolve(alias)==name then pref=p end end
+          for alias,p in pairs(c.preferred) do checkpoint(); if mutations:resolve(alias)==name then pref=p end end
         end
         if pref and ((mutations:resolve(pref[1])==route.parents[1] and mutations:resolve(pref[2])==route.parents[2]) or
           (mutations:resolve(pref[2])==route.parents[1] and mutations:resolve(pref[1])==route.parents[2])) then cost=cost-0.1 end
@@ -78,6 +108,7 @@ function M.plan(target,mutations,items,c)
     if err.omitted then lines[#lines+1]="- Additional route failures omitted." end
     local unknown=0
     for _,item in ipairs(items) do local s=item.stack or item
+      checkpoint()
       if B.kind(s) and not B.scanned(s) then unknown=unknown+(s.size or 1) end
     end
     if unknown>0 then lines[#lines+1]=tostring(unknown).." bees lack verified genes; analyse/inspect them before planning." end
@@ -86,6 +117,7 @@ function M.plan(target,mutations,items,c)
   end
   local order,seen={},{}
   local function flatten(n)
+    checkpoint()
     if seen[n.species] then return end
     for _,ch in ipairs(n.children) do flatten(ch) end
     seen[n.species]=true; order[#order+1]=n

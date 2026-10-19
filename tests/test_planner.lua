@@ -4,6 +4,63 @@ local function run(recipes,stock,target,c)
   return P.plan(target or "spirit",mutations,stock or {},c or Config.defaults())
 end
 local function pair(s) return {W.bee(s,"princess"),W.bee(s,"drone",16)} end
+-- Model the OC watchdog with an instruction budget between OpenOS sleeps.
+local function watchdog(fn)
+  local oldSleep=os.sleep
+  local oldHook,mask,interval=debug.gethook()
+  local ticks,yields=0,0
+  os.sleep=function(timeout) eq(timeout,0); ticks=0; yields=yields+1 end
+  debug.sethook(function()
+    ticks=ticks+1; assert(ticks<250,"too long without yielding")
+  end,"",1000)
+  local yes,err=xpcall(fn,debug.traceback)
+  debug.sethook(oldHook,mask,interval); os.sleep=oldSleep
+  assert(yes,err); ok(yields>0,"large plan must yield")
+end
+
+test("large verified stock plans within the watchdog instruction budget",function()
+  local stock={}
+  for i=1,800 do
+    stock[#stock+1]=W.bee("Unrelated","princess")
+    stock[#stock+1]={stack=W.bee("Unrelated","drone",64)}
+  end
+  for _,name in ipairs({"Forest","Meadows"}) do
+    for _,s in ipairs(pair(name)) do stock[#stock+1]=s end
+  end
+  local c=Config.defaults(); c.alvearies={{id="normal",environment=W.environment()}}
+  watchdog(function()
+    local p=assert(run({spirit={W.route("Forest","Meadows")}},stock,"spirit",c))
+    eq(p.root.suitable,{"normal"}); eq(#p.order,3)
+  end)
+end)
+
+test("complex mutation search yields and retains its expansion budget",function()
+  local recipes={spirit={}}
+  for i=1,12 do recipes.spirit[i]=W.route("Middle","Other",i) end
+  for depth=1,7 do
+    local name=depth==1 and "middle" or "middle"..depth
+    local parent=depth==7 and "Missing" or "Middle"..(depth+1)
+    recipes[name]={W.route(parent,"Other",1),W.route(parent,"Other",2)}
+  end
+  local c=Config.defaults(); c.maxPlanExpansion=500
+  watchdog(function()
+    local p,e=run(recipes,{},"spirit",c)
+    eq(p,nil); ok(e:find("mutation search budget exceeded",1,true)); ok(#e<1000,e)
+  end)
+end)
+
+test("parent stock filtering checks reverse orientation and all genome variants",function()
+  local c=Config.defaults(); c.alvearies={{id="normal",environment=W.environment()}}
+  local hot=W.bee("Meadows","princess"); hot.individual.active.species.temperature="HOT"
+  local forest=W.bee("Forest","princess"); forest.individual.active.species.temperature="HOT"
+  local stock={hot,W.bee("Meadows","princess"),W.bee("Forest","drone",16),
+    forest,W.bee("Meadows","drone",16)}
+  local p=assert(run({spirit={W.route("Forest","Meadows")}},stock,"spirit",c))
+  eq(p.root.suitable,{"normal"})
+  stock[2]=hot
+  p=assert(run({spirit={W.route("Forest","Meadows")}},stock,"spirit",c))
+  eq(p.root.suitable,{})
+end)
 test("simple runtime mutation",function()
   local stock=pair("Ethereal"); for _,s in ipairs(pair("Aware")) do stock[#stock+1]=s end
   local p=assert(run({spirit={W.route("Ethereal","Aware")}},stock,"SPIRIT"))
