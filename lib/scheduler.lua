@@ -54,6 +54,22 @@ function M:protected(i)
     (not t.identity and i.endpoint.id==t.endpointId and i.slot==t.slot))
 end
 function M:count(items,target,kind) return B.count(items,target,kind,true) end
+function M:populationMinimum(items,target)
+  local low=false
+  for _,i in ipairs(items) do
+    if B.kind(i.stack)=="princess" and not self:protected(i) and G.purity(i.stack,target)==2 then
+      if G.fertility(i.stack)>1 then return self.c.minDrones end
+      low=true
+    end
+  end
+  -- A required fertility-one species cannot grow stock. Keep a spendable drone
+  -- above the reserve, but do not demand an unreachable population target.
+  return low and self.c.reserveDrones+1 or self.c.minDrones
+end
+function M:conversionDonor(i,items,target)
+  return G.purity(i.stack,target)<2 and self:canSpend(i,items) and
+    (G.purity(i.stack,target)>0 or G.fertileDonor(i.stack))
+end
 function M:canSpend(i,items,paired,templateUse)
   if (self:protected(i) and not templateUse) or not B.scanned(i.stack) then return false end
   local s=i.stack; local target=B.species(s.individual.active.species)
@@ -90,6 +106,9 @@ end
 function M:select(j,items,template)
   local target=j.species; local genes=template and template.stack.individual.active
   local p=self:best(items,"princess",target,function(i) return G.purity(i.stack,target)>0 end,genes)
+  if j.mode=="populate" then
+    p=self:best(items,"princess",target,function(i) return G.purity(i.stack,target)>0 and G.fertility(i.stack)>1 end,genes) or p
+  end
   local d=self:best(items,"drone",target,function(i) return G.purity(i.stack,target)>0 and self:canSpend(i,items) end,genes)
   if j.lineage then
     local found=false
@@ -97,7 +116,7 @@ function M:select(j,items,template)
       B.identity(i.stack)==j.lineage.identity then p=i; found=true end end
     if not found then return nil,nil,"Tracked princess is missing or changed; reconcile the archive before resuming" end
   elseif j.mode=="convert" then
-    p=self:best(items,"princess",target,function(i) return G.purity(i.stack,target)<2 and self:canSpend(i,items) end,genes)
+    p=self:best(items,"princess",target,function(i) return self:conversionDonor(i,items,target) end,genes)
   end
   if p and d then
     -- Same target stabilization may use its only princess, preserving reserve drones.
@@ -113,8 +132,8 @@ function M:select(j,items,template)
   if j.mode=="populate" then return nil,nil,"Need a target princess and at least two compatible drones; fertility must exceed one" end
   if j.mode=="convert" or j.mode=="imprint" then
     if not d then return nil,nil,"Need target drones above the exact-genotype reserve" end
-    p=p or self:best(items,"princess",target,function(i) return G.purity(i.stack,target)<2 and self:canSpend(i,items) end,genes)
-    return p,d,p and nil or "Add a spare princess: last pure princess of each species is protected",target
+    p=p or self:best(items,"princess",target,function(i) return self:conversionDonor(i,items,target) end,genes)
+    return p,d,p and nil or "Add a spare princess with fertility > 1 in both alleles; last pure princesses are protected",target
   end
   if not j.route then return nil,nil,"No runtime mutation route and no usable target stock" end
   if p and not d then
@@ -132,6 +151,25 @@ function M:select(j,items,template)
     d=self:best(items,"drone",donor,function(i) return G.purity(i.stack,donor)==2 and self:canSpend(i,items) end)
     if d then return p,d,nil,donor end
   end
+  -- Prepare both parent species before spending a princess on a new mutation.
+  -- Available planner seeds skip breeding jobs, so they need this gate too.
+  local preparing=false
+  for _,parent in ipairs(j.route.parents) do
+    local population
+    for _,job in ipairs(self.state.jobs) do
+      if job.species==parent and job.mode=="populate" and job.state~="DONE" then population=job; break end
+    end
+    if population then preparing=true
+    elseif self:count(items,parent,"drone")<self:populationMinimum(items,parent) then
+      preparing=true
+      if self:count(items,parent,"princess")>0 and self:count(items,parent,"drone")>self.c.reserveDrones then
+        self:stockJob(parent,"populate",self.c.minDrones,j)
+      elseif self:count(items,parent,"drone")>self.c.reserveDrones then
+        self:stockJob(parent,"convert",nil,j)
+      end
+    end
+  end
+  if preparing then return nil,nil,"Waiting for parent drone population and stable confirmation cycles" end
   -- Start/recover a mutation from actual parent stock. Try both directions.
   for n=1,2 do
     local left,right=j.route.parents[n],j.route.parents[3-n]
@@ -143,7 +181,7 @@ function M:select(j,items,template)
   for _,parent in ipairs(j.route.parents) do
     local drones=self:count(items,parent,"drone")
     local princesses=self:count(items,parent,"princess")
-    if drones<self.c.minDrones and princesses>0 and drones>self.c.reserveDrones then
+    if drones<self:populationMinimum(items,parent) and princesses>0 and drones>self.c.reserveDrones then
       self:stockJob(parent,"populate",self.c.minDrones,j)
     elseif drones>self.c.reserveDrones and princesses<=self.c.reservePrincesses then
       self:stockJob(parent,"convert",nil,j)
@@ -152,12 +190,13 @@ function M:select(j,items,template)
   return nil,nil,"Waiting for parent stock/reserves or a spare princess for automatic conversion"
 end
 function M:completion(j,items,template)
+  local minimum=j.count or self:populationMinimum(items,j.species)
   if j.mode=="convert" then
     -- Conversion creates one additional stable princess; baseline is captured before work.
     return j.baseline and self:count(items,j.species,"princess")>j.baseline and j.confirmed>=self.c.confirmCycles and
-      self:count(items,j.species,"drone")>=(j.count or self.c.minDrones)
+      self:count(items,j.species,"drone")>=minimum
   end
-  if self:count(items,j.species,"drone")<(j.count or self.c.minDrones) then return false end
+  if self:count(items,j.species,"drone")<minimum then return false end
   for _,p in ipairs(items) do if B.kind(p.stack)=="princess" then
     for _,d in ipairs(items) do if B.kind(d.stack)=="drone" and
       G.complete(p.stack,d.stack,j.species,self.c,template and template.stack.individual.active) then
@@ -176,7 +215,7 @@ function M:dispatch(j)
   if j.mode=="convert" and j.baseline==nil then j.baseline=self:count(items,j.species,"princess"); self.save() end
   local p,d,why,cycleTarget=self:select(j,items,template)
   if not p or not d then j.error=why; return end
-  if j.mode=="populate" and (tonumber(p.stack.individual.active.fertility) or 0)<=1 then
+  if j.mode=="populate" and G.fertility(p.stack)<=1 then
     self:pause(j,"Fertility <= 1 cannot grow drone reserves; improve fertility or add drones"); return
   end
   local busy={}; local running=0

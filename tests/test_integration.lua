@@ -90,6 +90,7 @@ test("imprinting crosses a reserved reference genotype and preserves it",functio
 end)
 test("routed fallback stages receipts behind a gate and collects isolated outputs",function()
   local w=W.new(); local a=w:addMachine("a"); w:inventory("routed-output",11)
+  w.c.minDrones=8
   w:addTransposer("tp1",{[0]="hub",[3]="a",[2]="routed-output"})
   local gate=0; w.proxies.gate={setOutput=function(_,value) gate=value end}
   w.proxies.housing1.getQueen=function() return nil end; w.proxies.housing1.getDrone=function() return nil end

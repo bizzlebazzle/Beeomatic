@@ -1,5 +1,11 @@
 local B=require("lib.bees"); local U=require("lib.util")
 local M={}
+function M.fertility(s)
+  return B.scanned(s) and tonumber(s.individual.active.fertility) or 0
+end
+function M.fertileDonor(s)
+  return M.fertility(s)>1 and (tonumber(s.individual.inactive.fertility) or 0)>1
+end
 function M.purity(s,target)
   if not B.scanned(s) then return 0 end
   return (B.matches(s.individual.active.species,target) and 1 or 0)+

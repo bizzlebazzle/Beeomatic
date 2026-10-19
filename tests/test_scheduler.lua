@@ -5,6 +5,7 @@ local function stocked(two)
   w.inventories.hub[1]=W.bee("Forest","princess")
   w.inventories.hub[2]=W.bee("Meadows","drone",8)
   w.inventories.hub[10]=W.bee("Forest","princess")
+  w.inventories.hub[12]=W.bee("Forest","drone",8)
   return w
 end
 test("concurrent independent operations use separate machines and items",function()
@@ -12,6 +13,7 @@ test("concurrent independent operations use separate machines and items",functio
   w.inventories.hub[3]=W.bee("Aware","princess")
   w.inventories.hub[4]=W.bee("Ethereal","drone",8)
   w.inventories.hub[11]=W.bee("Aware","princess")
+  w.inventories.hub[13]=W.bee("Aware","drone",8)
   local j1=W.job(w,"one","Common","breed",W.route("Forest","Meadows"))
   local j2=W.job(w,"two","Spirit","breed",W.route("Aware","Ethereal"))
   w.scheduler:step(); eq(j1.state,"RUNNING"); eq(j2.state,"RUNNING"); ok(j1.machine~=j2.machine)
@@ -30,6 +32,36 @@ test("configured alveary map ignores apiary slot numbers",function()
   w:finish("a",W.bee("Common","princess"),W.bee("Common","drone",8)); w.scheduler:step()
   ok(j.state=="DONE" or j.state=="WAITING"); ok(w.state.lastCycle)
 end)
+test("base parents populate before mutation even when a spendable pair exists",function()
+  local w=stocked(); w.c.minDrones=32; w.c.confirmCycles=3
+  w.inventories.hub[12].size=16
+  w.inventories.hub[2].size=32
+  local j=W.job(w,"one","Common","breed",W.route("Forest","Meadows"))
+  w.scheduler:step(); eq(j.state,"WAITING"); eq(w.moves,0)
+  local helper=w.state.jobs[2]; eq(helper.mode,"populate"); eq(helper.species,"forest"); eq(helper.count,32)
+  for cycle=1,3 do
+    w.scheduler:step(); eq(helper.state,"RUNNING"); eq(j.state,"WAITING")
+    w:finish("a",W.bee("Forest","princess"),W.bee("Forest","drone",20))
+    w.scheduler:step()
+    eq(helper.confirmed,cycle)
+    if cycle<3 then eq(j.state,"WAITING") end
+  end
+  for tick=1,3 do if j.state~="RUNNING" then w.scheduler:step() end end
+  eq(helper.state,"DONE"); eq(j.state,"RUNNING")
+end)
+
+test("both base parents schedule population and duplicate requests share helpers",function()
+  local w=stocked(); w.c.minDrones=32
+  local j=W.job(w,"one","Common","breed",W.route("Forest","Meadows"))
+  for n=1,2 do
+    local p,d=w.scheduler:select(j,w.scheduler:items(j.id))
+    eq(p,nil); eq(d,nil)
+  end
+  eq(#w.state.jobs,3)
+  eq(w.state.jobs[2].species,"forest"); eq(w.state.jobs[3].species,"meadows")
+  eq(w.moves,0)
+end)
+
 test("last pure parent princess is protected and conversion helper scheduled",function()
   local w=stocked(); w.inventories.hub[1]=W.bee("Forest","princess"); w.inventories.hub[10]=nil; w.inventories.hub[3]=W.bee("Forest","drone",16)
   local j=W.job(w,"one","Common","breed",W.route("Forest","Meadows"))
@@ -54,6 +86,86 @@ end)
 test("fertility one population pauses safely",function()
   local w=stocked(); w.inventories.hub[1]=W.bee("Spirit","princess",1,nil,{fertility=1}); w.inventories.hub[2]=W.bee("Spirit","drone",8)
   local j=W.job(w,"one","Spirit","populate"); w.scheduler:step(); eq(j.state,"PAUSED"); eq(w.moves,0)
+end)
+
+test("generic conversion excludes active and recessive fertility one donors",function()
+  for _,inactiveOnly in ipairs({false,true}) do
+    local w=stocked()
+    w.inventories.hub[1]=W.bee("Rocky","princess",1,"Forest",{fertility=inactiveOnly and 3 or 1})
+    w.inventories.hub[1].individual.inactive.fertility=1
+    w.inventories.hub[10]=nil
+    w.inventories.hub[2]=W.bee("Spirit","drone",32)
+    local j=W.job(w,"one","Spirit","convert")
+    w.scheduler:step(); eq(j.state,"WAITING"); eq(w.moves,0)
+    ok(j.error:find("fertility",1,true))
+    w.inventories.hub[3]=W.bee("Meadows","princess",1,"Forest")
+    w.scheduler:step(); eq(j.state,"RUNNING")
+    eq(j.expectedPrincess.individual.active.species.name,"Meadows")
+    ok(w.inventories.hub[1])
+  end
+end)
+
+test("imprint conversion also excludes unrelated fertility one princesses",function()
+  local w=stocked(); w.inventories.hub[1]=W.bee("Rocky","princess",1,"Forest",{fertility=1})
+  w.inventories.hub[10]=nil; w.inventories.hub[2]=W.bee("Spirit","drone",32)
+  local j=W.job(w,"one","Spirit","imprint")
+  local p=w.scheduler:select(j,w.scheduler:items(j.id))
+  eq(p,nil); eq(w.moves,0)
+end)
+
+test("required fertility one parent bypasses impossible population target",function()
+  local w=stocked(); w.c.minDrones=32
+  for _,slot in ipairs({1,10}) do w.inventories.hub[slot]=W.bee("Rocky","princess",1,nil,{fertility=1}) end
+  w.inventories.hub[12]=W.bee("Rocky","drone",2,nil,{fertility=1})
+  w.inventories.hub[2].size=32
+  local j=W.job(w,"one","Common","breed",W.route("Rocky","Meadows"))
+  w.scheduler:step(); eq(j.state,"RUNNING"); eq(#w.state.jobs,1)
+  eq(j.expectedPrincess.individual.active.species.name,"Rocky")
+end)
+
+test("required fertility one drone parent preserves exact genotype reserve",function()
+  local w=stocked(); w.c.minDrones=32
+  w.inventories.hub[12].size=32
+  w.inventories.hub[2]=W.bee("Rocky","drone",2,nil,{fertility=1})
+  w.inventories.hub[3]=W.bee("Rocky","princess",1,nil,{fertility=1})
+  local j=W.job(w,"one","Common","breed",W.route("Forest","Rocky"))
+  w.scheduler:step(); eq(j.state,"RUNNING"); eq(w.inventories.hub[2].size,1)
+end)
+
+test("fertility one target completes confirmations without demanding 32 drones",function()
+  local w=stocked(); w.c.minDrones=32; w.c.confirmCycles=3
+  w.inventories.hub[1]=W.bee("Rocky","princess",1,nil,{fertility=1})
+  w.inventories.hub[2]=W.bee("Rocky","drone",2,nil,{fertility=1})
+  local j=W.job(w,"one","Rocky","breed")
+  for cycle=1,3 do
+    w.scheduler:step(); eq(j.state,"RUNNING")
+    w:finish("a",W.bee("Rocky","princess",1,nil,{fertility=1}),W.bee("Rocky","drone",1,nil,{fertility=1}))
+    w.scheduler:step(); eq(j.confirmed,cycle)
+  end
+  w.scheduler:step(); eq(j.state,"DONE")
+  eq(B.count(w.storage:scan(),"rocky","drone",true),2)
+  local explicit=W.job(w,"two","Rocky","populate"); explicit.count=32
+  w.scheduler:step(); eq(explicit.state,"PAUSED")
+end)
+
+test("population prefers growing princess even when fertility one scores higher",function()
+  local w=stocked(); w.c.minDrones=32; w.c.desired={nocturnal=true}; w.c.weights.nocturnal=100
+  w.inventories.hub[1]=W.bee("Spirit","princess",1,nil,{fertility=1,nocturnal=true})
+  w.inventories.hub[3]=W.bee("Spirit","princess")
+  w.inventories.hub[2]=W.bee("Spirit","drone",8)
+  local j=W.job(w,"one","Spirit","populate"); j.count=32
+  eq(w.scheduler:populationMinimum(w.scheduler:items(j.id),"spirit"),32)
+  w.scheduler:step(); eq(j.state,"RUNNING"); eq(j.expectedPrincess.individual.active.fertility,3)
+end)
+
+test("required fertility one parent cannot consume its last reserved drone",function()
+  local w=stocked(); w.c.minDrones=32
+  w.inventories.hub[1]=W.bee("Rocky","princess",1,nil,{fertility=1})
+  w.inventories.hub[10]=W.bee("Rocky","princess",1,nil,{fertility=1})
+  w.inventories.hub[12]=W.bee("Rocky","drone",1,nil,{fertility=1})
+  w.inventories.hub[2].size=32
+  local j=W.job(w,"one","Common","breed",W.route("Rocky","Meadows"))
+  w.scheduler:step(); eq(j.state,"WAITING"); eq(w.moves,0); eq(#w.state.jobs,1)
 end)
 test("cycle completion requires both input absence and offspring",function()
   local w=stocked(); local b=w.scheduler:backend("a"); eq(b:getCycleState(),"UNCERTAIN")

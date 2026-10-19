@@ -148,6 +148,23 @@ these values themselves. `minDrones` is the pure-species drone count required to
 complete each stage, and `confirmCycles` is the number of consecutive cycles with
 a qualifying stable offspring pair. An explicit `populate SPECIES COUNT` overrides
 the drone threshold for that population job.
+Before starting a mutation from parent stock, the scheduler checks both parent
+species against `minDrones`, including base species already present in storage.
+Understocked parents receive population jobs; the mutation waits for those jobs
+to finish their confirmation cycles. Existing active mutation lineages continue
+their recovery/stabilization rather than restarting this preparation step.
+
+Generic princess conversion (including imprint fallback) excludes unrelated
+donors with fertility <= 1 in either allele. Required recipe parents and the
+requested target remain usable regardless of fertility. This uses analysed genes,
+not a Rocky species blacklist. If a required species has pure princesses but none
+has active fertility > 1, its automatic drone threshold becomes `reserveDrones+1`
+instead of `minDrones`; exact-genotype drone reserves and confirmation cycles still
+apply. Supply more drones or improve fertility when that reserve is exhausted.
+An explicit population count is never reduced: an active fertility-one princess
+pauses population with an explanation. Population prefers a princess with active
+fertility > 1 when one is available. Already tracked breeding/conversion lineages
+continue rather than discarding their progress.
 
 `doctor --interface PORT_ID` operates on the saved local port while the worker is
 stopped. It needs two identical analysed drones, requests two, transfers one into
