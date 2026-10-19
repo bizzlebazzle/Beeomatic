@@ -1,0 +1,5 @@
+.tools/
+research/
+data/
+__pycache__/
+*.tmp
