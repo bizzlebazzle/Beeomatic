@@ -12,11 +12,12 @@ alveary's transposer as its local transfer port. Add one shared scanner station,
 as requested. Remove the shared archive chest, archive storage bus, export bus,
 export buffer and export redstone circuit from the new backend's requirements.
 
-The remaining choice is whether unanalysed bees may temporarily enter the main
-ME network while awaiting scanning. The single-network proposal below permits
-this temporary queue but excludes those bees from usable breeding stock. If
-analysis must precede *any* main-network storage, use the separate intake route
-described below. This distinction cannot be solved by an Interface setting.
+The user confirmed that unanalysed bees may temporarily enter the main ME network
+while awaiting the shared scanner. Use one network and exclude pending bees from
+usable breeding stock. On every start/resume, verify that all stored drones have
+been analysed before enabling normal breeding. The startup preparation phase must
+inspect unknown variants and finish any required analysis; it must not enter
+normal operation with unscanned drones remaining.
 
 ## Verified API and behavior
 
@@ -86,16 +87,42 @@ If it needs external routing, use small dedicated staging inventories at this
 one station, not a shared storage archive beside every alveary. Bound transit
 waits and process one reserved batch at a time.
 
-If unanalysed bees must stay outside the main network: route bee outputs over
-dedicated physical transport to the shared scanner, or use a separate AE intake
-network with temporary queue storage and a second Interface at each alveary.
-The scanner bridges intake to main ME only after analysis. Products can still
-enter main ME directly. This costs extra transport/hardware and must be explicit
-in setup; a single-network design cannot promise that physical separation.
+The shared scanner draws its queue from this same ME network and returns analysed
+bees to it. A separate intake network or per-alveary scanner route is unnecessary
+for the confirmed temporary-storage policy.
+
+## Mandatory startup scan gate
+
+Before normal breeding starts, enter a persisted `PREPARING_STOCK` phase on every
+start/resume. Recover outstanding movements first, then inventory all drones in
+the configured ME stock pool and registered ports/staging. Include recovered
+offspring awaiting collection; do not disturb a live queen. Pause new dispatch
+while this gate is active, preserving ownership of jobs already in progress.
+
+For each exact drone variant, use verified genome evidence or materialise it at
+the shared station for inspection. Missing genetics in an ME query alone does
+not prove the bee is unanalysed. Physically inspect uncatalogued variants, analyse
+every unscanned batch, verify the returned count/genomes, and catalogue its new
+exact identity. Process all units, splitting batches to machine/stack limits.
+Do not assume that inspecting one variant covers other same-label variants.
+
+After the queue drains, rescan ME and all registered holding locations. Open the
+gate only when every remaining drone variant is verified as analysed and no
+unresolved drone batch remains. Newly discovered variants extend preparation.
+Saved completion of a previous startup does not bypass this check. Status should
+show the remaining work and scanner/power/consumable failures. An unavailable
+scanner or uncertain receipt blocks readiness instead of skipping a drone.
+
+During normal operation, new offspring may wait temporarily in AE, as agreed.
+Their quantities remain excluded from selection until inspected/analysed. The
+startup condition therefore means zero unscanned drones at entry to normal
+operation, rather than forbidding the agreed temporary offspring queue forever.
+New external drone variants must also be quarantined when discovered.
 
 ## Item flow and ownership
 
-1. **Stock discovery:** query ME and catalogue exact bee variants. Existing Beta 3
+1. **Stock discovery:** satisfy the startup scan gate, then maintain the catalogue
+   and quarantine new variants during operation. Existing Beta 3
    observations show network records can omit genomes even for analysed bees.
    An uncatalogued tag means "needs physical inspection", not necessarily "needs
    analysis". Materialise it at the shared station, read its individual, and only
@@ -183,7 +210,8 @@ Pending scanner batches and their blocking reason belong in status output.
    per-port operations, quantity reservations and recovery tests. Preserve the
    existing backend for existing installations; do not silently migrate saved jobs.
 4. **Shared scanner and scheduler ownership.** Implement the batch queue, catalogue,
-   analysis identity mapping, lineage/template protection and collection recovery.
+   mandatory startup drone scan gate, analysis identity mapping, lineage/template
+   protection and collection recovery.
    Exercise the complete flow with two alvearies before exposing it as the default.
 5. **Setup and documentation.** Implement resumable registration and new defaults,
    update installer manifest if new runtime files are added, and document migration.
@@ -193,9 +221,14 @@ Each implementation commit needs relevant tests before the next dependent change
 Run the existing Lua 5.2/5.3 suite for integration changes. Add behavior tests for
 same-label different-NBT bees, partial transfers, automatic refill, full/offline
 ME, shared-scanner contention, merged batches, changed analysis NBT, restart at
-each external-operation boundary and quantity-based reserve enforcement.
+each external-operation boundary and quantity-based reserve enforcement. Verify
+that startup cannot dispatch with any unscanned drone variant/count remaining,
+that already-analysed but uncatalogued drones are inspected without needless
+analysis, that an offline scanner blocks readiness, and that restart or newly
+arriving drone variants cannot bypass preparation.
 
 In-game acceptance must demonstrate two independent alvearies drawing from ME,
 products returning to ME, offspring passing through one shared scanner, protected
 stock remaining unavailable to other jobs, and restart without duplicate insertion.
+Normal operation must begin only after all initial drones are verified analysed.
 No implementation or hardware success is claimed by this planning document.
