@@ -5,7 +5,7 @@ function M.get(config,items)
   for _,i in ipairs(items) do
     if i.endpoint.id==config.endpointId and i.slot==config.slot then
       assert(B.kind(i.stack)=="drone" and B.scanned(i.stack),"template must be an analyzed drone")
-      assert(i.stack.size>(config.reserve or 1),"replenish template drones; reserve protected")
+      assert(i.stack.size>=(config.reserve or 1),"replenish template drones; reserve protected")
       return i
     end
   end

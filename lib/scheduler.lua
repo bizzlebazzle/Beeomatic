@@ -12,6 +12,12 @@ function M:log(s)
   if #self.state.events>100 then table.remove(self.state.events,1) end
   self.save()
 end
+function M:pause(j,why)
+  J.pause(j,why)
+  if j.machine and self.state.machines[j.machine] then
+    self.state.machines[j.machine].state="PAUSED"; self.state.machines[j.machine].error=tostring(why)
+  end
+end
 function M:backend(id)
   if self.backends[id] then return self.backends[id] end
   for _,a in ipairs(self.c.alvearies) do if a.id==id then
@@ -49,6 +55,7 @@ function M:canSpend(i,items,paired,templateUse)
   if (self:protected(i) and not templateUse) or not B.scanned(i.stack) then return false end
   local s=i.stack; local target=B.species(s.individual.active.species)
   if B.kind(s)=="drone" then
+    if templateUse and s.size<=(self.c.templates.reserve or 1) then return false end
     -- Reserve at least one of this exact useful genotype, not merely visible species.
     local same=0
     for _,x in ipairs(items) do if B.kind(x.stack)=="drone" and B.identity(x.stack)==B.identity(s) then same=same+x.stack.size end end
@@ -82,13 +89,16 @@ function M:select(j,items,template)
   local p=self:best(items,"princess",target,function(i) return G.purity(i.stack,target)>0 end,genes)
   local d=self:best(items,"drone",target,function(i) return G.purity(i.stack,target)>0 and self:canSpend(i,items) end,genes)
   if j.lineage then
-    for _,i in ipairs(items) do if i.endpoint.id==j.lineage.endpoint.id and i.slot==j.lineage.slot and B.kind(i.stack)=="princess" then p=i end end
+    local found=false
+    for _,i in ipairs(items) do if i.endpoint.id==j.lineage.endpoint.id and i.slot==j.lineage.slot and B.kind(i.stack)=="princess" and
+      B.identity(i.stack)==j.lineage.identity then p=i; found=true end end
+    if not found then return nil,nil,"Tracked princess is missing or changed; reconcile the archive before resuming" end
   elseif j.mode=="convert" then
     p=self:best(items,"princess",target,function(i) return G.purity(i.stack,target)<2 and self:canSpend(i,items) end,genes)
   end
   if p and d then
     -- Same target stabilization may use its only princess, preserving reserve drones.
-    if template and not G.templateMatch(p.stack,genes) and G.purity(d.stack,target)==2 then
+    if template and G.purity(p.stack,target)==2 and not G.templateMatch(p.stack,genes) and G.purity(d.stack,target)==2 then
       if self:canSpend(template,items,nil,true) and self:canSpend(p,items) then d=template
       else
         self:stockJob(target,"convert",nil,j)
@@ -160,7 +170,7 @@ function M:dispatch(j)
   local p,d,why,cycleTarget=self:select(j,items,template)
   if not p or not d then j.error=why; return end
   if j.mode=="populate" and (tonumber(p.stack.individual.active.fertility) or 0)<=1 then
-    J.pause(j,"Fertility <= 1 cannot grow drone reserves; improve fertility or add drones"); return
+    self:pause(j,"Fertility <= 1 cannot grow drone reserves; improve fertility or add drones"); return
   end
   local busy={}; local running=0
   for id,m in pairs(self.state.machines) do if m.job then busy[id]=true; running=running+1 end end
@@ -248,6 +258,9 @@ function M:resume(id)
     assert(j.previous~="PREPARING","Partial insertion: inspect inputs and use doctor recovery before resuming")
     j.state=j.previous or "WAITING"; j.error=nil; j.previous=nil
     if j.state=="RUNNING" then j.started=self.now() end
+    if j.machine and self.state.machines[j.machine] then
+      self.state.machines[j.machine].state=j.state; self.state.machines[j.machine].error=nil
+    end
   end end
   self.save()
 end
@@ -271,7 +284,7 @@ function M:recover()
           else j.started=self.now() end -- uptime resets on restart; give bounded fresh observation window
         end
       end)
-      if not success then J.pause(j,err) end
+      if not success then self:pause(j,err) end
     end
   end
   -- Retain leases owned by active or interrupted jobs; remove only proven orphan leases.
@@ -295,7 +308,8 @@ function M:adopt(j)
   assert(j.machine,"job has no reserved machine")
   local b=self:backend(j.machine); b:validate()
   local status=b:getCycleState(); local q=self.inv:get(b.endpoint,b:getSlots().princess)
-  assert(status=="FINISHED" or B.kind(q)=="queen","adoption requires a live queen or complete offspring pair")
+  local routed=b.config.routing and #self.inv:scan(b.endpoint)==0 and b:housing().getQueen()
+  assert(status=="FINISHED" or B.kind(q)=="queen" or routed,"adoption requires a live queen or complete offspring pair")
   assert(not self.state.pendingExternal,"reconcile external movement before adoption")
   local tx=self.state.pending
   if tx then
@@ -315,6 +329,12 @@ function M:adopt(j)
 end
 function M:step()
   if self.state.paused then return false,"PAUSED" end
+  local function progress()
+    local pieces={tostring(#self.state.jobs),tostring(self.state.transferSequence or 0)}
+    for _,j in ipairs(self.state.jobs) do pieces[#pieces+1]=j.state..":"..j.cycles..":"..j.confirmed end
+    return table.concat(pieces,"|")
+  end
+  local before=progress()
   local ok,items=pcall(self.storage.scan,self.storage)
   if not ok then self.state.error=tostring(items); self.save(); return false,"BLOCKED" end
   self.state.error=nil
@@ -333,7 +353,7 @@ function M:step()
   -- Advance machines even when a different scanner operation is outstanding.
   for _,j in ipairs(self.state.jobs) do
     if j.state=="RUNNING" or j.state=="COLLECTING" or j.state=="ASSESSING" then
-      local success,err=pcall(self.advance,self,j); if not success then J.pause(j,err); self:log(j.id..": "..tostring(err)) end
+      local success,err=pcall(self.advance,self,j); if not success then self:pause(j,err); self:log(j.id..": "..tostring(err)) end
     end
   end
   if scanned and not self.state.stopping and not self.state.pending and not self.state.pendingExternal then
@@ -341,7 +361,7 @@ function M:step()
     local n=#self.state.jobs; local start=(self.state.cursor or 0)%math.max(1,n)
     for off=1,n do local j=self.state.jobs[(start+off-1)%n+1]
       if j.state=="WAITING" and J.ready(self.state,j) then
-        local success,err=pcall(self.dispatch,self,j); if not success then J.pause(j,err); self:log(j.id..": "..tostring(err)) end
+        local success,err=pcall(self.dispatch,self,j); if not success then self:pause(j,err); self:log(j.id..": "..tostring(err)) end
       end
     end
     self.state.cursor=start+1
@@ -355,6 +375,7 @@ function M:step()
   local reserved=false; for _,m in pairs(self.state.machines) do if m.job then reserved=true end end
   if self.state.stopping and not active and not reserved then self.state.stopped=true end
   self.save()
-  return active,complete and "DONE" or self.state.stopped and "STOPPED" or active and "RUNNING" or "BLOCKED"
+  return active,complete and "DONE" or self.state.stopped and "STOPPED" or active and "RUNNING" or
+    (scanOk and self.state.scan and "SCANNING") or (progress()~=before and "PROGRESS") or "BLOCKED"
 end
 return M

@@ -57,9 +57,9 @@ test("imprinting crosses a reserved reference genotype and preserves it",functio
   w.c.templates={enabled=true,endpointId="hub",slot=20,reserve=1}
   w.inventories.hub[1]=W.bee("Spirit","princess"); w.inventories.hub[2]=W.bee("Spirit","princess")
   w.inventories.hub[3]=W.bee("Spirit","drone",16)
-  w.inventories.hub[20]=W.bee("Forest","drone",16,nil,{fertility=4})
+  w.inventories.hub[20]=W.bee("Forest","drone",2,nil,{fertility=4})
   local j=W.job(w,"j","Spirit","imprint"); w.scheduler:step(); eq(j.state,"RUNNING")
-  eq(w.inventories.hub[20].size,15)
+  eq(w.inventories.hub[20].size,1)
   w:finish("a",W.bee("Spirit","princess",1,nil,{fertility=4}),W.bee("Spirit","drone",8,nil,{fertility=4}))
   w.scheduler:step(); eq(j.state,"DONE"); ok(w.inventories.hub[20])
 end)

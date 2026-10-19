@@ -79,6 +79,13 @@ function M:reconcile()
     tx.phase="COMMITTED_RECOVERED"; self.state.transactions[#self.state.transactions+1]=tx
     self.state.pending=nil; self.state.reservations[U.location(tx.source,tx.slot)]=nil; self.save(); return true
   end
+  local removed=tx.before-(src and src.size or 0)
+  if removed>0 and removed<tx.count and (not src or B.identity(src)==tx.identity) and
+    dst and B.identity(dst)==tx.identity and dst.size==(tx.destBefore or 0)+removed then
+    tx.requested=tx.count; tx.count=removed; tx.phase="PARTIAL_RECOVERED"
+    self.state.transactions[#self.state.transactions+1]=tx; self.state.pending=nil
+    self.state.reservations[U.location(tx.source,tx.slot)]=nil; self.save(); return true
+  end
   return false,"Ambiguous movement owned by "..tx.owner.."; preserve both inventories. No automatic replay."
 end
 return M

@@ -1,0 +1,25 @@
+{
+  "target": "GTNH 2.9.0-beta-3",
+  "manifest": "https://github.com/GTNewHorizons/DreamAssemblerXXL/blob/master/releases/manifests/2.9.0-beta-3.json",
+  "versions": {
+    "OpenComputers": "1.12.61-GTNH",
+    "ForestryMC": "4.11.37",
+    "Applied-Energistics-2-Unofficial": "rv3-beta-1050-GTNH",
+    "gendustry": "1.9.13-GTNH"
+  },
+  "verifiedSourceSha256": {
+    "ConverterIAlleles.java": "e0f3dd4b62886b2eae50959615fd7057a30813fc29339bbd982429850e494a90",
+    "ConverterIIndividual.java": "38bd78afc9a319c1a456dcccff66c6019a72a2532e65a8a5d89a82694ec0c56e",
+    "ConverterItemStack.scala": "3f2a1bc58edaf84600db3085e721174b614532712112468be284ec0c49aaa2ba",
+    "DriverAnalyzer.scala": "1eda40d246d0a029ec3bad087fde7027942dc8546e9c62d62fba871ee726873d",
+    "DriverBeeHouse.java": "960936c10da72be80dde7331fda61c7bf62fd2f99b29d44c6f3489a2dfbd1fc8",
+    "DriverExportBus.scala": "ac9fce942932ddc0f078158044a03cfde42a5b14ccf1447bc8c360c9a0c59661",
+    "DriverImportBus.scala": "72a8edc1fdffeb1577e42a10f107db810a7a958fe2c429bacebb67e34256ec40",
+    "EnumHumidity.java": "820a3d5de8846f0baa99832dc59b09bb292adcea658ea993f690e560bfb5bf1d",
+    "EnumTemperature.java": "b25a02f3d6036d4f8cd4a8a38b7a049a3c27f6cc779cf258289329cc9951e7fa",
+    "InventoryBeeHousing.java": "8ba91f548ea4e4e84756e6a9f35e442e907acac6e2b9338404c3c1634bd59116",
+    "NetworkControl.scala": "c368184f55ecb1aad207b659cc13349ec2b7d8057f3aec6fbf7f2d7b2f3e44e3",
+    "TileAlveary.java": "a1c563f402bbadefac9ed1aa282619dc1d5d2d6acfa590e827fb46de3f27bf54"
+  },
+  "hardwareTested": false
+}

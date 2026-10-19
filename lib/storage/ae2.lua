@@ -1,12 +1,5 @@
 local Chest=require("lib.storage.chest"); local B=require("lib.bees"); local U=require("lib.util")
 local M={}; M.__index=M
-local function tagFilter(tag)
-  -- GTNH NetworkControl.matches compares Lua strings to Java byte[].mkString.
-  -- That representation is concatenated SIGNED decimal bytes, not binary NBT.
-  local bytes={}; for i=1,#tag do local n=tag:byte(i); bytes[i]=tostring(n>127 and n-256 or n) end
-  return table.concat(bytes)
-end
-M.tagFilter=tagFilter
 function M.new(config,inv,components)
   return setmetatable({config=config,inv=inv,components=components,chest=Chest.new(config,inv)},M)
 end
@@ -49,12 +42,17 @@ function M:validate()
   return true
 end
 function M:materialize(item,endpoint,owner)
-  if not item.network then return self.chest:materialize(item,endpoint) end
+  if not item.network and item.endpoint.id==endpoint.id then return self.chest:materialize(item,endpoint) end
   self:validate()
   assert(not self.inv.state.pending,"unresolved movement")
   assert(type(item.stack.tag)=="string","Exact AE2 export requires compressed NBT tags. Enable server OC allowItemStackNBTTags and probe first")
   local cfg=self.config; local buffer=assert(cfg.buffer,"register ME export buffer")
-  assert(buffer.transposer==endpoint.transposer,"ME buffer unreachable from selected transposer")
+  local bridge
+  for _,ep in ipairs(cfg.endpoints) do
+    if ep.id==endpoint.id and ep.transposer==buffer.transposer then bridge=ep; break end
+  end
+  assert(bridge,"ME export buffer needs a transposer view of the selected physical archive")
+  assert(buffer.id~=bridge.id and buffer.side~=bridge.side,"ME export buffer must be isolated from archive")
   local dstSlot=self.inv:empty(buffer)
   -- Legacy GTNH compares byte-array filters by Java object string, so do not
   -- depend on tag filtering. Copy the finite candidate group into a dedicated
@@ -88,7 +86,8 @@ function M:materialize(item,endpoint,owner)
   assert(ok and result and got and B.identity(got)==B.identity(item.stack),"AE2 export failed/uncertain; inspect buffer and run doctor")
   self.inv.state.pendingExternal=nil; self.inv.save()
   local physical={endpoint=buffer,slot=dstSlot,stack=got}
-  return self.inv:move(physical,endpoint,self.inv:empty(endpoint),got.size,owner)
+  local deposited=self.inv:move(physical,bridge,self.inv:destination(bridge,got),got.size,owner)
+  return {endpoint=endpoint,slot=deposited.slot,stack=self.inv:get(endpoint,deposited.slot)}
 end
 function M:deposit(item,endpoint,owner)
   -- Real inventory receipt, with ME storage bus exposing this exact physical archive.

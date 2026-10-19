@@ -55,7 +55,7 @@ function M.main(root,args)
     if not fs.exists(data.."/control.lua") then return end
     local x=ctl:load({}); assert(fs.remove(data.."/control.lua"))
     if x.action=="pause" then
-      if x.id then local j=assert(Jobs.find(state,x.id),"unknown job"); Jobs.pause(j,"Paused by user") else state.paused=true end
+      if x.id then local j=assert(Jobs.find(state,x.id),"unknown job"); scheduler:pause(j,"Paused by user") else state.paused=true end
     elseif x.action=="resume" then scheduler:resume(x.id)
     elseif x.action=="stop" then state.paused=false; state.stopping=true end
     save()
@@ -111,7 +111,7 @@ function M.main(root,args)
   if cmd=="pause" or cmd=="stop" then
     if fs.exists(lock) then sendControl(cmd,a[2])
     else if cmd=="pause" then
-      if a[2] then Jobs.pause(assert(Jobs.find(state,a[2]),"unknown job"),"Paused by user") else state.paused=true end
+      if a[2] then scheduler:pause(assert(Jobs.find(state,a[2]),"unknown job"),"Paused by user") else state.paused=true end
     else state.stopping=true; state.paused=false end; save(); print("Saved "..cmd.." request") end
     return
   end

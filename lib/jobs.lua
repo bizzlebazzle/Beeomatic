@@ -22,5 +22,8 @@ function M.ready(state,j)
   for _,id in ipairs(j.dependencies or {}) do local dep=M.find(state,id); if not dep or dep.state~="DONE" then return false end end
   return true
 end
-function M.pause(j,why) j.previous=j.state; j.state="PAUSED"; j.error=tostring(why) end
+function M.pause(j,why)
+  if j.state~="PAUSED" then j.previous=j.state end
+  j.state="PAUSED"; j.error=tostring(why)
+end
 return M

@@ -26,9 +26,6 @@ test("NBT identities differ despite same visible species",function()
   local a=W.bee("Spirit","drone"); local b=U.copy(a); a.tag="tag1"; b.tag="tag2"
   ok(B.identity(a)~=B.identity(b))
 end)
-test("AE2 tag filter uses Java signed byte string",function()
-  eq(require("lib.storage.ae2").tagFilter(string.char(31,139,255,0)),"31-117-10")
-end)
 local function aeWorld(fail)
   local w=world(); w:inventory("buffer",10); w:addTransposer("tp1",{[0]="hub",[3]="a",[1]="buffer"})
   local sample=W.bee("Spirit","drone",8); sample.tag="opaque-nbt"; local raw=U.copy(sample); raw.individual=nil
@@ -64,4 +61,23 @@ test("AE2 missing exact NBT refuses selection",function()
   local w,raw=aeWorld(false); raw.tag=nil
   raises(function() w.ae:materialize({network=true,endpoint={id="ME"},slot="x",stack=raw},w.c.storage.endpoints[1],"j") end,"compressed NBT")
   eq(w.moves,0)
+end)
+test("AE2 selects the second same-label genetic variant by exact database NBT",function()
+  local w=world(); w:inventory("buffer",10); w:addTransposer("tp1",{[0]="hub",[3]="a",[1]="buffer"})
+  local a=W.bee("Spirit","drone",8,"Aware"); a.tag="wrong-nbt"
+  local b=W.bee("Spirit","drone",8,"Ethereal"); b.tag="right-nbt"
+  local db,selected={},nil
+  w.proxies.me={getItemsInNetwork=function() return {U.copy(a),U.copy(b)} end,
+    store=function(_,_,_,n) eq(n,2); db={U.copy(a),U.copy(b)}; return true end}
+  w.proxies.db={clear=function(n) db[n]=nil end,get=function(n) return U.copy(db[n]) end}
+  w.proxies.bus={setExportConfiguration=function(_,_,address,slot) selected=address and slot or nil; return true end,
+    exportIntoSlot=function(_,slot) eq(selected,2); w.inventories.buffer[slot]=U.copy(db[selected]); return true end}
+  local s=require("lib.storage.ae2").new({address="me",database="db",databaseSlots=2,exportAddress="bus",exportSide=4,
+    storageBusVerified=true,exportIsolated=true,endpoints=w.c.storage.endpoints,buffer={id="buffer",transposer="tp1",side=1}},w.inv,w.components)
+  local got=s:materialize({network=true,endpoint={id="ME"},slot="chosen",stack=b},w.c.storage.endpoints[1],"j")
+  eq(got.stack.tag,"right-nbt"); eq(got.stack.individual.inactive.species.name,"Ethereal")
+end)
+test("shared archive falls back to another registered transposer view",function()
+  local w=world(); w:addMachine("b"); w.proxies.tp1=nil
+  eq(#w.storage:scan(),1)
 end)
