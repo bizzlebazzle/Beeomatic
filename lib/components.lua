@@ -19,6 +19,32 @@ function M:discover()
   end
   table.sort(all,function(a,b) return a.address<b.address end); return all
 end
+-- Small read-only previews for setup; do not print genetics or API documentation.
+function M:inventorySummary(address)
+  local sides={"down","up","north","south","west","east"}; local lines={}
+  local ok,p=pcall(self.proxy,self,address,{"getInventorySize","getStackInSlot"})
+  if not ok then return {"Inventory preview unavailable"} end
+  for side=0,5 do
+    local yes,n=pcall(p.getInventorySize,side)
+    if yes and type(n)=="number" and n>0 then
+      local samples={}; local failed=false
+      for slot=1,n do
+        local readable,s=pcall(p.getStackInSlot,side,slot)
+        if not readable then failed=true; break end
+        if s then
+          local label=tostring(s.label or s.name or "item"):gsub("[%c]"," "):sub(1,32)
+          samples[#samples+1]="#"..slot.." "..label
+          if #samples==2 then break end
+        end
+      end
+      local line=sides[side+1].." ("..side.."): "..n.." slots | "..
+        (#samples>0 and table.concat(samples,", ") or (failed and "contents unavailable" or "empty"))
+      lines[#lines+1]=#line>72 and line:sub(1,69).."..." or line
+    elseif not yes then lines[#lines+1]=sides[side+1]..": unavailable" end
+  end
+  if #lines==0 then lines[1]="No adjacent inventories detected" end
+  return lines
+end
 function M:inventories(address)
   local p=self:proxy(address,{"getInventorySize","getStackInSlot"}); local r={}
   for side=0,5 do

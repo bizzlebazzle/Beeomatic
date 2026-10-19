@@ -24,7 +24,13 @@ extraction subsequently reported 9 combs, 2 drones and 1 princess moved from slo
 3-5 to archive slots 10-12. A complete application-controlled breeding cycle
 remains unverified.
 
-Current automated result: **85 tests passed, zero failures, on each of Lua 5.2 and Lua 5.3**. This
+In-game application startup reached `/home/Beeomatic/Beeomatic.lua` but failed to
+resolve `lib.cli`; its reported search paths did not include the installation root.
+The installer now writes that known root directly into `/usr/bin/Beeomatic`, which
+sets module paths and calls the CLI without inferring a root from debug metadata.
+This change still needs an in-game retest.
+
+Current automated result: **93 tests passed, zero failures, on each of Lua 5.2 and Lua 5.3**. This
 includes the public command path, persistent foreground events, installer copy and
 upgrade preservation, and exact selection of a non-first same-label ME variant.
 Download tests cover consistent revision selection, saved-data preservation,
@@ -38,6 +44,13 @@ state-save tests also verify that a flush error preserves the previous generatio
 Mock `loadfile` uses OpenOS-style `=path` chunk names. Regression checks cover
 an absolute offline installer path and both `=path` and `@path` application
 launchers; the online installer receives its staging directory explicitly.
+The generated installed command also loads the real installed modules with a
+fresh module cache, an unrelated working directory and a custom root with spaces.
+Setup picker tests cover method-based filtering, saved names after configuration
+reload, invalid input, refresh, newly connected components, pagination, missing
+saved addresses, interruption, read-only bounded inventory previews and omission
+of diagnostic documentation during normal setup. The revised wizard still needs
+an in-game UI acceptance check.
 
 Run automated tests on a development machine with Lua 5.2:
 

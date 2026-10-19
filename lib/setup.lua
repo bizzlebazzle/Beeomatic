@@ -12,14 +12,66 @@ function M.new(config,components,inv,save,read,out)
     while true do local ok,n=pcall(U.assertNumber,self:ask(label,default),lo,hi); if ok then return n end; self.out(tostring(n)) end
   end
   function w:address(label,methods,default)
-    while true do local a=self:ask(label,default); local ok,p=pcall(self.components.proxy,self.components,a,methods)
-      if ok then return p.address or a end; self.out(tostring(p))
+    local registry=self.c.componentNames or {}
+    local page,onlyNew=1,nil
+    while true do
+      local all=self.components:discover(); local choices={}
+      for _,c in ipairs(all) do
+        local compatible=not c.error
+        for _,method in ipairs(methods) do if c.methods[method]==nil then compatible=false end end
+        if compatible and (not onlyNew or not onlyNew[c.address]) then choices[#choices+1]=c end
+      end
+      local pages=math.max(1,math.ceil(#choices/2)); page=math.min(page,pages)
+      self.out(label.." - choose a component (page "..page.."/"..pages..")")
+      local defaultNumber
+      for i,c in ipairs(choices) do if c.address==default then defaultNumber=i end end
+      if #choices==0 then self.out("No compatible components found. Connect one and refresh.") end
+      if defaultNumber and (defaultNumber<=(page-1)*2 or defaultNumber>page*2) then
+        self.out("Current selection: "..defaultNumber.." ("..default.."); Enter keeps it.")
+      end
+      for i=(page-1)*2+1,math.min(page*2,#choices) do
+        local c=choices[i]; local saved=registry[c.address]
+        self.out(i..". "..(saved and saved.name or "Unnamed").." ("..c.kind..")"..(c.address==default and " [current]" or ""))
+        self.out("   "..c.address)
+        if c.methods.getInventorySize~=nil and c.methods.getStackInSlot~=nil then
+          for _,line in ipairs(self.components:inventorySummary(c.address)) do self.out("   "..line) end
+        end
+      end
+      self.out("R refresh | N connect new | > next page | < previous page")
+      self.out("Identify inventories with a distinctive item, then refresh; nothing is moved.")
+      local answer=self:ask("Component number",defaultNumber):lower()
+      if answer=="r" then onlyNew=nil; page=1
+      elseif answer=="n" then
+        onlyNew={}; for _,c in ipairs(all) do onlyNew[c.address]=true end
+        self:ask("Connect the new component to the OC network, then press Enter","")
+        page=1
+      elseif answer==">" then page=math.min(page+1,pages)
+      elseif answer=="<" then page=math.max(1,page-1)
+      else
+        local n=tonumber(answer)
+        local selected=n and n%1==0 and choices[n]
+        -- Retain support for an exact address for existing/manual workflows.
+        if not selected then for _,c in ipairs(choices) do if c.address==answer then selected=c end end end
+        if selected then
+          local ok,p=pcall(self.components.proxy,self.components,selected.address,methods)
+          if ok then
+            if not registry[selected.address] then
+              local name
+              repeat name=self:ask("Friendly name for this component",label):match("^%s*(.-)%s*$") until name~=""
+              registry[selected.address]={name=name,kind=selected.kind}
+              self.c.componentNames=registry; self.save()
+            end
+            return p.address or selected.address
+          end
+          self.out("Component unavailable; refresh and select again.")
+        else self.out("Choose a listed number or use R to refresh.") end
+      end
     end
   end
   function w:endpoint(label,default)
     default=default or {}
     self.out(label..": put this inventory directly against the chosen transposer. Sides are world directions: 0 down, 1 up, 2 north, 3 south, 4 west, 5 east.")
-    local address=self:address("Full transposer address",{"getInventorySize","getStackInSlot","transferItem"},default.transposer)
+    local address=self:address("Transposer",{"getInventorySize","getStackInSlot","transferItem"},default.transposer)
     for _,i in ipairs(self.components:inventories(address)) do self.out("  side "..i.side..": "..i.size.." slots") end
     local side=self:number("Inventory side",0,5,default.side)
     local ep={id=self:ask("Physical inventory ID (use SAME ID for views of the SAME shared chest)",default.id),transposer=address,side=side}
@@ -167,7 +219,8 @@ function M.new(config,components,inv,save,read,out)
   end
   function w:run(reconfigure)
     if reconfigure then self.c.setupStep=1; self.save() end
-    require("lib.ui.diagnostics").probe(self.components,self.out)
+    self.out("Beeomatic setup. Completed sections and component names are saved.")
+    self.out("For detailed hardware diagnostics, use Beeomatic doctor --probe.")
     local step=self.c.setupStep or 1
     if step<=1 then self:storage(); self.c.setupStep=2; self.save() end
     if step<=2 then

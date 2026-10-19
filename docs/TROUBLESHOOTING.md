@@ -6,6 +6,7 @@ changing configuration or moving stock involved in a pending transfer.
 
 | Report | Action |
 |---|---|
+| Startup reports `module 'lib.cli' not found` | Check `/home/Beeomatic/lib/cli.lua` exists (adjust for a custom destination). As a workaround, `cd /home/Beeomatic` and rerun `Beeomatic setup`. Upgrade using the corrected installer to regenerate `/usr/bin/Beeomatic` with the explicit installation root. Existing `data/` is preserved. |
 | Missing housing/transposer/inventory | Check loaded chunks, power, OC cables, adapter face and the full configured address. Restore the original machine configuration, then `doctor` and `resume`. |
 | Inventory size or slot witness changed | Stop, inspect `doctor --probe`, and reverify this specific machine. Do not reuse another alveary's map. |
 | No compatible alveary | Read the job's temperature/tolerance, humidity, flowers and special-condition explanation. Add/configure a compatible housing, or correct a false environment attestation. |

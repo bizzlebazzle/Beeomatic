@@ -26,7 +26,10 @@ for _,relative in ipairs(files) do
     local text=f:read("*a"); f:close(); writeAtomic(target,text)
   end
 end
-writeAtomic("/usr/bin/Beeomatic","return assert(loadfile("..string.format("%q",dest.."/Beeomatic.lua")..")) (...)\n")
+-- The installer knows the root; do not infer it from runtime debug chunk names.
+writeAtomic("/usr/bin/Beeomatic","local root="..string.format("%q",dest).."\n"..
+  'package.path=root.."/?.lua;"..root.."/?/init.lua;"..package.path\n'..
+  'return require("lib.cli").main(root,{...})\n')
 fs.makeDirectory(dest.."/data")
 print("Installed Beeomatic in "..dest..". Existing data/configuration were preserved.")
 print("Run: Beeomatic setup\nThen: Beeomatic doctor\nThen: Beeomatic plan spirit\nThen: Beeomatic breed spirit")

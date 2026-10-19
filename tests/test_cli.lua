@@ -21,9 +21,14 @@ test("installer copies manifest, preserves data and creates valid command launch
     eq(files["/home/Test/data/state.lua"],"user state")
     for _,path in ipairs(assert(loadfile("manifest.lua"))()) do ok(files["/home/Test/"..path],"missing installed "..path) end
     local destination,arguments
+    local launcherPackage={path="/lib/?.lua"}
     local launcher=assert(load(files["/usr/bin/Beeomatic"],"=launcher","t",{
-      assert=assert,loadfile=function(p) destination=p; return function(...) arguments={...} end end}))
-    launcher("breed","spirit"); eq(destination,"/home/Test/Beeomatic.lua"); eq(arguments,{"breed","spirit"})
+      package=launcherPackage,require=function(name)
+        eq(name,"lib.cli")
+        return {main=function(root,args) destination=root; arguments=args end}
+      end}))
+    launcher("breed","spirit"); eq(destination,"/home/Test"); eq(arguments,{"breed","spirit"})
+    eq(launcherPackage.path,"/home/Test/?.lua;/home/Test/?/init.lua;/lib/?.lua")
     assert(loadfile("install.lua"))("/home/Test")
     eq(files["/home/Test/data/state.lua"],"user state"); ok(files["/home/Test/lib/cli.lua.previous"])
   end)
@@ -34,6 +39,34 @@ test("installer refuses to overwrite a running installation",function()
     files["/home/Test/data/worker.lock"]="active"
     raises(function() assert(loadfile("install.lua"))("/home/Test") end,"stop Beeomatic")
     eq(files["/home/Test/Beeomatic.lua"],nil)
+  end)
+end)
+
+test("installed command loads real modules from its recorded root outside the install directory",function()
+  local w=W.new(); w:addMachine("a"); w:build()
+  O.with(w,function(files,out)
+    local root="/home/Custom Bees"
+    assert(loadfile("install.lua"))(root)
+    local env=setmetatable({package={path="/lib/?.lua",loaded={}}},{__index=_G})
+    env.require=function(name)
+      if name:sub(1,4)~="lib." then return require(name) end
+      if env.package.loaded[name] then return env.package.loaded[name] end
+      local modulePath=name:gsub("%.","/")
+      for pattern in env.package.path:gmatch("[^;]+") do
+        local path=pattern:gsub("%?",modulePath)
+        -- Model an OpenOS shell whose working directory is /home.
+        if path:sub(1,1)~="/" then path="/home/"..path end
+        if files[path] then
+          local result=assert(load(files[path],"="..path,"t",env))(name)
+          env.package.loaded[name]=result
+          return result
+        end
+      end
+      error("module not found in installed files: "..name)
+    end
+    assert(load(files["/usr/bin/Beeomatic"],"=launcher","t",env))("help")
+    ok(env.package.loaded["lib.cli"])
+    ok(table.concat(out,"\n"):find("Beeomatic setup",1,true))
   end)
 end)
 

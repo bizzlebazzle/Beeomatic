@@ -73,8 +73,19 @@ It does not overwrite `data/`. It requires permission to write the chosen direct
 and `/usr/bin`. It does not download or reboot anything. Do not install over a
 running worker. A second install from the same source is supported.
 
-`setup` shows every detected component address and available method. Select full
-addresses, then register a physical archive, each housing, its transposer view,
+`setup` lists compatible components by number, showing their addresses and saved
+friendly names (or `Unnamed`). Select a number and name the component on first use;
+names and full addresses are saved in `data/config.lua`. Existing configurations
+work without a migration. Lists show two components per page: `>` and `<` change
+pages, `R` refreshes, and `N` takes a snapshot before asking you to connect a new
+component. It then lists only newly discovered compatible components for selection.
+Use `R` to return to the complete list. Enter retains an available current selection.
+Transposer previews show world sides, inventory sizes and up to two occupied slots
+per inventory. Use a distinctive item in a previewed slot to identify a chest, then
+refresh; previews never move items. Full method documentation is available separately
+through `Beeomatic doctor --probe` and is not printed during normal setup.
+
+Register a physical archive, each housing, its transposer view,
 actual slot roles and operating environment. The wizard performs read-only input
 witness checks using test stock that you place manually. It never inserts test
 bees automatically. Output mapping, climate, route isolation and environmental
