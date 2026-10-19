@@ -19,8 +19,10 @@ Beeomatic plan spirit
 Beeomatic breed spirit
 ```
 
-Copy this complete folder to an OpenOS-visible disk before running the offline
-installer above. Internet Card installation from the public
+For offline installation, copy only the paths listed in `manifest.lua`, preserving
+their directories. Tests and documentation stay on the PC. The compact release
+is approximately 104 KiB of file contents (30 files), plus filesystem overhead and
+runtime data. Internet Card installation from the public
 [GitHub repository](https://github.com/bizzlebazzle/Beeomatic) is also supported:
 
 ```sh
@@ -105,7 +107,7 @@ Beeomatic/
 ```
 
 Development check in this workspace: `python tests/run.py` runs Lua 5.2 and Lua 5.3.
-Current validation: **82 tests passed on each engine**, including the public CLI Spirit workflow,
+Current validation: **83 tests passed on each engine**, including the public CLI Spirit workflow,
 installer upgrades, exact selection of a second same-label AE2 genetic variant,
 concurrent machines, protected reserves and interrupted transfer recovery.
 Local `.tools/` and downloaded `research/` are ignored and not installed. No external

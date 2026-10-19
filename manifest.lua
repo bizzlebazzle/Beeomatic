@@ -1,20 +1,7 @@
--- Files installed by the offline OpenOS installer. Runtime data is intentionally excluded.
+-- Compact computer runtime plus installation metadata. PC docs/tests are excluded.
 return {
-  "Beeomatic",
   "Beeomatic.lua",
-  "README.md",
-  "config.example.lua",
-  "docs/API_COMPATIBILITY.md",
-  "docs/API_EVIDENCE.json",
-  "docs/ARCHITECTURE.md",
-  "docs/COMMANDS.md",
-  "docs/HARDWARE.md",
-  "docs/INSTALLATION.md",
-  "docs/REFERENCE_REVIEW.md",
-  "docs/TROUBLESHOOTING.md",
-  "docs/VALIDATION.md",
   "install.lua",
-  "get.lua",
   "lib/bees.lua",
   "lib/breeders/alveary.lua",
   "lib/breeders/base.lua",
@@ -43,6 +30,4 @@ return {
   "lib/ui/status.lua",
   "lib/util.lua",
   "manifest.lua",
-  "robot-helper.lua",
-  "tools/probe.lua",
 }

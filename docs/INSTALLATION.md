@@ -21,12 +21,26 @@ Beeomatic doctor
 
 If `/home/get.lua` already exists, use `wget -f` to replace that bootstrap file.
 The downloader resolves `master` to a full commit SHA, downloads the release
-manifest and every listed file from that revision into `/tmp`, checks Lua syntax
+manifest and every listed file from that revision into `/home/Beeomatic.download`
+(beside the destination when using a custom path), checks Lua syntax
 and staged file contents, then invokes the offline installer. A failed download
 leaves the installed program untouched. The installer retains existing `data/`
 and one previous generation of replaced program files. Stop the worker first.
-The final output prints the installed commit SHA. Temporary download files remain
-in `/tmp` until normal temporary-storage cleanup.
+The final output prints the installed commit SHA. Downloaded staging files are
+removed after success or failure; empty staging directories can remain for reuse.
+The downloader does not use `/tmp`, which can be a much smaller filesystem than
+the hard drive.
+
+The compact release contains 30 files, approximately **104 KiB of file contents**
+before filesystem allocation overhead. This includes all application modules,
+`install.lua` and `manifest.lua`. It excludes documentation, tests, mocks, research,
+the example configuration, the repository launcher, the separate robot helper and
+the redundant standalone probe (use `Beeomatic doctor --probe`). The downloaded
+`/home/get.lua` bootstrap remains separate. All tests run on the development PC
+before pushing; they are not needed on the OpenComputer. Documentation remains on
+GitHub. Download staging and one previous installed generation require additional
+temporary disk space, and runtime data grows with use. A second drive is not
+required for the program files themselves.
 
 To select a specific revision instead, run `lua get.lua FULL_COMMIT_SHA`.
 An optional second argument selects an absolute installation directory.
@@ -36,7 +50,8 @@ Complete hardware acceptance before starting a valuable breeding job.
 
 ## Offline installation
 
-1. Copy the complete release folder into an OpenOS-visible filesystem, for example
+1. Copy the paths listed in `manifest.lua`, preserving their directory structure,
+   into an OpenOS-visible filesystem, for example
    `/home/Beeomatic-source`. For single-player you can copy it into the computer's
    mounted filesystem directory under the world's `opencomputers` save data while
    the world is stopped. On a server, use the server's permitted file-transfer or

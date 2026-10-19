@@ -1,7 +1,7 @@
 -- In-memory OpenOS filesystem/process facade. Absolute paths never touch the host.
 local U=require("lib.util")
 local M={}
-function M.with(world,fn)
+function M.with(world,fn,quotas)
   local files,dirs,output={},{},{}
   local originalOpen,originalPrint=io.open,print
   local previous={}; for _,name in ipairs({"filesystem","component","computer","event"}) do previous[name]=package.loaded[name] end
@@ -16,7 +16,18 @@ function M.with(world,fn)
     if mode:find("r",1,true) and files[path]==nil then return nil,"not found" end
     if mode:find("w",1,true) then files[path]="" end
     local f={}
-    function f:write(s) files[path]=(files[path] or "")..s; return self end
+    function f:write(s)
+      if quotas then
+        local temporary=path:sub(1,5)=="/tmp/"
+        local used=0
+        for p,data in pairs(files) do
+          if (p:sub(1,5)=="/tmp/")==temporary then used=used+#data end
+        end
+        local limit=temporary and quotas.tmp or quotas.root
+        if limit and used+#s>limit then return nil,"not enough space" end
+      end
+      files[path]=(files[path] or "")..s; return self
+    end
     function f:read() return files[path] end
     function f:flush() return self end
     -- OpenOS filesystem close can succeed without returning any values.

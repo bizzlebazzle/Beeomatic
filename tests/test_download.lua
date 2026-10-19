@@ -33,7 +33,7 @@ local function scenario(options,fn)
     local yes,err=xpcall(function() fn(files,requests,out) end,debug.traceback)
     loadfile=previousLoadfile; package.loaded.internet=previousInternet
     assert(yes,err)
-  end)
+  end,options.quotas)
 end
 test("online installation pins all files to one revision and preserves existing data",function()
   scenario({},function(files,requests)
@@ -48,13 +48,33 @@ test("online installation pins all files to one revision and preserves existing 
   end)
 end)
 test("missing last release file leaves installed program and data untouched",function()
-  scenario({fail="tools/probe.lua"},function(files)
+  scenario({fail="lib/util.lua"},function(files)
     files["/home/Beeomatic/Beeomatic.lua"]="previous program"
     files["/home/Beeomatic/data/config.lua"]="saved configuration"
     raises(function() assert(loadfile("get.lua"))(revision) end,"HTTP 404")
     eq(files["/home/Beeomatic/Beeomatic.lua"],"previous program")
     eq(files["/home/Beeomatic/data/config.lua"],"saved configuration")
     eq(files["/usr/bin/Beeomatic"],nil)
+    for path in pairs(files) do ok(not path:find("/home/Beeomatic.download/",1,true),"staging leaked") end
+  end)
+end)
+
+test("compact download avoids tiny temporary disk and cleans staging after upgrades",function()
+  scenario({quotas={root=512*1024,tmp=1024}},function(files,requests)
+    files["/home/Beeomatic/data/config.lua"]="saved configuration"
+    files["/tmp/unrelated"]="keep"
+    assert(loadfile("get.lua"))(revision)
+    assert(loadfile("get.lua"))(revision)
+    eq(files["/home/Beeomatic/data/config.lua"],"saved configuration")
+    eq(files["/tmp/unrelated"],"keep")
+    for _,url in ipairs(requests) do
+      ok(not url:find("/docs/",1,true)); ok(not url:find("/tests/",1,true))
+      ok(not url:find("robot-helper.lua",1,true)); ok(not url:find("config.example.lua",1,true))
+    end
+    for path in pairs(files) do
+      ok(not path:find("/home/Beeomatic.download/",1,true),"staging leaked")
+      ok(path=="/tmp/unrelated" or not path:find("/tmp/",1,true),"temporary disk used")
+    end
   end)
 end)
 test("downloader rejects manifest traversal before downloading release files",function()

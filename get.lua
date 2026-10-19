@@ -33,9 +33,12 @@ assert(type(revision)=="string" and #revision==40 and revision:match("^[a-f0-9]+
   "expected a full Git commit SHA (or omit it to resolve master)")
 local dest=args[2] or "/home/Beeomatic"
 assert(dest:sub(1,1)=="/","installation destination must be absolute")
+dest=fs.canonical(dest)
+assert(dest~="/","choose a dedicated installation directory")
 assert(not fs.exists(fs.canonical(dest).."/data/worker.lock"),"stop Beeomatic before upgrading")
 local base="https://raw.githubusercontent.com/"..repo.."/"..revision.."/"
-local stage="/tmp/Beeomatic-download-"..revision
+-- /tmp can be a small separate filesystem. Stage on the installation's disk.
+local stage=dest..".download"
 print("Downloading Beeomatic "..revision)
 local manifest=fetch(base.."manifest.lua")
 local files=assert(load(manifest,"=downloaded manifest","t",{}))()
@@ -48,18 +51,28 @@ for _,path in ipairs(files) do
   seen[path]=true
 end
 assert(seen["manifest.lua"] and seen["install.lua"] and seen["Beeomatic.lua"],"incomplete release manifest")
-for i,path in ipairs(files) do
-  print(i.."/"..#files.." "..path)
-  local data=path=="manifest.lua" and manifest or fetch(base..path)
-  if path:match("%.lua$") or path=="Beeomatic" then
-    assert(load(data,"@"..stage.."/"..path,"t",{}))
+local function install()
+  for i,path in ipairs(files) do
+    print(i.."/"..#files.." "..path)
+    local data=path=="manifest.lua" and manifest or fetch(base..path)
+    if path:match("%.lua$") then assert(load(data,"@"..stage.."/"..path,"t",{})) end
+    local target=stage.."/"..path
+    fs.makeDirectory(fs.path(target))
+    local f=assert(io.open(target,"wb")); assert(f:write(data)); assert(f:flush()); f:close()
+    local check=assert(io.open(target,"rb")); assert(check:read("*a")==data); check:close()
   end
-  local target=stage.."/"..path
-  fs.makeDirectory(fs.path(target))
-  local f=assert(io.open(target,"wb")); assert(f:write(data)); assert(f:flush()); f:close()
-  local check=assert(io.open(target,"rb")); assert(check:read("*a")==data); check:close()
+  -- Only now touch the installation; install.lua retains its data and backup rules.
+  local f=assert(io.open(stage.."/install.lua","rb")); local source=f:read("*a"); f:close()
+  assert(load(source,"@"..stage.."/install.lua","t",_G))(dest)
 end
--- Only now touch the installation; install.lua retains its data and backup rules.
-local f=assert(io.open(stage.."/install.lua","rb")); local source=f:read("*a"); f:close()
-assert(load(source,"@"..stage.."/install.lua","t",_G))(dest)
+local yes,err=pcall(install)
+-- Remove only validated manifest paths in our dedicated staging directory.
+for _,path in ipairs(files) do
+  local target=stage.."/"..path
+  if fs.exists(target) then
+    local removed,reason=fs.remove(target)
+    if not removed then print("Could not remove staging file: "..target..": "..tostring(reason)) end
+  end
+end
+assert(yes,err)
 print("Installed revision "..revision)

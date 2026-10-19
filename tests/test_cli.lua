@@ -51,11 +51,11 @@ end
 test("installer preserves the previous program when flushing fails",function()
   local w=W.new(); w:addMachine("a"); w:build()
   O.with(w,function(files)
-    files["/home/Test/Beeomatic"]="previous program"
+    files["/home/Test/Beeomatic.lua"]="previous program"
     failFlush()
     raises(function() assert(loadfile("install.lua"))("/home/Test") end,"disk full")
-    eq(files["/home/Test/Beeomatic"],"previous program")
-    eq(files["/home/Test/Beeomatic.previous"],nil)
+    eq(files["/home/Test/Beeomatic.lua"],"previous program")
+    eq(files["/home/Test/Beeomatic.lua.previous"],nil)
   end)
 end)
 
