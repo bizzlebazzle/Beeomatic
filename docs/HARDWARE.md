@@ -17,7 +17,9 @@ of those Interfaces or a controller adapter exposing `getItemsInNetwork`/`store`
                          |             |
                      [Alveary A]    [Alveary B]
 
-MAIN ME NETWORK -- [Scanner Interface] -- [Scanner transposer] -- [Analyser]
+MAIN ME NETWORK -- [Scanner Interface] -- [Scanner transposer] -- [Input chest]
+                         ^                                          |
+                         +--- return pipes --- [Analyser] <--- pipes+
 ```
 
 OC cable connects all adapters, transposers and the database to the controller.
@@ -53,17 +55,27 @@ can observe blocks of the same multiblock.
 ## One shared scanner
 
 Give the scanner station its own Interface and transposer on the same ME and OC
-networks. The transposer reaches the analyser's exposed input/output inventory,
-or dedicated isolated staging inventories with external routes through it.
-There is one reserved batch in this path at a time. No unrelated bees may enter.
-Supply honey/power/consumables separately, outside the registered bee slots.
+networks. The transposer touches that Interface and a normal input chest.
+Pipes extract bees from the chest into your analyser, then extract analysed bees
+directly into an unconfigured Interface slot on the same ME network. The analyser
+and its output do not need to touch the transposer or have OC adapters.
+Supply analyser honey/power separately. Configure pipes to extract only analysed
+outputs, without cycling unanalysed bees straight back to ME.
 
-Pinned Forestry source defines a twelve-slot analyser: specimen **1**, honey
-container **2**, automated input **3-8**, output **9-12** (OC indices). Slot 1 is
-internal processing, not an automation input. These are source observations;
-confirm the actual machine, faces and inventory before configuring it. The
-scanner inspects all visible bee slots for unrelated stock when idle and extracts
-only the configured output slots. Consumable slots are left alone.
+Setup selects only the Interface connection and input chest. Beeomatic chooses
+an empty chest slot automatically; it does not manage analyser slots or move
+outputs. It records ME quantities before sending one batch, waits for the full
+return, briefly requests the exact returned variant for physical analysis
+verification, then clears that request so the bees return to cells. Existing
+analysed stock can merge with returns without losing owned quantities.
+
+Before first use, empty the chest, pipes and analyser of bees. Keep this scanner
+path dedicated to Beeomatic, and do not manually add/remove bees or run another
+scanner into the same ME network while a batch is outstanding. Ambiguous return
+variants/counts pause for inspection; a missing return times out after ten minutes
+with the batch preserved. The program cannot inspect bees inside external pipes
+or the analyser. Previously saved direct-analyser configurations remain supported
+for recovery; new ME setup uses this chest-and-pipes flow.
 
 Startup enters `PREPARING_STOCK`: unknown exact variants are physically inspected,
 and all unanalysed drones are analysed before breeding starts. ME item records can

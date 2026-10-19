@@ -81,7 +81,7 @@ function M:scan()
       if batch.identity==key then
         local q=self.state.scan
         local inScanner=q and q.batchId==id and q.identity==key and not q.returned and
-          (q.phase=="PROCESSING" or q.phase=="RETURNING" or (q.phase=="INSERTING" and (q.inserted or (q.source and
+          (q.phase=="PROCESSING" or q.phase=="RETURNING" or q.phase=="VERIFYING" or (q.phase=="INSERTING" and (q.inserted or (q.source and
             self.state.meRequests[U.location(q.source.endpoint,q.source.slot)] and
             self.state.meRequests[U.location(q.source.endpoint,q.source.slot)].consumed))))
         local available=batch.count-(inScanner and q.count or 0)

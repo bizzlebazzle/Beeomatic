@@ -19,9 +19,8 @@ for n,v in ipairs(environments) do
 end
 local scannerPort=port("scanner_port","REPLACE-SCANNER-TRANSPOSER","REPLACE-SCANNER-INTERFACE",0)
 c.storage.endpoints[#c.storage.endpoints+1]=scannerPort
--- Source-observed Forestry analyser indices, still requiring hardware validation:
--- specimen 1; honey container 2; automated inputs 3..8; outputs 9..12.
-local analyser={id="shared_analyser",transposer=scannerPort.transposer,side=1}
-c.scanner={enabled=true,isolatedVerified=false,storage=scannerPort,input=analyser,output=analyser,
-  inputSlot=3,outputSlots={9,10,11,12},timeout=600,batchSize=64}
+-- Pipes pull bees from this chest through the analyser and return analysed bees
+-- directly to an unconfigured Interface slot on the same ME network.
+local input={id="scanner_input",transposer=scannerPort.transposer,side=1}
+c.scanner={enabled=true,mode="external",storage=scannerPort,input=input,timeout=600}
 return c

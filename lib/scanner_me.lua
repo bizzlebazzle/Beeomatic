@@ -24,6 +24,12 @@ end
 function M:validate()
   local c=self.config
   assert(c.enabled,"Shared scanner required: configure it to inspect all initial drone variants")
+  if c.mode=="external" then
+    self.storage:port(c.storage); self.inv:size(c.input)
+    assert(c.storage.transposer==c.input.transposer and c.storage.side~=c.input.side,
+      "scanner input chest and Interface need separate sides of the same transposer")
+    return
+  end
   assert(c.isolatedVerified,"verify isolated shared scanner input/output and equal-count analysis")
   self.storage:port(c.storage); local size=self.inv:size(c.input); self.inv:size(c.output)
   U.assertNumber(c.inputSlot,1,size)
@@ -49,6 +55,61 @@ function M:finish()
   self.inv:release("scanner"); self.state.scan=nil; self.save()
   return false,"Scanner batch returned; rescanning ME stock"
 end
+-- Count both cells and local Interface buffers so refill/cleanup cannot look like
+-- a new analysed return. External pipes are the sole producer on this path.
+function M:snapshot()
+  local result={}
+  local function add(s)
+    if s and B.kind(s) then
+      local key=B.identity(s)
+      if result[key] then result[key].size=result[key].size+s.size else result[key]=U.copy(s) end
+    end
+  end
+  for _,s in pairs(assert(self.storage:network().getItemsInNetwork(),"ME network unavailable")) do add(s) end
+  for _,ep in ipairs(self.storage.config.endpoints) do for _,i in ipairs(self.inv:scan(ep)) do add(i.stack) end end
+  return result
+end
+function M:externalResult(q)
+  local result
+  for key,s in pairs(self:snapshot()) do
+    local before=q.before[key] or 0
+    local delta=s.size-before
+    if key~=q.identity and s.name==q.name and s.damage==q.damage and delta>0 then
+      assert(not result,"multiple possible scanner returns; preserve stock and audit the external path")
+      assert(delta<=q.count,"scanner return count exceeds the reserved batch; audit external insertions")
+      result={network=true,endpoint={id="ME"},slot=key,stack=U.copy(s)}
+      result.stack.size=delta
+    end
+  end
+  if not result or result.stack.size<q.count then
+    assert(self.now()-q.started<(self.config.timeout or 600),
+      "Shared scanner timeout: check chest extraction, honey/power and return pipes to ME; batch preserved")
+    return false,"Waiting for analysed bees to return through ME"
+  end
+  assert(self:empty(),"external scanner input still contains bees after a complete return; audit the path")
+  -- Preserve the exact return identity before requesting it for inspection.
+  q.resultItem=result; q.phase="VERIFYING"; self.save()
+  return self:verifyExternal(q)
+end
+function M:verifyExternal(q)
+  local physical=self.storage:materialize(q.resultItem,self.config.storage,"scanner",q.count)
+  local s=physical.stack
+  assert(B.scanned(s) and s.name==q.name and s.damage==q.damage and B.kind(s)==B.kind(q.item.stack),
+    "external scanner returned an unanalysed or wrong-caste bee; batch preserved")
+  if q.ident then assert(s.individual.ident==q.ident,"external scanner changed bee species identity") end
+  if q.batchId then
+    local old=assert(self.state.meBatches[q.batchId],"scanner batch disappeared")
+    assert(old.identity==q.identity and old.count>=q.count,"scanner provenance changed")
+    if old.count==q.count then old.identity=B.identity(s); old.stack=U.copy(s)
+    else
+      old.count=old.count-q.count
+      local split=U.copy(old); split.identity=B.identity(s); split.count=q.count; split.stack=U.copy(s)
+      self.state.meBatches[q.batchId.."/external/"..q.sequence]=split
+    end
+  end
+  q.returned=true; q.phase="EXTERNAL_RETURNED"; self.save()
+  self.storage:cancel("scanner"); return self:finish()
+end
 function M:step(items)
   local c=self.config; local q=self.state.scan
   if not q then
@@ -61,8 +122,14 @@ function M:step(items)
     q={phase="REQUESTING",item=U.copy(candidate),identity=B.identity(candidate.stack),batchId=candidate.batchId,
       name=candidate.stack.name,damage=candidate.stack.damage,count=count,
       ident=candidate.stack.individual and candidate.stack.individual.ident,started=self.now()}
+    if c.mode=="external" then
+      self.state.scannerSequence=(self.state.scannerSequence or 0)+1; q.sequence=self.state.scannerSequence
+      q.before={}; for key,s in pairs(self:snapshot()) do q.before[key]=s.size end
+    end
     self.state.scan=q; self.save()
   end
+  if q.phase=="EXTERNAL_RETURNED" then self.storage:cancel("scanner"); return self:finish() end
+  if q.phase=="VERIFYING" then return self:verifyExternal(q) end
   if q.phase=="INSPECTED" then
     self.storage:cancel("scanner"); return self:finish()
   end
@@ -75,7 +142,9 @@ function M:step(items)
       self.storage:catalogue(physical.stack); q.phase="INSPECTED"; self.save()
       self.storage:cancel("scanner"); return self:finish()
     end
-    q.source={endpoint=U.copy(physical.endpoint),slot=physical.slot}; q.phase="INSERTING"; self.save()
+    q.source={endpoint=U.copy(physical.endpoint),slot=physical.slot}
+    q.inputSlot=c.mode=="external" and self.inv:empty(c.input) or c.inputSlot
+    q.phase="INSERTING"; self.save()
   end
   if q.phase=="INSERTING" then
     local request=self.state.meRequests[U.location(q.source.endpoint,q.source.slot)]
@@ -84,7 +153,7 @@ function M:step(items)
       assert(B.identity(stack)==q.identity and stack.size==q.count,"scanner source changed")
       assert(self:empty(),"scanner input insertion ambiguous")
       self.inv:move({endpoint=q.source.endpoint,slot=q.source.slot,stack=stack,batchId=q.batchId,scanning=true},
-        c.input,c.inputSlot,q.count,"scanner",function(got,n)
+        c.input,q.inputSlot or c.inputSlot,q.count,"scanner",function(got,n)
           -- The analyser may consume its input immediately; its isolated output
           -- is verified later. A persisted positive transfer count witnesses input acceptance.
           return not got and n==q.count
@@ -96,6 +165,7 @@ function M:step(items)
   end
   if q.phase=="PROCESSING" then
     self.storage:releasePort(c.storage)
+    if c.mode=="external" then return self:externalResult(q) end
     local results=self:outputs(); assert(#results<=1,"scanner output contaminated; expected one isolated stack")
     local r=results[1]
     if not r then

@@ -8,7 +8,7 @@ flow still requires in-game acceptance.**
 
 ## Automated checks
 
-Current result: **146 tests, zero failures on each of Lua 5.2 and Lua 5.3**.
+Current result: **159 tests, zero failures on each of Lua 5.2 and Lua 5.3**.
 Run `python tests/run.py` in the development workspace. It syntax-checks every
 project Lua file, then runs the suite on both engines using local Lupa runtimes.
 Alternatively run `lua tests/run.lua` with a compatible runtime. These dependencies
@@ -36,6 +36,11 @@ Interface coverage includes:
   Climate entries require no separate environment confirmation.
 - An incorrect scanner Interface inventory reports its actual size/transposer/side
   and allows reselection before asking for the Interface adapter.
+- External scanner input chest with automatic ME returns: startup across several
+  batches, split deliveries, existing-stock merges and owned batch splits, wrong
+  species/ambiguous returns, immediate pipe extraction, automatic empty-slot choice,
+  preserved timeout progress and restart at input, inspection and ownership saves.
+  The public CLI completes startup and breeding through this topology.
 - Automatic native alveary input/output maps and retryable placement checks:
   empty slots, wrong caste and mismatched housing adapters. Unanalysed test bees
   are accepted for placement without weakening the runtime analysis gate.
@@ -66,9 +71,13 @@ The mocked downloader still exercises a 512 KiB hard drive and 1 KiB `/tmp`.
    `Beeomatic doctor --interface PORT_ID` for each port, including the scanner.
    Observe the two-unit request, one-unit extraction, stock cleanup, return and
    unchanged final exact ME count. Repeat with same-label genetic variants.
-4. Test the actual analyser input/output slots and consumables. For standard pinned
-   Forestry, source indices are inputs 3-8, outputs 9-12, specimen 1 and honey
-   container 2. Witness one isolated batch returning analysed with the same count.
+4. Empty the external scanner path of bees. Test pipes drawing bees from the input
+   chest, supplying the analyser and returning only analysed outputs directly to
+   an unconfigured Interface slot on the same ME network. Supply honey/power.
+   Observe a batch with the same returned count; leave existing analysed stock
+   of that exact variant in ME to exercise merging. Do not add/remove bees through
+   other automation during the batch. The program cannot inspect external pipe
+   contents; ambiguous returns remain blocked for inspection.
 5. Put analysed and unanalysed drones in ME, including more than one stack and
    different same-label variants. Start a small job. Confirm `PREPARING_STOCK`
    remains active until every initial drone is analysed, and no alveary receives

@@ -1,5 +1,10 @@
 # ME Interface storage redesign (research and proposal)
 
+Scanner update: new setup uses a transposer-fed input chest, external analysis
+and automatic return directly to ME. It no longer asks for analyser output or
+slot maps. The direct-output design below is retained as implementation history
+and for compatibility with saved configurations; see [current hardware](HARDWARE.md).
+
 Research date: 2026-10-19. Target: GTNH 2.9.0 Beta 3, OpenComputers
 1.12.61-GTNH, AE2 rv3-beta-1050-GTNH.
 

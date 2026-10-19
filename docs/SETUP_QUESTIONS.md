@@ -68,17 +68,17 @@ in place of ME Interface registration.
    a lone named transposer).
 2. Inventory number for Shared scanner ME Interface.
 3. Component number: Adapter at Shared scanner ME Interface.
-4. Inventory number for Analyser input (or isolated input staging).
-5. Inventory number for Analyser output (or isolated output staging).
-6. Witnessed input slot (Forestry analyser: 3).
-7. Witnessed output slots (Forestry analyser: 9,10,11,12; exclude consumables).
-8. Scanner timeout in seconds (default 600).
-9. Have you tested one input stack producing one analyzed output stack with
-    equal count?
+4. Inventory number for Scanner input chest.
 
-The scanner transposer is reused for input/output selection. New components add
+The scanner transposer is reused for input chest selection. New components add
 their friendly-name question. ME mode requires a scanner and does not ask whether
-to enable one. Chest mode first asks **Configure automated scanner? (Otherwise
+to enable one. There are no analyser output, slot, timeout or test-confirmation
+questions. Setup chooses empty input slots automatically and uses a ten-minute
+timeout. Pipes extract from the chest, analyse bees and return them directly to
+an unconfigured Interface slot on the same ME network. Beeomatic watches returns
+and verifies the analysed result through the Interface.
+
+Chest storage mode first asks **Configure automated scanner? (Otherwise
 analyze bees manually)** and, if enabled, registers its archive/input/output
 inventories, input slot, timeout and isolation confirmation.
 

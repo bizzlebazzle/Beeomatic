@@ -2,6 +2,138 @@ local ME=require("tests.mocks.me"); local B=require("lib.bees"); local U=require
 local function select(w,s)
   return {network=true,endpoint={id="ME"},slot=B.identity(s),stack=U.copy(s)}
 end
+local function externalScanner()
+  local w=ME.new(); local c=w.c.scanner
+  c.mode="external"; c.output=nil; c.outputSlots=nil; c.inputSlot=nil; c.isolatedVerified=nil
+  function w:returnExternal(count,species,raw)
+    local source=assert(self.inventories.analyser[1],"no external input")
+    count=count or source.size
+    self:addStock(ME.bee(species or source.label:match("^(.-) %w+$"),B.kind(source),count,raw))
+    source.size=source.size-count; if source.size==0 then self.inventories.analyser[1]=nil end
+  end
+  return w
+end
+
+test("external scanner uses one chest transfer and verifies automatic AE returns",function()
+  local w=externalScanner(); w:addStock(ME.bee("Spirit","drone",8,true))
+  w.storage:validate(); w.scanner:validate(); require("lib.config").validate(w.c)
+  eq(w.scheduler:prepareStock(w.storage:scan()),false); eq(w.moves,1)
+  eq(w.state.scan.inputSlot,1); w:returnExternal()
+  eq(w.scheduler:prepareStock(w.storage:scan()),false)
+  eq(w.moves,1); eq(w.state.scan,nil); eq(next(w.state.meRequests),nil)
+  ok(w.scheduler:prepareStock(w.storage:scan())); eq(w.state.stockPhase,"READY")
+end)
+
+test("external scanner drains every initial drone across multiple batches",function()
+  local w=externalScanner(); w:addStock(ME.bee("Spirit","drone",130,true)); local count=0
+  for _=1,12 do
+    if w.scheduler:prepareStock(w.storage:scan()) then break end
+    if w.inventories.analyser[1] then count=count+w.inventories.analyser[1].size; w:returnExternal() end
+  end
+  eq(count,130); eq(w.moves,3); eq(w.state.stockPhase,"READY")
+  eq(B.count(w.storage:scan(),"Spirit","drone",true),130)
+end)
+
+test("external returns preserve ownership when merging with existing analysed stock",function()
+  local w=externalScanner(); local s=ME.bee("Spirit","drone",8,true); w.inventories.a[8]=s
+  local receipt=w.storage:deposit({endpoint={id="a",transposer="tp1",side=3},slot=8,stack=s},w.c.alvearies[1].storage,"job")
+  w:addStock(ME.bee("Spirit","drone",12)); w.c.scanner.batchSize=3
+  for _=1,12 do
+    if w.scanner:step(w.storage:scan()) then break end
+    if w.inventories.analyser[1] then w:returnExternal() end
+  end
+  local owned,free=0,0
+  for _,item in ipairs(w.storage:scan()) do
+    ok(B.scanned(item.stack))
+    if item.owner then eq(item.owner,"job"); eq(item.root,receipt.root); owned=owned+item.stack.size
+    else free=free+item.stack.size end
+  end
+  eq(owned,8); eq(free,12)
+end)
+
+test("external scanner waits for all units of a split return and preserves timeout progress",function()
+  local w=externalScanner(); w:addStock(ME.bee("Spirit","drone",8,true))
+  w.scanner:step(w.storage:scan()); w:returnExternal(3)
+  eq(w.scanner:step(w.storage:scan()),false); eq(w.state.scan.phase,"PROCESSING")
+  w.time=601
+  raises(function() w.scanner:step(w.storage:scan()) end,"batch preserved")
+  eq(w.state.scan.count,8); w.scheduler:recover(); w:returnExternal()
+  w.scanner:step(w.storage:scan()); eq(w.state.scan,nil); eq(w.moves,1)
+end)
+
+test("external scanner rejects a wrong-species return without granting readiness",function()
+  local w=externalScanner(); w:addStock(ME.bee("Spirit","drone",8,true))
+  w.scanner:step(w.storage:scan()); w:returnExternal(nil,"Forest")
+  raises(function() w.scanner:step(w.storage:scan()) end,"species identity")
+  eq(w.state.scan.phase,"VERIFYING"); eq(w.state.stockReady,nil)
+end)
+
+test("external scanner refuses ambiguous return variants",function()
+  local w=externalScanner(); w:addStock(ME.bee("Spirit","drone",8,true))
+  w.scanner:step(w.storage:scan()); w:returnExternal()
+  w:addStock(ME.bee("Forest","drone",1))
+  raises(function() w.scanner:step(w.storage:scan()) end,"multiple possible scanner returns")
+  eq(w.state.scan.phase,"PROCESSING")
+end)
+
+test("external scanner restart after input acceptance never reinserts the batch",function()
+  local w=externalScanner(); w:addStock(ME.bee("Spirit","drone",8,true))
+  local save=w.inv.save; local cut=false
+  w.inv.save=function()
+    save()
+    if w.state.scan and w.state.scan.inserted and not cut then cut=true; error("input power cut") end
+  end
+  raises(function() w.scanner:step(w.storage:scan()) end,"input power cut")
+  w.inv.save=save; w:returnExternal(); w.scheduler:recover()
+  w.scanner:step(w.storage:scan()); w.scanner:step(w.storage:scan())
+  eq(w.moves,1); eq(w.state.scan,nil)
+end)
+
+test("external scanner restart after ownership conversion never converts twice",function()
+  local w=externalScanner(); local s=ME.bee("Spirit","drone",8,true); w.inventories.a[8]=s
+  local receipt=w.storage:deposit({endpoint={id="a",transposer="tp1",side=3},slot=8,stack=s},w.c.alvearies[1].storage,"job")
+  w.scanner:step(w.storage:scan()); w:returnExternal()
+  local save=w.scanner.save; local cut=false
+  w.scanner.save=function()
+    save()
+    if w.state.scan and w.state.scan.phase=="EXTERNAL_RETURNED" and not cut then cut=true; error("return power cut") end
+  end
+  raises(function() w.scanner:step(w.storage:scan()) end,"return power cut")
+  w.scanner.save=save; w.scheduler:recover(); w.scanner:step(w.storage:scan())
+  eq(w.state.scan,nil); eq(w.state.meBatches[receipt.batchId].count,8)
+  eq(w.moves,2); eq(next(w.state.meRequests),nil)
+end)
+
+test("external input may be extracted and returned immediately during transfer",function()
+  local w=externalScanner(); w:addStock(ME.bee("Spirit","drone",8,true))
+  w.afterTransfer=function() w:returnExternal(); w:tick() end
+  w.scanner:step(w.storage:scan()); w.scanner:step(w.storage:scan())
+  eq(w.moves,1); eq(w.state.scan,nil); eq(w.state.pending,nil)
+  eq(B.count(w.storage:scan(),"Spirit","drone",true),8)
+end)
+
+test("external return inspection resumes its exact request after restart",function()
+  local w=externalScanner(); w:addStock(ME.bee("Spirit","drone",8,true))
+  w.scanner:step(w.storage:scan()); w:returnExternal()
+  local save=w.inv.save; local cut=false
+  w.inv.save=function()
+    save()
+    if w.state.scan and w.state.scan.phase=="VERIFYING" then
+      local request=w.state.meRequests["scan-port:2"]
+      if request and request.phase=="READY" and not cut then cut=true; error("inspection power cut") end
+    end
+  end
+  raises(function() w.scanner:step(w.storage:scan()) end,"inspection power cut")
+  w.inv.save=save; w.scheduler:recover(); w.scanner:step(w.storage:scan())
+  eq(w.moves,1); eq(w.state.scan,nil); eq(next(w.state.meRequests),nil)
+end)
+
+test("external chest slot is chosen automatically around unrelated non-bee contents",function()
+  local w=externalScanner(); w.inventories.analyser[1]={name="marker",size=1}
+  w:addStock(ME.bee("Spirit","drone",8,true))
+  w.scanner:step(w.storage:scan()); eq(w.state.scan.inputSlot,2)
+  eq(w.inventories.analyser[2].size,8); eq(w.inventories.analyser[1].name,"marker")
+end)
 test("Interface requests exact NBT and only the requested drone quantity",function()
   local w=ME.new(); local right=ME.bee("Spirit","drone",8); local wrong=ME.bee("Spirit","drone",7,nil,{fertility=4})
   w:addStock(wrong); w:addStock(right); w.storage:validate()

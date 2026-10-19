@@ -45,6 +45,24 @@ test("reconfiguration refuses to migrate saved unresolved movements",function()
     eq(files["/project/data/config.lua"],"return "..U.encode(w.c))
   end)
 end)
+
+test("public CLI completes startup and breeding with chest input and automatic ME scanner returns",function()
+  local ME=require("tests.mocks.me"); local B=require("lib.bees"); local w=ME.new()
+  w.c.confirmCycles=1; w.c.minDrones=2
+  local c=w.c.scanner; c.mode="external"; c.output=nil; c.outputSlots=nil; c.inputSlot=nil; c.isolatedVerified=nil
+  w.finishScan=function(self)
+    local s=assert(self.inventories.analyser[1]); self.inventories.analyser[1]=nil
+    self:addStock(ME.bee(s.label:match("^(.-) %w+$"),B.kind(s),s.size))
+  end
+  w:addStock(ME.bee("Spirit","princess")); w:addStock(ME.bee("Spirit","drone",8,true))
+  O.with(w,function(files)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    require("lib.cli").main("/project",{"populate","spirit","2"})
+    local state=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
+    ok(state.finished,require("lib.ui.status").render(state,w.c,true))
+    eq(state.stockPhase,"READY"); eq(state.scan,nil); eq(state.pending,nil); eq(next(state.meRequests),nil)
+  end)
+end)
 test("installer retires obsolete program files while preserving backups and user files",function()
   local w=W.new(); w:addMachine("a"); w:build()
   O.with(w,function(files)

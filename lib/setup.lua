@@ -342,32 +342,27 @@ function M.new(config,components,inv,save,read,out)
     local s=self.c.scanner
     if self.c.storage.kind=="me_interface" then
       s.enabled=true
-      self.out("Register the shared analyser station. Unknown ME bees are inspected here; all initial drones must be analysed before breeding starts.")
-    else s.enabled=self:yes("Configure automated scanner? (Otherwise analyze bees manually)",s.enabled) end
+      self.out("Scanner: ME Interface -> transposer -> input chest. Your pipes extract from the chest, analyse bees and return them directly to an unconfigured Interface slot on the same ME network.")
+      self.out("Keep the external scanner path empty before first use and dedicated to Beeomatic. Supply honey/power; do not insert or remove bees elsewhere while a scanner batch is outstanding.")
+      s.storage=self:port("Shared scanner ME Interface",s.storage or {id="scanner_port"})
+      s.input=self:endpoint("Scanner input chest",s.input,s.storage.transposer)
+      assert(s.storage.side~=s.input.side,"scanner input chest must be separate from the Interface")
+      s.mode="external"; s.output=nil; s.outputSlots=nil; s.inputSlot=nil; s.isolatedVerified=nil
+      s.timeout=600; s.batchSize=nil
+      self:registerEndpoint(s.storage); self.save()
+      self.out("Scanner saved. Input slots are chosen automatically; analysed returns are verified through ME. All initial drones are scanned before breeding starts.")
+      return
+    end
+    s.enabled=self:yes("Configure automated scanner? (Otherwise analyze bees manually)",s.enabled)
     if s.enabled then
       self.out("Use dedicated input/output inventories and external pipes routing through a Forestry analyzer or supported scanner. Supply its required consumables/power. No other items may enter this path. One reserved stack is processed at a time; this program calls no imaginary analyze method.")
-      s.storage=self.c.storage.kind=="me_interface" and self:port("Shared scanner ME Interface",s.storage or {id="scanner_port"}) or
-        self:endpoint("Scanner's view of archive chest",s.storage or self.c.storage.endpoints[1])
+      s.storage=self:endpoint("Scanner's view of archive chest",s.storage or self.c.storage.endpoints[1])
       s.input=self:endpoint("Analyser input (or isolated input staging)",s.input,s.storage.transposer)
       s.output=self:endpoint("Analyser output (or isolated output staging)",s.output,s.storage.transposer)
       assert(s.storage.transposer==s.input.transposer and s.output.transposer==s.input.transposer,"scanner staging needs a common transposer")
       s.inputSlot=self:number("Witnessed input slot (Forestry analyser: 3)",1,self.inv:size(s.input),s.inputSlot)
-      if self.c.storage.kind=="me_interface" then
-        local previous=s.outputSlots and table.concat(s.outputSlots,",") or nil
-        s.outputSlots={}
-        local text=self:ask("Witnessed output slots (Forestry analyser: 9,10,11,12; exclude consumables)",previous)
-        for n in text:gmatch("%d+") do s.outputSlots[#s.outputSlots+1]=U.assertNumber(n,1,self.inv:size(s.output)) end
-        assert(#s.outputSlots>0,"scanner output slots required")
-        for _,slot in ipairs(s.outputSlots) do
-          assert(s.input.side~=s.output.side or slot~=s.inputSlot,"scanner input and output slots overlap")
-          assert(not self.inv:get(s.output,slot),"empty scanner output slots first")
-        end
-        assert(not self.inv:get(s.input,s.inputSlot),"empty scanner input slot first")
-        assert(s.storage.side~=s.input.side and s.storage.side~=s.output.side,"scanner cannot use Interface slots as analyser input/output")
-        self:registerEndpoint(s.storage)
-      end
       s.timeout=self:number("Scanner timeout in seconds",30,7200,600)
-      if self.c.storage.kind~="me_interface" then assert(#self.inv:scan(s.input)==0 and #self.inv:scan(s.output)==0,"empty scanner staging inventories first") end
+      assert(#self.inv:scan(s.input)==0 and #self.inv:scan(s.output)==0,"empty scanner staging inventories first")
       s.isolatedVerified=self:yes("Have you tested one input stack producing one analyzed output stack with equal count?",false)
     end
     self.save()

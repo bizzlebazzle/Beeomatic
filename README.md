@@ -7,7 +7,10 @@ and keeps jobs recoverable after interruptions.
 
 **ME Interface storage is the default.** Each alveary has a local Interface and
 transposer; bees and products live in real ME storage. One shared analyser station
-inspects/analyses bees. No shared archive chest or export bus is required.
+inspects/analyses bees. Its transposer inserts raw bees into an adjacent input
+chest; your pipes handle analysis and return directly to an ME Interface.
+Setup needs no analyser slot map or output inventory. No shared archive chest or
+export bus is required.
 
 On every start/resume, all initial drones must be verified analysed before breeding
 begins. During operation, offspring may queue temporarily in AE, but pending bees
