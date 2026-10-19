@@ -302,6 +302,22 @@ test("archive default preserves its identity through a second transposer",functi
   eq(wizard:inventoryId("tp2",5,w.c.storage.endpoints[1]),"hub")
 end)
 
+test("scanner Interface selection diagnoses the actual inventory and retries before asking for its adapter",function()
+  local w=require("tests.mocks.me").new(); local wizard,out=picker(w,{})
+  local calls,adapters=0,0
+  wizard.endpoint=function()
+    calls=calls+1
+    if calls==1 then return U.copy(w.c.scanner.input) end
+    return U.copy(w.c.scanner.storage)
+  end
+  wizard.address=function() adapters=adapters+1; eq(calls,2); return "if-scan" end
+  local port=wizard:port("Shared scanner ME Interface")
+  eq(port.id,"scan-port"); eq(adapters,1); eq(w.moves,0)
+  local text=table.concat(out,"\n")
+  ok(text:find("5 slots through transposer tp-scan, side 1",1,true))
+  ok(text:find("not the OC Interface adapter",1,true))
+end)
+
 test("shared Interface reuses its port ID without an identity question",function()
   local w=require("tests.mocks.me").new()
   local wizard,out=picker(w,{"1"})

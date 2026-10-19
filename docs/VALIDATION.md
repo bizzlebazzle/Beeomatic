@@ -8,7 +8,7 @@ flow still requires in-game acceptance.**
 
 ## Automated checks
 
-Current result: **145 tests, zero failures on each of Lua 5.2 and Lua 5.3**.
+Current result: **146 tests, zero failures on each of Lua 5.2 and Lua 5.3**.
 Run `python tests/run.py` in the development workspace. It syntax-checks every
 project Lua file, then runs the suite on both engines using local Lupa runtimes.
 Alternatively run `lua tests/run.lua` with a compatible runtime. These dependencies
@@ -34,6 +34,8 @@ Interface coverage includes:
 - Automatic IDs surviving setup interruption, shared Interface/analyser ID reuse,
   mismatched Interface connection rejection, and robot selection by friendly name.
   Climate entries require no separate environment confirmation.
+- An incorrect scanner Interface inventory reports its actual size/transposer/side
+  and allows reselection before asking for the Interface adapter.
 - Automatic native alveary input/output maps and retryable placement checks:
   empty slots, wrong caste and mismatched housing adapters. Unanalysed test bees
   are accepted for placement without weakening the runtime analysis gate.

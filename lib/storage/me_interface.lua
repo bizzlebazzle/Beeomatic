@@ -40,7 +40,8 @@ function M:validate()
     ids[ep.id]=true; addresses[ep.address]=true
     local loc=ep.transposer..":"..ep.side; assert(not locations[loc],"duplicate Interface inventory"); locations[loc]=true
     local p=self:port(ep); local size=self.inv:size(ep)
-    assert(size==9,"expected full-block Interface with nine slots")
+    assert(size==9,"Interface port "..ep.id.." reports "..tostring(size).." slots through transposer "..ep.transposer..
+      ", side "..ep.side.."; expected 9. Check the selected inventory connection, separately from the Interface adapter.")
     local seen={}
     for _,slot in ipairs({ep.princessSlot or 1,ep.droneSlot or 2,ep.returnSlot or 9}) do
       U.assertNumber(slot,1,size); assert(not seen[slot],"overlapping Interface role slots"); seen[slot]=true

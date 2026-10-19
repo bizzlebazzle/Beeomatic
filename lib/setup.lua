@@ -168,10 +168,17 @@ function M.new(config,components,inv,save,read,out)
     self.inv:size(ep); return ep
   end
   function w:port(label,default,transposer)
-    local ep=self:endpoint(label,default,transposer)
+    local ep
+    while true do
+      ep=self:endpoint(label,default,transposer)
+      local size=self.inv:size(ep)
+      if size==9 then break end
+      self.out("Selected inventory reports "..tostring(size).." slots through transposer "..ep.transposer..", side "..ep.side.."; expected 9 for an ME Interface.")
+      self.out("This checks the transposer's attached inventory, not the OC Interface adapter. Select the inventory on the side touching your full-block Interface, rather than the analyser or a staging chest.")
+      self.out("Choose the inventory again, or type back to revisit the previous setup section.")
+    end
     ep.address=self:address("Adapter at "..label,{"getInterfaceConfiguration","setInterfaceConfiguration"},default and default.address)
     ep.managed=true; ep.princessSlot=1; ep.droneSlot=2; ep.returnSlot=9
-    assert(self.inv:size(ep)==9,"use a full-block ME Interface with nine inventory slots")
     for _,old in ipairs(self.c.storage.endpoints) do
       assert(old.address~=ep.address or old.transposer==ep.transposer and old.side==ep.side,
         "Interface adapter already registered against a different inventory connection")
