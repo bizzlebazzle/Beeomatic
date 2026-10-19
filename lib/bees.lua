@@ -19,6 +19,7 @@ function M.scanned(s)
 end
 function M.identity(s)
   if not s then return nil end
+  if type(s.tag)=="string" then return U.encode({name=s.name,damage=s.damage,tag=s.tag}) end
   -- NBT hash when exposed; complete individual data otherwise. Never visible species alone.
   return U.encode({name=s.name,damage=s.damage,tag=s.tag,nbt_hash=s.nbt_hash,
     individual=s.individual})

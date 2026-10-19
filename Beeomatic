@@ -1,0 +1,4 @@
+local shell=require("shell")
+local fs=require("filesystem")
+local root=fs.path(shell.resolve("Beeomatic"))
+return assert(loadfile(root.."Beeomatic.lua"))(...)

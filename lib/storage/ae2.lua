@@ -1,5 +1,12 @@
 local Chest=require("lib.storage.chest"); local B=require("lib.bees"); local U=require("lib.util")
 local M={}; M.__index=M
+local function tagFilter(tag)
+  -- GTNH NetworkControl.matches compares Lua strings to Java byte[].mkString.
+  -- That representation is concatenated SIGNED decimal bytes, not binary NBT.
+  local bytes={}; for i=1,#tag do local n=tag:byte(i); bytes[i]=tostring(n>127 and n-256 or n) end
+  return table.concat(bytes)
+end
+M.tagFilter=tagFilter
 function M.new(config,inv,components)
   return setmetatable({config=config,inv=inv,components=components,chest=Chest.new(config,inv)},M)
 end
@@ -8,20 +15,30 @@ function M:network()
 end
 function M:scan()
   local localItems=self.chest:scan(); local counts={}
+  self.inv.state.aeCatalog=self.inv.state.aeCatalog or {}
   -- Archive chest is exposed by an ME storage bus. Deduplicate its exact stacks.
   for _,i in ipairs(localItems) do
     local k=B.identity(i.stack); counts[k]=(counts[k] or 0)+i.stack.size
+    if B.scanned(i.stack) then self.inv.state.aeCatalog[k]=U.copy(i.stack.individual) end
   end
   for _,s in pairs(assert(self:network().getItemsInNetwork(),"ME subnet offline")) do
     if (s.size or 0)>0 then
       local k=B.identity(s); local used=math.min(counts[k] or 0,s.size)
       counts[k]=(counts[k] or 0)-used
       if s.size>used then local copy=U.copy(s); copy.size=s.size-used
+        copy.individual=copy.individual or U.copy(self.inv.state.aeCatalog[k])
         localItems[#localItems+1]={network=true,slot=k,endpoint={id="ME"},stack=copy}
       end
     end
   end
   return localItems
+end
+function M:prepare(items)
+  for _,i in ipairs(items) do if i.network and B.kind(i.stack) and not B.scanned(i.stack) then
+    self:materialize(i,assert(self.config.endpoints[1]),"ae-inspection")
+    self.inv:release("ae-inspection"); return false
+  end end
+  return true
 end
 function M:validate()
   self.chest:validate(); self:network()
@@ -39,7 +56,7 @@ function M:materialize(item,endpoint,owner)
   local cfg=self.config; local buffer=assert(cfg.buffer,"register ME export buffer")
   assert(buffer.transposer==endpoint.transposer,"ME buffer unreachable from selected transposer")
   local dstSlot=self.inv:empty(buffer)
-  local filter={name=item.stack.name,damage=item.stack.damage,tag=item.stack.tag}
+  local filter={name=item.stack.name,damage=item.stack.damage,tag=tagFilter(item.stack.tag)}
   local matches=self:network().getItemsInNetwork(filter)
   local total=0
   for _,s in pairs(matches or {}) do

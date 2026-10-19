@@ -14,7 +14,8 @@ function M:step(items)
         "scanner output identity/count mismatch")
       -- Analysis changes NBT. A dedicated one-stack path establishes provenance.
       if q.ident then assert(r.stack.individual.ident==q.ident,"scanner changed species identity") end
-      self.inv:move(r,c.storage,self.inv:empty(c.storage),r.stack.size,"scanner")
+      assert(not self.inv:get(c.storage,q.returnSlot),"original scanner source slot is occupied")
+      self.inv:move(r,c.storage,q.returnSlot,r.stack.size,"scanner")
       self.inv:release("scanner"); self.state.scan=nil; self.save(); return true
     end
     assert(self.now()-q.started<(c.timeout or 600),"Scanner timeout: check honey, power, input and output; progress preserved")
@@ -28,7 +29,7 @@ function M:step(items)
     local physical={endpoint=c.storage,slot=i.slot,stack=self.inv:get(c.storage,i.slot)}
     assert(i.endpoint.id==c.storage.id,"scanner cannot reach this inventory")
     self.state.scan={name=i.stack.name,damage=i.stack.damage,size=i.stack.size,
-      ident=i.stack.individual and i.stack.individual.ident,started=self.now()}; self.save()
+      ident=i.stack.individual and i.stack.individual.ident,started=self.now(),returnSlot=i.slot}; self.save()
     self.inv:move(physical,c.input,c.inputSlot,i.stack.size,"scanner")
     return false,"Scanning "..tostring(i.stack.label or i.stack.name)
   end end
