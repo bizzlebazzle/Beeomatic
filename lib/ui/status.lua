@@ -45,6 +45,9 @@ local function routine(message)
     or (message and (message:match("^Shared scanner analysing %d+ bees$") or message:match("^Scanning ")))
 end
 local function reason(message)
+  if message=="Waiting for parent drone population and stable confirmation cycles" then
+    return "Waiting for stable parent population"
+  end
   -- Strip Lua source locations from the overview; verbose retains the original.
   return tostring(message):gsub("[^%s]+%.lua:%d+: ",""):gsub("[\r\n]+"," ")
 end
@@ -95,7 +98,8 @@ function M.render(state,c,verbose)
   end
   if idle>0 then r[#r+1]="Alvearies idle: "..idle end
   if #warnings>0 then
-    r[#r+1]="Attention: "..table.concat(warnings,"; ")
+    r[#r+1]="Attention:"
+    for _,warning in ipairs(warnings) do r[#r+1]="  "..warning end
     r[#r+1]="Details: Beeomatic status --verbose"
   end
   r[#r+1]="p pause | r resume | q stop after active work"

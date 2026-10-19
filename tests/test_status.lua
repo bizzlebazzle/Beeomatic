@@ -30,12 +30,22 @@ test("compact status keeps real scanner and job failures visible",function()
   state.jobs[1].state="PAUSED"; state.jobs[1].error="/home/Beeomatic/lib/jobs.lua:36: missing flowers"
   local text=Status.render(state,config,false)
   ok(text:find("BEEOMATIC | Needs attention",1,true)); ok(text:find("1 paused",1,true))
-  ok(text:find("Attention: multiple possible scanner returns; audit the external path; Common: missing flowers",1,true))
+  ok(text:find("Attention:\n  multiple possible scanner returns; audit the external path\n  Common: missing flowers",1,true))
   ok(not text:find(".lua:",1,true)); ok(text:find("Beeomatic status --verbose",1,true))
   ok(Status.render(state,config,true):find(state.error,1,true))
   state=sample(); state.housings={b={error="housing disconnected"}}
   text=Status.render(state,config,false)
   ok(text:find("BEEOMATIC | Needs attention",1,true)); ok(text:find("b: cannot read housing",1,true))
+end)
+
+test("parent population alerts use short wording for both saved and new messages",function()
+  for _,message in ipairs({"Waiting for parent drone population and stable confirmation cycles","Waiting for stable parent population"}) do
+    local state=sample()
+    state.jobs[2].species="magicbees.specieseldritch"; state.jobs[2].error=message
+    local text=Status.render(state,config,false)
+    ok(text:find("Attention:\n  Eldritch: Waiting for stable parent population\n",1,true))
+    ok(not text:find("stable confirmation cycles",1,true))
+  end
 end)
 
 test("compact status identifies pending target and terminal states",function()

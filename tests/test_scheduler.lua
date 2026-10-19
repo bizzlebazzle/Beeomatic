@@ -8,6 +8,23 @@ local function stocked(two)
   w.inventories.hub[12]=W.bee("Forest","drone",8)
   return w
 end
+
+test("working queens do not raise false housing alerts and real obstructions clear after recovery",function()
+  local w=stocked(); local j=W.job(w,"one","Cultivated","populate")
+  j.state="RUNNING"; j.machine="a"; j.started=w.time
+  w.state.machines.a={job=j.id,state="RUNNING"}
+  w.inventories.a[4]=W.bee("Cultivated","queen")
+  w.scheduler:advance(j)
+  eq(j.state,"RUNNING"); eq(j.error,nil)
+  local Status=require("lib.ui.status")
+  ok(not Status.render(w.state,w.c,false):find("Attention:",1,true))
+  w.obstructed=true; w.scheduler:advance(j)
+  ok(j.error:find("housing reports it cannot work",1,true))
+  ok(Status.render(w.state,w.c,false):find("Attention:\n  Cultivated: housing reports it cannot work",1,true))
+  w.obstructed=false; w.scheduler:advance(j)
+  eq(j.error,nil); eq(j.state,"RUNNING"); eq(w.moves,0)
+  ok(not Status.render(w.state,w.c,false):find("Attention:",1,true))
+end)
 test("concurrent independent operations use separate machines and items",function()
   local w=stocked(true)
   w.inventories.hub[3]=W.bee("Aware","princess")

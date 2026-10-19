@@ -54,7 +54,8 @@ function M:getCycleState()
   local drone=self.inv:get(self.endpoint,s.drone)
   local queen=h.getQueen(); local hd=h.getDrone()
   if input or drone or queen or hd then
-    return "RUNNING",h.canBreed() and nil or "housing reports it cannot work; check climate, flowers, outputs and special conditions"
+    if h.canBreed() then return "RUNNING" end
+    return "RUNNING","housing reports it cannot work; check climate, flowers, outputs and special conditions"
   end
   local p,d=0,0
   for _,slot in ipairs(s.outputs) do local stack=self.inv:get(self.endpoint,slot)

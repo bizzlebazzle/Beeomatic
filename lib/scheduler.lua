@@ -169,7 +169,7 @@ function M:select(j,items,template)
       end
     end
   end
-  if preparing then return nil,nil,"Waiting for parent drone population and stable confirmation cycles" end
+  if preparing then return nil,nil,"Waiting for stable parent population" end
   -- Start/recover a mutation from actual parent stock. Try both directions.
   for n=1,2 do
     local left,right=j.route.parents[n],j.route.parents[3-n]
