@@ -125,3 +125,9 @@ Legacy configuration without an export mode retains callback mode; reconfigure
 AE2 storage to opt into the workaround and register its physical signal circuit.
 Manual normal export is verified; automated OC signal wiring and full breeding
 still require in-game acceptance. Both paths retain exact-NBT database selection.
+
+`RedstoneVanilla.checkSide` converts the supplied side with `redstone.toGlobal()`;
+computer Redstone Card outputs therefore follow local computer orientation. The
+transposer's world-side map must not be reused blindly. A reported failure to
+light the north-side wire exposed an incorrect world-north assumption in the
+manual test guidance; setup now explicitly requires local-side calibration.

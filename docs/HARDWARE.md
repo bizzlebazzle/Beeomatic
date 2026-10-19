@@ -87,6 +87,11 @@ AE2 Redstone Card to **active with signal**, remove fuzzy/crafting upgrades and
 clear all filters. The dedicated OC output must be the ONLY source of enabling
 signal; remove the testing lever before automatic control. Register the OC
 redstone component address and output face independently from the export-bus face.
+**Redstone Card side numbers follow the computer's local orientation**: the pinned
+OC implementation calls `redstone.toGlobal()` before accessing the physical face.
+Do not assume that side 2 powers world north as it does for a transposer. Identify
+the computer's front and verify the actual powered face with the output enabled;
+only then save the redstone side and attest the circuit.
 Output zero must disable the bus; output 15 must enable it. Verify the entire
 physical circuit before attesting `exportGate.verified` in setup.
 

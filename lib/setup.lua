@@ -51,7 +51,8 @@ function M.new(config,components,inv,save,read,out)
         self.out("Set the ME bus to ACTIVE WITH SIGNAL. An OC Redstone Card must be the sole signal source. Remove the manual lever. Connect the chosen computer output face to the bus through verified redstone wiring. Signal stays ON until an exact physical receipt arrives; bus speed is not assumed.")
         local g=s.exportGate or {}; s.exportGate=g
         g.address=self:address("OC redstone component address",{"getOutput","setOutput"},g.address)
-        g.side=self:number("Computer/redstone output side (different from export-bus side)",0,5,g.side)
+        self.out("OC Redstone Card sides follow the computer's local orientation, not the transposer's world-direction map. Verify the actual powered face before saving this side; use require('sides') aliases where helpful.")
+        g.side=self:number("Verified LOCAL computer/redstone output side (different from export-bus side)",0,5,g.side)
         g.off=0; g.on=15
         self.components:proxy(g.address).setOutput(g.side,g.off)
         s.exportTimeout=self:number("Maximum wait for an export receipt, seconds",1,600,s.exportTimeout or 60)
@@ -85,8 +86,9 @@ function M.new(config,components,inv,save,read,out)
       self.out("The inventory just registered is your INPUT STAGING CHEST, not the alveary. Isolate this machine's caste routes and outputs. Both input routes must remain completely stopped while the gate is OFF; do not install return-to-breeder loops.")
       a.routing={output=self:endpoint("Dedicated routing output chest")}
       a.routing.outputInventorySize=self.inv:size(a.routing.output)
+      self.out("Redstone output sides follow the controller's local orientation. Verify the physical powered face; do not reuse the transposer's world side numbers.")
       a.routing.gate={address=self:address("Dedicated routing redstone component address",{"setOutput"}),
-        side=self:number("Gate output side",0,5),off=0,on=15}
+        side=self:number("Verified LOCAL redstone gate output side",0,5),off=0,on=15}
       self.components:proxy(a.routing.gate.address).setOutput(a.routing.gate.side,0)
       a.routing.verified=self:yes("Have you tested both caste paths, gate isolation, correct housing association and complete output return?",false)
     end
