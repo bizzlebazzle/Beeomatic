@@ -90,6 +90,7 @@ function M.main(root,args)
             end
           end
         else active,status=scheduler:step() end
+        Status.observe(state,c,components,inv,computer.uptime()); save()
         local display=Status.render(state,c,false)
         if display~=lastDisplay then print(display); lastDisplay=display end
         if status=="DONE" or status=="STOPPED" then break end
@@ -109,7 +110,9 @@ function M.main(root,args)
     if not ok then error(err,0) end
   end
   if cmd=="" or cmd=="help" then print(help); return end
-  if cmd=="status" then print(Status.render(state,c,f.verbose)); return end
+  if cmd=="status" then
+    Status.observe(state,c,components,inv,computer.uptime()); print(Status.render(state,c,f.verbose)); return
+  end
   if cmd=="logs" then for _,e in ipairs(state.events or {}) do print(tostring(e.time).." "..e.message) end; return end
   if cmd=="pause" or cmd=="stop" then
     if fs.exists(lock) then sendControl(cmd,a[2])

@@ -269,12 +269,12 @@ function M.new(config,components,inv,save,read,out)
           else slots.verified=true end
           a.slots=slots
         else
-          self.out("This housing API has no live climate/environment methods. Read its working climate in-game, including heaters/fans, and enter the actual categories.")
+          self.out("Enter this alveary's working temperature and humidity, including any heaters/fans.")
+          local previous=a.environment or {}
           a.environment={temperature=self:ask("Temperature: ICY COLD NORMAL WARM HOT HELLISH"):upper(),
-            humidity=self:ask("Humidity: ARID NORMAL DAMP"):upper(),biome=self:ask("Biome"),dimension=self:ask("Dimension")}
-          local e=a.environment; e.flowers={}
-          local flowers=self:ask("Verified flower-provider IDs, comma separated (e.g. flowers)")
-          for f in flowers:gmatch("[^, ]+") do e.flowers[f]=true end
+            humidity=self:ask("Humidity: ARID NORMAL DAMP"):upper(),biome=previous.biome,dimension=previous.dimension}
+          local e=a.environment
+          self.out("Each bee's required flower type is shown in alveary status. Supply those flowers in-world.")
           e.daylightManaged=self:yes("Does this installation support the required day/night schedule?",false)
           e.rainProtected=self:yes("Is operation protected from rain?",false)
           e.skyAccess=self:yes("Does the bee housing have valid sky access?",false)

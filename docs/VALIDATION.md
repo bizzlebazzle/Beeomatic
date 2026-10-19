@@ -8,7 +8,7 @@ flow still requires in-game acceptance.**
 
 ## Automated checks
 
-Current result: **137 tests, zero failures on each of Lua 5.2 and Lua 5.3**.
+Current result: **139 tests, zero failures on each of Lua 5.2 and Lua 5.3**.
 Run `python tests/run.py` in the development workspace. It syntax-checks every
 project Lua file, then runs the suite on both engines using local Lupa runtimes.
 Alternatively run `lua tests/run.lua` with a compatible runtime. These dependencies
@@ -35,6 +35,10 @@ Interface coverage includes:
   empty slots, wrong caste and mismatched housing adapters. Unanalysed test bees
   are accepted for placement without weakening the runtime analysis gate.
 - The Interface doctor probe and refusal to migrate unresolved saved work.
+- Setup omits biome/dimension/flower questions. Missing or old flower lists do not
+  block scheduling. Live status shows separate resident bee flower requirements,
+  labels unknown raw-bee requirements, isolates missing housings and does not
+  rewrite worker state or move items during a status query.
 
 Existing checks also cover route planning, purity/templates, climate/tolerances,
 reserves, chest transfers, gated routing, legacy export recovery, persistence,

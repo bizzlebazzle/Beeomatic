@@ -87,8 +87,12 @@ does not prove the analyser or a complete breeding cycle works; complete the
 ## Climates and routed housings
 
 Read each alveary's actual working temperature/humidity, including upgrades.
-Enter flower-provider IDs from analysed genetics and verify sky, rain and day/night
-operation. The housing API cannot report all these facts. `canBreed()` does not
+Setup does not ask for biome, dimension or flower lists. Status shows the current
+princess/queen and drone in each alveary, with the flower type required by each
+bee's active genes. Unanalysed bees show an unknown requirement until analysed.
+Supply the displayed flowers in-world and verify sky, rain and day/night operation.
+Flower availability is checked by actual housing operation, not a configured list.
+The housing API cannot report all these facts. `canBreed()` does not
 prove every mutation requirement. Revoke attestations when the world changes.
 
 If direct inventory access is unavailable, the `routed` backend retains a housing

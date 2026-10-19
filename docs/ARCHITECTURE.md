@@ -91,5 +91,8 @@ while transfers, scanner batches, stock requests or owned work remain unresolved
 
 Persistence uses data-only Lua, temporary-file readback and a `.bak` generation.
 OpenOS does not provide filesystem `fsync` here. Preserve both generations when
-investigating power loss. Configuration facts (climate/flowers/requirements) remain
-explicit in-game attestations because the housing API does not expose them all.
+investigating power loss. Climate and special mutation requirements remain explicit
+in-game attestations because the housing API does not expose them all. Flower
+requirements come from each resident bee's active genome and appear in live
+housing/status snapshots. No setup flower list gates scheduling. Actual workability
+is observed through the housing; unknown/unanalysed flower requirements are labelled.

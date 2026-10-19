@@ -43,7 +43,10 @@ apiary inventory size heuristic is used.
 
 The inspected housing integration exposes no live temperature, humidity, biome,
 dimension, flowers, frames, daylight or weather methods. Beeomatic uses explicitly
-attested configuration and reports that provenance. `canBreed()` reports general
+attested climate/daylight/rain/sky configuration. Setup omits biome/dimension and
+flower lists; flower requirements are read from resident bees' active genomes and
+displayed per housing, without claiming to detect actual nearby flower blocks.
+`canBreed()` reports general
 workability; it does not prove that an arbitrary mutation condition is satisfied.
 Special conditions are descriptions, not a complete machine-readable requirement
 API. They require specific per-alveary confirmation; optional structured route

@@ -52,7 +52,10 @@ needs recovery before its stock can be released. Never delete state to stop work
 If OpenOS provides another shell/process, `pause`, `resume`, and `stop` write
 `data/control.lua`. The foreground worker reads this mailbox at its bounded polling
 interval; it does not pretend a second command magically controls another process.
-`status` and `logs` read the last saved snapshot. Do not start two workers for the
+`status` and `logs` read the last saved snapshot. `status` additionally refreshes resident bee/flower information
+from the registered housings without moving items or writing the worker's state.
+A missing housing is reported independently; raw bees show unknown flowers until
+analysed. Do not start two workers for the
 same data directory. A persistent lock prevents ordinary duplicate starts. After a
 crash, first ensure the old worker is not running, then use:
 

@@ -14,8 +14,8 @@ for n,v in ipairs(environments) do
   c.alvearies[n]={id=v[1],name=v[1],enabled=true,priority=n,
     address="REPLACE-HOUSING-"..n,transposer=ep.transposer,side=3,storage=ep,
     slots={princess=1,drone=2,outputs={3,4,5,6,7,8,9},inventorySize=9,verified=false},
-    environment={temperature=v[2],humidity=v[3],biome="REPLACE",dimension="REPLACE",
-      flowers={flowers=true},daylightManaged=false,rainProtected=false,skyAccess=false,verified=false},confirmed={}}
+    environment={temperature=v[2],humidity=v[3],
+      daylightManaged=false,rainProtected=false,skyAccess=false,verified=false},confirmed={}}
 end
 local scannerPort=port("scanner_port","REPLACE-SCANNER-TRANSPOSER","REPLACE-SCANNER-INTERFACE",0)
 c.storage.endpoints[#c.storage.endpoints+1]=scannerPort

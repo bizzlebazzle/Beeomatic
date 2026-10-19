@@ -20,7 +20,8 @@ function M.bee(s,e)
   if not g.nocturnal and not e.daylightManaged then return false,"day/night operation not verified" end
   if not g.tolerantFlyer and not e.rainProtected then return false,"rain protection not verified" end
   if not g.caveDwelling and not e.skyAccess then return false,"sky access required" end
-  if not e.flowers or not e.flowers[g.flowerProvider] then return false,"flowers: "..tostring(g.flowerProvider) end
+  -- Flower requirements come from bee genetics and are displayed with the live
+  -- housing. Actual availability is checked by the housing, not a setup list.
   return true
 end
 function M.mutation(route,a)
