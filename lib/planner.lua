@@ -2,8 +2,11 @@ local B=require("lib.bees"); local E=require("lib.environment"); local U=require
 local M={}
 function M.plan(target,mutations,items,c)
   target=mutations:resolve(target)
+  local expanded=0
   local function count(name,kind) return B.count(items,name,kind,true) end
   local function visit(name,path)
+    expanded=expanded+1
+    if expanded>(c.maxPlanExpansion or 20000) then return nil,"mutation search budget exceeded; narrow preferred routes or provide prerequisite stock" end
     if count(name,"princess")>0 and count(name,"drone")>0 then
       return {species=name,available=true,cost=0,children={}}
     end
@@ -28,6 +31,20 @@ function M.plan(target,mutations,items,c)
           local ok,why=E.mutation(route,a)
           if ok then suitable[#suitable+1]=a.id else unresolved[#unresolved+1]=a.id..": "..why end
         end end
+        -- When actual parent genomes exist, route ranking includes their survival
+        -- requirements, not merely mutation condition descriptions.
+        local knownPair=false; local climate={}
+        for _,p in ipairs(items) do local ps=p.stack or p
+          if B.kind(ps)=="princess" then for _,d in ipairs(items) do local ds=d.stack or d
+            if B.kind(ds)=="drone" and
+              ((B.count({ps},route.parents[1],"princess",true)>0 and B.count({ds},route.parents[2],"drone",true)>0) or
+               (B.count({ps},route.parents[2],"princess",true)>0 and B.count({ds},route.parents[1],"drone",true)>0)) then
+              knownPair=true
+              for _,a in ipairs(E.select(c.alvearies,route,ps,ds,{})) do climate[a.id]=true end
+            end
+          end end
+        end
+        if knownPair then suitable=U.keys(climate) end
         if #suitable==0 then cost=cost+100000 end
         local pref=c.preferred[name]
         if not pref then

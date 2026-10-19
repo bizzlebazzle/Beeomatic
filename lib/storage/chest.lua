@@ -13,6 +13,6 @@ function M:materialize(item,endpoint)
   return {endpoint=endpoint,slot=item.slot,stack=self.inv:get(endpoint,item.slot)}
 end
 function M:deposit(item,endpoint,owner)
-  return self.inv:move(item,endpoint,self.inv:empty(endpoint),item.stack.size,owner)
+  return self.inv:move(item,endpoint,self.inv:destination(endpoint,item.stack),item.stack.size,owner)
 end
 return M

@@ -64,11 +64,12 @@ function M:getCycleState()
   if p>0 and d>0 then return "FINISHED" end
   return "UNCERTAIN","no live inputs and no complete offspring pair; inspect mapped outputs"
 end
-function M:collectResults(storage,owner)
+function M:collectResults(storage,owner,onReceipt)
   local r={}
   for _,slot in ipairs(self:getSlots().outputs) do local stack=self.inv:get(self.endpoint,slot)
     if stack then
       r[#r+1]=storage:deposit({endpoint=self.endpoint,slot=slot,stack=stack},self.config.storage,owner)
+      if onReceipt then onReceipt(r[#r]) end
     end
   end; return r
 end

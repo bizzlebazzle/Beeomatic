@@ -37,6 +37,7 @@ function M.new(config,components,inv,save,read,out)
       self.out("Attach an ME STORAGE BUS to the archive. Keep it on a dedicated bee subnet. Add an adapter on an ME interface/controller, database component, and an adapter exposing a separate export bus into a buffer chest. The buffer MUST NOT have a storage/import bus.")
       s.address=self:address("ME interface/controller address",{"getItemsInNetwork","store"},s.address)
       s.database=self:address("Database component address",{"clear","get"},s.database)
+      s.databaseSlots=self:number("Dedicated database capacity (number of entries shown in its GUI)",1,4096,s.databaseSlots or 9)
       s.exportAddress=self:address("ME export bus component address",{"setExportConfiguration","exportIntoSlot"},s.exportAddress)
       s.exportSide=self:number("Direction the export bus faces (relative to its host block)",0,5,s.exportSide)
       s.buffer=self:endpoint("Isolated export buffer",s.buffer)
@@ -53,6 +54,8 @@ function M.new(config,components,inv,save,read,out)
     a.name=self:ask("Friendly alveary name",a.id)
     self.out("Place one adapter against an assembled alveary block; connect it to the OC cable network. Place a transposer directly beside the alveary inventory face and the archive chest. Do not register two blocks of the same multiblock as separate machines.")
     a.address=self:address("Housing component address",{"getQueen","getDrone","getBeeParents","canBreed"})
+    a.backend=self:ask("Inventory backend: alveary (direct access) or routed (external gated pipes)","alveary"):lower()
+    assert(a.backend=="alveary" or a.backend=="routed","choose alveary or routed")
     local ep=self:endpoint("This alveary's exposed inventory")
     a.transposer=ep.transposer; a.side=ep.side
     a.storage=self:endpoint("Archive chest as viewed by THIS transposer",self.c.storage.endpoints[1])
@@ -61,22 +64,32 @@ function M.new(config,components,inv,save,read,out)
     for _,x in ipairs(self.c.storage.endpoints) do if x.id==a.storage.id and x.transposer==a.storage.transposer then known=true end end
     if not known then self.c.storage.endpoints[#self.c.storage.endpoints+1]=a.storage end
     local size=self.inv:size(ep)
+    if a.backend=="routed" then
+      self.out("The inventory just registered is your INPUT STAGING CHEST, not the alveary. Isolate this machine's caste routes and outputs. Both input routes must remain completely stopped while the gate is OFF; do not install return-to-breeder loops.")
+      a.routing={output=self:endpoint("Dedicated routing output chest")}
+      a.routing.outputInventorySize=self.inv:size(a.routing.output)
+      a.routing.gate={address=self:address("Dedicated routing redstone component address",{"setOutput"}),
+        side=self:number("Gate output side",0,5),off=0,on=15}
+      self.components:proxy(a.routing.gate.address).setOutput(a.routing.gate.side,0)
+      a.routing.verified=self:yes("Have you tested both caste paths, gate isolation, correct housing association and complete output return?",false)
+    end
     local slots={inventorySize=size,outputs={}}
     slots.princess=self:number("Princess/queen slot observed through probe (no default)",1,size)
     slots.drone=self:number("Drone input slot observed through probe (no default)",1,size)
     local text=self:ask("Observed product/offspring output slots, comma separated")
-    for n in text:gmatch("%d+") do slots.outputs[#slots.outputs+1]=U.assertNumber(n,1,size) end
+    for n in text:gmatch("%d+") do slots.outputs[#slots.outputs+1]=U.assertNumber(n,1,a.routing and a.routing.outputInventorySize or size) end
     assert(#slots.outputs>0,"output slots required")
     self.out("Role check: use expendable analyzed test stock. With drone input EMPTY, manually put a princess in the configured princess slot. This read-only check does not insert or consume bees.")
     self:ask("Press Enter when the princess is present","")
     local p=self.inv:get(ep,slots.princess); assert(B.kind(p)=="princess" and B.scanned(p),"princess slot witness failed")
     local h=self.components:proxy(a.address); local q=h.getQueen()
-    assert(q and U.equal(q.active,p.individual.active),"adapter does not observe that princess; wrong housing address")
+    if not a.routing then assert(q and U.equal(q.active,p.individual.active),"adapter does not observe that princess; wrong housing address") end
     self.out("Remove princess through GUI. Put one analyzed drone in the drone input, with princess input EMPTY.")
     self:ask("Press Enter to inspect drone","")
     assert(not self.inv:get(ep,slots.princess),"remove test princess first")
     local d=self.inv:get(ep,slots.drone); local hd=h.getDrone()
-    assert(B.kind(d)=="drone" and B.scanned(d) and hd and U.equal(hd.active,d.individual.active),"drone slot/adapter witness failed")
+    assert(B.kind(d)=="drone" and B.scanned(d),"drone slot witness failed")
+    if not a.routing then assert(hd and U.equal(hd.active,d.individual.active),"drone adapter association failed") end
     self.out("Remove test drone manually. Observe one complete expendable breeding cycle in this machine. Verify every configured output slot belongs to offspring/products, never upgrades or frames. Return all stock to the archive after testing.")
     slots.verified=self:yes("Have you witnessed and verified the output map?",false)
     a.slots=slots
@@ -92,7 +105,10 @@ function M.new(config,components,inv,save,read,out)
     e.verified=self:yes("Have you verified this operating environment in-game?",false)
     e.provenance="manual in-game attestation"; a.confirmed={}
     self.c.alvearies[#self.c.alvearies+1]=a; self.save()
-    self.out("Saved "..a.id..": archive "..a.storage.id.." side "..a.storage.side.." -> transposer "..a.transposer.." -> alveary side "..a.side)
+    self.out("Saved "..a.id.." physical layout (sides relative to "..a.transposer.."):")
+    self.out("[Archive "..a.storage.id..", side "..a.storage.side.."] -- [Transposer] -- ["..(a.routing and "Input staging" or "Alveary")..", side "..a.side.."]")
+    if a.routing then self.out("  Input staging -- gated caste pipes --> housing "..a.address.." -- output pipes --> "..a.routing.output.id.." (side "..a.routing.output.side..")") end
+    self.out("[OC computer] -- OC cable -- [Adapter at housing "..a.address.."]")
   end
   function w:scanner()
     local s=self.c.scanner
@@ -123,6 +139,7 @@ function M.new(config,components,inv,save,read,out)
     if r.enabled then
       r.modem=self:address("Local wireless modem address",{"send","open","isWireless"},r.modem)
       r.address=self:ask("Robot wireless modem address",r.address)
+      r.alvearyId=self:ask("ID of the alveary this stationary robot's foundation position serves",r.alvearyId)
       r.port=self:number("Robot command port",1,65535,r.port)
       r.replyPort=self:number("Reply port",1,65535,r.replyPort)
     end

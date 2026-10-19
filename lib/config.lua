@@ -11,11 +11,13 @@ function M.defaults()
 end
 function M.validate(c)
   assert(c.version==1,"unsupported configuration version")
+  assert(c.storage and (c.storage.kind=="chest" or c.storage.kind=="ae2"),"unsupported storage backend")
   U.assertNumber(c.concurrency,1,32); U.assertNumber(c.pollSeconds,1,300)
   U.assertNumber(c.maxCycles,1,100000); U.assertNumber(c.confirmCycles,1,100)
   U.assertNumber(c.reserveDrones,1,100000); U.assertNumber(c.reservePrincesses,1,100000)
   local ids,addresses,physical={},{},{}
   for _,a in ipairs(c.alvearies) do
+    assert(not a.backend or a.backend=="alveary" or a.backend=="routed","unsupported breeder backend")
     assert(a.id and not ids[a.id],"duplicate alveary ID"); ids[a.id]=true
     assert(a.address and not addresses[a.address],"duplicate bee housing address"); addresses[a.address]=true
     local p=tostring(a.transposer)..":"..tostring(a.side)

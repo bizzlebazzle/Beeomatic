@@ -1,6 +1,6 @@
 local U=require("lib.util"); local B=require("lib.bees"); local G=require("lib.genetics")
 local E=require("lib.environment"); local J=require("lib.jobs"); local T=require("lib.templates")
-local Backend=require("lib.breeders.alveary")
+local Backend=require("lib.breeders.factory")
 local M={}; M.__index=M
 function M.new(c,state,components,inv,storage,scanner,save,now)
   state.jobs=state.jobs or {}; state.machines=state.machines or {}; state.events=state.events or {}
@@ -19,10 +19,16 @@ function M:backend(id)
   end end
   error("Registered machine missing: "..tostring(id)..". Restore its configuration; bees may still be inside.")
 end
-function M:items()
+function M:items(owner)
   local all=self.storage:scan(); local items={}
   for _,i in ipairs(all) do
-    if not self.state.reservations[U.location(i.endpoint,i.slot)] then items[#items+1]=i end
+    local held=self.state.reservations[U.location(i.endpoint,i.slot)]
+    for _,j in ipairs(self.state.jobs) do
+      local loc=j.lineage
+      if j.id~=owner and j.state~="DONE" and loc and loc.endpoint.id==i.endpoint.id and loc.slot==i.slot and
+        loc.identity==B.identity(i.stack) then held=true end
+    end
+    if not held then items[#items+1]=i end
   end
   return items
 end
@@ -135,7 +141,8 @@ end
 function M:completion(j,items,template)
   if j.mode=="convert" then
     -- Conversion creates one additional stable princess; baseline is captured before work.
-    return j.baseline and self:count(items,j.species,"princess")>j.baseline and j.confirmed>=self.c.confirmCycles
+    return j.baseline and self:count(items,j.species,"princess")>j.baseline and j.confirmed>=self.c.confirmCycles and
+      self:count(items,j.species,"drone")>=(j.count or self.c.minDrones)
   end
   if self:count(items,j.species,"drone")<(j.count or self.c.minDrones) then return false end
   for _,p in ipairs(items) do if B.kind(p.stack)=="princess" then
@@ -147,7 +154,7 @@ function M:completion(j,items,template)
   return false
 end
 function M:dispatch(j)
-  local items=self:items(); local template=self:template(j,items)
+  local items=self:items(j.id); local template=self:template(j,items)
   if self:completion(j,items,template) then j.state="DONE"; j.error=nil; self:log(j.species.." complete; stable stock archived"); return end
   if j.mode=="convert" and j.baseline==nil then j.baseline=self:count(items,j.species,"princess"); self.save() end
   local p,d,why,cycleTarget=self:select(j,items,template)
@@ -183,6 +190,7 @@ function M:dispatch(j)
   j.preparedPrincess={endpoint=p.endpoint,slot=p.slot,identity=B.identity(p.stack)}
   j.preparedDrone={endpoint=d.endpoint,slot=d.slot,identity=B.identity(d.stack)}; self.save()
   backend:insertPrincess(p,j.id); backend:insertDrone(d,j.id,p.stack)
+  if backend.start then backend:start() end
   j.state="RUNNING"; j.started=self.now(); j.cycles=j.cycles+1; j.error=nil
   self.state.machines[a.id].state="RUNNING"; self.save()
   self:log(j.id..": cycle "..j.cycles.." in "..a.name)
@@ -192,22 +200,32 @@ function M:advance(j)
   local machine=self.state.machines[j.machine]
   if j.state=="RUNNING" then
     local status,why=b:getCycleState(); machine.lastInteraction=self.now()
-    if status=="FINISHED" then j.state="COLLECTING"; self.save()
+    if status=="FINISHED" then
+      j.state="COLLECTING"; j.collectionAfter=self.state.transferSequence or 0; j.resultLocations={}; self.save()
     elseif status=="UNCERTAIN" then error(why)
     elseif self.now()-(j.started or self.now())>self.c.cycleTimeout then error("Cycle timeout: "..tostring(why or "queen still present"))
     else j.error=why; return end
   end
   if j.state=="COLLECTING" then
-    local results=b:collectResults(self.storage,j.id)
     j.resultLocations=j.resultLocations or {}
-    for _,i in ipairs(results) do j.resultLocations[#j.resultLocations+1]={endpoint=i.endpoint,slot=i.slot} end
+    local function receipt(i)
+      for _,loc in ipairs(j.resultLocations) do if loc.endpoint.id==i.endpoint.id and loc.slot==i.slot then return end end
+      j.resultLocations[#j.resultLocations+1]={endpoint=i.endpoint,slot=i.slot}; self.save()
+    end
+    -- Reconstruct a receipt committed immediately before a crash in the collector.
+    for _,tx in ipairs(self.state.transactions) do
+      if tx.owner==j.id and tx.id and tx.id>(j.collectionAfter or math.huge) and tx.dest.id==b.config.storage.id then
+        receipt({endpoint=tx.dest,slot=tx.destSlot})
+      end
+    end
+    b:collectResults(self.storage,j.id,receipt)
     j.state="ASSESSING"; j.lastCycle=self.now(); self.state.lastCycle=j.lastCycle; self.save()
   end
   if j.state=="ASSESSING" then
     local all=self.storage:scan(); local scanned,why=self.scanner:step(all)
     if not scanned then j.error=why; return end
     self.inv:release(j.id)
-    local items=self:items(); local template=self:template(j,items)
+    local items=self:items(j.id); local template=self:template(j,items)
     local own={}
     for _,i in ipairs(items) do for _,loc in ipairs(j.resultLocations or {}) do
       if i.endpoint.id==loc.endpoint.id and i.slot==loc.slot then own[#own+1]=i; break end
@@ -215,7 +233,7 @@ function M:advance(j)
     local p=self:best(own,"princess",j.species)
     local d=self:best(own,"drone",j.species)
     assert(p,"No analyzed princess in this job's collected offspring; inspect archive")
-    j.lineage={endpoint=p.endpoint,slot=p.slot}
+    j.lineage={endpoint=p.endpoint,slot=p.slot,identity=B.identity(p.stack)}
     if p and d and G.complete(p.stack,d.stack,j.species,self.c,template and template.stack.individual.active) then
       j.confirmed=j.confirmed+1
     else j.confirmed=0 end
@@ -225,7 +243,7 @@ function M:advance(j)
   end
 end
 function M:resume(id)
-  self.state.paused=false
+  self.state.paused=false; self.state.stopped=false; self.state.stopping=false
   for _,j in ipairs(self.state.jobs) do if (not id or j.id==id) and j.state=="PAUSED" then
     assert(j.previous~="PREPARING","Partial insertion: inspect inputs and use doctor recovery before resuming")
     j.state=j.previous or "WAITING"; j.error=nil; j.previous=nil
@@ -247,7 +265,8 @@ function M:recover()
           error("Restart during insertion. Inspect actual inputs; use doctor --adopt "..j.id.." only after verifying a live queen or complete offspring pair")
         end
         if j.state=="RUNNING" then
-          if status=="FINISHED" then j.state="COLLECTING"
+          if status=="FINISHED" then
+            j.state="COLLECTING"; j.collectionAfter=self.state.transferSequence or 0; j.resultLocations={}
           elseif status=="UNCERTAIN" then error("Saved running cycle has no inputs or offspring")
           else j.started=self.now() end -- uptime resets on restart; give bounded fresh observation window
         end
@@ -261,11 +280,48 @@ function M:recover()
   end
   self.save()
 end
+function M:retryInsertion(j)
+  assert(j.machine,"job has no reserved machine")
+  assert(not self.state.pending and not self.state.pendingExternal,"reconcile transfers before retry")
+  local b=self:backend(j.machine); assert(b:isReady(),"machine must be empty before retry")
+  for _,source in ipairs({j.preparedPrincess,j.preparedDrone}) do
+    local actual=self.inv:get(source.endpoint,source.slot)
+    assert(actual and B.identity(actual)==source.identity,"restore the recorded source items before retrying insertion")
+  end
+  self.inv:release(j.id); self.state.machines[j.machine]={state="IDLE"}
+  j.machine=nil; j.state="WAITING"; j.previous=nil; j.error=nil; self.save()
+end
+function M:adopt(j)
+  assert(j.machine,"job has no reserved machine")
+  local b=self:backend(j.machine); b:validate()
+  local status=b:getCycleState(); local q=self.inv:get(b.endpoint,b:getSlots().princess)
+  assert(status=="FINISHED" or B.kind(q)=="queen","adoption requires a live queen or complete offspring pair")
+  assert(not self.state.pendingExternal,"reconcile external movement before adoption")
+  local tx=self.state.pending
+  if tx then
+    assert(tx.owner==j.id and tx.dest.id==b.endpoint.id and tx.destSlot==b:getSlots().drone,
+      "pending transfer is not this job's final drone insertion")
+    local src=self.inv:get(tx.source,tx.slot)
+    assert((not src and tx.before==tx.count) or (src and src.size==tx.before-tx.count and B.identity(src)==tx.identity),
+      "cannot prove source count decreased by intended drone count")
+    assert(B.kind(q)=="queen" and B.scanned(q) and j.expectedPrincess and
+      U.equal(q.individual.active,j.expectedPrincess.individual.active) and
+      U.equal(q.individual.inactive,j.expectedPrincess.individual.inactive),"queen genome does not witness this insertion")
+    tx.phase="ADOPTED_OBSERVED_MATING"; self.state.transactions[#self.state.transactions+1]=tx; self.state.pending=nil
+  end
+  j.state=status=="FINISHED" and "COLLECTING" or "RUNNING"
+  if status=="FINISHED" then j.collectionAfter=self.state.transferSequence or 0; j.resultLocations={} end
+  j.previous=nil; j.error=nil; j.started=self.now(); self.save()
+end
 function M:step()
   if self.state.paused then return false,"PAUSED" end
   local ok,items=pcall(self.storage.scan,self.storage)
   if not ok then self.state.error=tostring(items); self.save(); return false,"BLOCKED" end
   self.state.error=nil
+  self.state.storageCounts={princess=0,drone=0}
+  for _,i in ipairs(items) do local kind=B.kind(i.stack)
+    if self.state.storageCounts[kind] then self.state.storageCounts[kind]=self.state.storageCounts[kind]+i.stack.size end
+  end
   if self.storage.prepare then
     local success,ready=pcall(self.storage.prepare,self.storage,items)
     if not success then self.state.error=tostring(ready); self.save(); return false,"BLOCKED" end

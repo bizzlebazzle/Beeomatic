@@ -1,4 +1,4 @@
-local U=require("lib.util"); local Backend=require("lib.breeders.alveary")
+local U=require("lib.util"); local Backend=require("lib.breeders.factory")
 local M={}
 function M.probe(components,out)
   out=out or print

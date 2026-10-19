@@ -6,6 +6,15 @@ end
 function M:step(items)
   local c=self.config; local q=self.state.scan
   if q then
+    local returned=self.inv:get(c.storage,q.returnSlot)
+    if returned and B.scanned(returned) and returned.name==q.name and returned.size==q.size and
+      (not q.ident or returned.individual.ident==q.ident) and #self.inv:scan(c.input)==0 and #self.inv:scan(c.output)==0 then
+      self.inv:release("scanner"); self.state.scan=nil; self.save(); return true
+    end
+    if returned and B.identity(returned)==q.original and #self.inv:scan(c.input)==0 and #self.inv:scan(c.output)==0 then
+      -- Intent was persisted, but no physical scan insertion occurred.
+      self.inv:release("scanner"); self.state.scan=nil; self.save(); return false,"Retrying proven untouched scanner source"
+    end
     local results=self.inv:scan(c.output)
     if #results>1 then error("Scanner output contaminated; expected a single isolated stack") end
     local r=results[1]
@@ -29,7 +38,7 @@ function M:step(items)
     local physical={endpoint=c.storage,slot=i.slot,stack=self.inv:get(c.storage,i.slot)}
     assert(i.endpoint.id==c.storage.id,"scanner cannot reach this inventory")
     self.state.scan={name=i.stack.name,damage=i.stack.damage,size=i.stack.size,
-      ident=i.stack.individual and i.stack.individual.ident,started=self.now(),returnSlot=i.slot}; self.save()
+      ident=i.stack.individual and i.stack.individual.ident,started=self.now(),returnSlot=i.slot,original=B.identity(i.stack)}; self.save()
     self.inv:move(physical,c.input,c.inputSlot,i.stack.size,"scanner")
     return false,"Scanning "..tostring(i.stack.label or i.stack.name)
   end end

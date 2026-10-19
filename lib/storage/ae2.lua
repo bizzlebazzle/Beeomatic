@@ -52,24 +52,33 @@ function M:materialize(item,endpoint,owner)
   if not item.network then return self.chest:materialize(item,endpoint) end
   self:validate()
   assert(not self.inv.state.pending,"unresolved movement")
-  assert(type(item.stack.tag)=="string","Exact AE2 export requires compressed NBT tags. Enable OC insertIdsInConverters/allowItemStackNBTTags as applicable; probe first")
+  assert(type(item.stack.tag)=="string","Exact AE2 export requires compressed NBT tags. Enable server OC allowItemStackNBTTags and probe first")
   local cfg=self.config; local buffer=assert(cfg.buffer,"register ME export buffer")
   assert(buffer.transposer==endpoint.transposer,"ME buffer unreachable from selected transposer")
   local dstSlot=self.inv:empty(buffer)
-  local filter={name=item.stack.name,damage=item.stack.damage,tag=tagFilter(item.stack.tag)}
+  -- Legacy GTNH compares byte-array filters by Java object string, so do not
+  -- depend on tag filtering. Copy the finite candidate group into a dedicated
+  -- database and select the exact compressed-NBT entry after verifying it.
+  local filter={name=item.stack.name,damage=item.stack.damage,label=item.stack.label}
   local matches=self:network().getItemsInNetwork(filter)
-  local total=0
+  local total,variants=0,0
   for _,s in pairs(matches or {}) do
-    assert(B.identity(s)==B.identity(item.stack),"AE2 filter ambiguous; refusing export")
-    total=total+s.size
+    variants=variants+1
+    if B.identity(s)==B.identity(item.stack) then total=total+s.size end
   end
   assert(total>0,"reserved ME item disappeared")
   local db=self.components:proxy(cfg.database,{"clear","get"})
-  db.clear(1); assert(self:network().store(filter,cfg.database,1,1),"ME database copy failed")
-  local entry=db.get(1)
-  assert(entry and entry.tag==item.stack.tag and entry.name==item.stack.name,"database changed bee NBT; export blocked")
+  local capacity=cfg.databaseSlots or 1
+  assert(variants<=capacity,"Too many same-label genetic variants for configured database capacity; enlarge dedicated database or move some stock to archive")
+  for slot=1,capacity do db.clear(slot) end
+  assert(self:network().store(filter,cfg.database,1,variants),"ME database copy failed")
+  local selected
+  for slot=1,variants do local entry=db.get(slot)
+    if entry and B.identity(entry)==B.identity(item.stack) then selected=slot; break end
+  end
+  assert(selected,"database changed bee NBT; export blocked")
   local bus=self.components:proxy(cfg.exportAddress,{"setExportConfiguration","exportIntoSlot"})
-  assert(bus.setExportConfiguration(cfg.exportSide,1,cfg.database,1),"cannot configure export bus")
+  assert(bus.setExportConfiguration(cfg.exportSide,1,cfg.database,selected),"cannot configure export bus")
   -- The bus may export a whole stack; keep the exact excess in the local hub.
   self.inv.state.pendingExternal={kind="ME_EXPORT",owner=owner,dest=buffer,slot=dstSlot,identity=B.identity(item.stack)}
   self.inv.save()
