@@ -63,7 +63,7 @@ local function install()
   end
   -- Only now touch the installation; install.lua retains its data and backup rules.
   local f=assert(io.open(stage.."/install.lua","rb")); local source=f:read("*a"); f:close()
-  assert(load(source,"@"..stage.."/install.lua","t",_G))(dest)
+  assert(load(source,"="..stage.."/install.lua","t",_G))(dest,stage)
 end
 local yes,err=pcall(install)
 -- Remove only validated manifest paths in our dedicated staging directory.

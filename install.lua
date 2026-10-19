@@ -1,11 +1,14 @@
--- Local/offline OpenOS installer. Copy the complete release directory first.
+-- Local/offline OpenOS installer. Copy the manifest's files first.
 local fs=require("filesystem"); local shell=require("shell")
-local src=fs.path(debug.getinfo(1,"S").source:gsub("^@",""))
 local args={...}; local dest=args[1] or "/home/Beeomatic"
+local src=args[2] or fs.path(debug.getinfo(1,"S").source:gsub("^[@=]",""))
+if src~="" then src=src:gsub("/+$","").."/" end
 assert(dest:sub(1,1)=="/","installation destination must be absolute")
 dest=fs.canonical(dest)
 assert(not fs.exists(dest.."/data/worker.lock"),"stop Beeomatic before upgrading; recover stale worker lock separately")
-local files=assert(loadfile(src.."manifest.lua"))()
+local manifest,reason=loadfile(src.."manifest.lua")
+assert(manifest,"Cannot load "..src.."manifest.lua: "..tostring(reason))
+local files=manifest()
 local function writeAtomic(path,text)
   fs.makeDirectory(fs.path(path))
   local f=assert(io.open(path..".tmp","wb")); assert(f:write(text)); assert(f:flush()); f:close()

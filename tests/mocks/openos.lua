@@ -3,7 +3,7 @@ local U=require("lib.util")
 local M={}
 function M.with(world,fn,quotas)
   local files,dirs,output={},{},{}
-  local originalOpen,originalPrint=io.open,print
+  local originalOpen,originalPrint,originalLoadfile=io.open,print,loadfile
   local previous={}; for _,name in ipairs({"filesystem","component","computer","event"}) do previous[name]=package.loaded[name] end
   local fs={exists=function(p) return files[p]~=nil or dirs[p]==true end,
     makeDirectory=function(p) dirs[p]=true; return true end,
@@ -34,6 +34,12 @@ function M.with(world,fn,quotas)
     function f:close() end
     return f
   end
+  -- OpenOS loadfile uses '=path' chunk names, unlike native Lua's '@path'.
+  loadfile=function(path,mode,env)
+    local f,reason=io.open(path,"rb"); if not f then return nil,reason end
+    local data=f:read("*a"); f:close()
+    return load(data,"="..path,mode or "t",env or _G)
+  end
   print=function(...) local args={...}; for i,v in ipairs(args) do args[i]=tostring(v) end; output[#output+1]=table.concat(args,"\t") end
   package.loaded.filesystem=fs; package.loaded.component=world.components.api
   package.loaded.computer={uptime=function() return world.time end,address=function() return "test-computer" end}
@@ -52,7 +58,7 @@ function M.with(world,fn,quotas)
   -- The installer only needs this standard shell module's existence.
   local oldShell=package.loaded.shell; package.loaded.shell={}
   local yes,err=xpcall(function() fn(files,output,fs) end,debug.traceback)
-  io.open=originalOpen; print=originalPrint; package.loaded.shell=oldShell
+  io.open=originalOpen; print=originalPrint; loadfile=originalLoadfile; package.loaded.shell=oldShell
   for _,name in ipairs({"filesystem","component","computer","event"}) do package.loaded[name]=previous[name] end
   assert(yes,err)
   return files,output

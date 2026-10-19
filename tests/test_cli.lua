@@ -70,3 +70,28 @@ test("state saver preserves the previous generation when flushing fails",functio
     eq(files[path..".bak"],nil)
   end)
 end)
+
+test("offline installer locates manifest from an absolute OpenOS chunk name",function()
+  local w=W.new(); w:addMachine("a"); w:build()
+  O.with(w,function(files)
+    for _,path in ipairs(assert(loadfile("manifest.lua"))()) do
+      local f=assert(io.open(path,"rb")); files["/release/"..path]=f:read("*a"); f:close()
+    end
+    assert(loadfile("/release/install.lua"))("/home/Test")
+    ok(files["/home/Test/lib/cli.lua"]); ok(files["/usr/bin/Beeomatic"])
+  end)
+end)
+
+test("application launcher resolves both OpenOS and native Lua source prefixes",function()
+  local f=assert(io.open("Beeomatic.lua","rb")); local code=f:read("*a"); f:close()
+  for _,prefix in ipairs({"=","@"}) do
+    local root,args
+    local env=setmetatable({package={path="original"},require=function(name)
+      eq(name,"lib.cli")
+      return {main=function(r,a) root=r; args=a end}
+    end},{__index=_G})
+    assert(load(code,prefix.."/home/Beeomatic/Beeomatic.lua","t",env))("doctor")
+    eq(root,"/home/Beeomatic"); eq(args,{"doctor"})
+    ok(env.package.path:sub(1,6)=="/home/")
+  end
+end)

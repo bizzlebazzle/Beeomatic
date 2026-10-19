@@ -27,7 +27,7 @@ local function scenario(options,fn)
         {__call=function() if not sent then sent=true; return body end end})
     end}
     loadfile=function(path,...)
-      if files[path] then return load(files[path],"@"..path,"t",_G) end
+      if files[path] then return load(files[path],"="..path,"t",_G) end
       return previousLoadfile(path,...)
     end
     local yes,err=xpcall(function() fn(files,requests,out) end,debug.traceback)
