@@ -3,13 +3,13 @@ local function select(w,s)
   return {network=true,endpoint={id="ME"},slot=B.identity(s),stack=U.copy(s)}
 end
 
-test("Interface stocking and cleanup react within a quarter second of a ready grid",function()
+test("Interface stocking and cleanup react within a tenth second of a ready grid",function()
   local w=ME.new(); local s=ME.bee("Spirit","drone",8); w:addStock(s)
   local started=w.time
   local physical=w.storage:materialize(select(w,s),w.c.scanner.storage,"scanner",8)
-  eq(physical.stack.size,8); ok(w.time-started<=0.25)
+  eq(physical.stack.size,8); ok(w.time-started<=0.1)
   w.storage:cancel("scanner")
-  ok(w.time-started<=0.5); eq(next(w.state.meRequests),nil)
+  ok(w.time-started<=0.2); eq(next(w.state.meRequests),nil)
   eq(B.count(w.storage:scan(),"Spirit","drone",true),8)
 end)
 
@@ -18,7 +18,7 @@ test("Interface polling remains bounded and preserves requests when stock never 
   w.c.storage.timeout=1; local waits=0; local wait=w.storage.wait
   w.storage.wait=function(seconds) waits=waits+1; return wait(seconds) end
   raises(function() w.storage:materialize(select(w,s),w.c.scanner.storage,"scanner",8) end,"timeout waiting for Interface stock")
-  eq(waits,4); ok(next(w.state.meRequests)); eq(w.moves,0)
+  ok(waits>=10 and waits<=11); eq(w.time,1); ok(next(w.state.meRequests)); eq(w.moves,0)
 end)
 local function externalScanner()
   local w=ME.new(); local c=w.c.scanner

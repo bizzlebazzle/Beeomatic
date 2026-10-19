@@ -1,5 +1,15 @@
 local U=require("lib.util")
 local M={}
+-- These fallbacks are evaluated at runtime, including for existing installations
+-- whose saved configuration still contains the original pollSeconds=5.
+function M.pollInterval(c,kind)
+  local value,default
+  if kind=="worker" then value=c.workerPollSeconds; default=0.5
+  else value=(c[kind] or {}).pollSeconds; default=0.1 end
+  local n=tonumber(value) or default
+  assert(n==n and n~=math.huge and n~=-math.huge,"invalid "..kind.." polling interval")
+  return math.max(0.05,math.min(tonumber(c.pollSeconds) or 300,n,300))
+end
 function M.defaults()
   return {version=1,alvearies={},aliases={},componentNames={},preferred={spirit={"ethereal","aware"}},
     concurrency=2,pollSeconds=5,cycleTimeout=3600,maxCycles=128,minDrones=32,

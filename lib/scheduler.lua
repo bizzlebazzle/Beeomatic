@@ -420,6 +420,7 @@ function M:adopt(j)
   if self.storage.releasePort then self.storage:releasePort(b.config.storage) end
 end
 function M:prepareStock(items)
+  local oldReady,oldPhase,oldRemaining=self.state.stockReady,self.state.stockPhase,self.state.stockRemaining
   if self.storage.interface and not self.state.stockReady then self.state.stockPhase="PREPARING_STOCK" end
   if self.storage.prepare and not self.storage:prepare(items) then return false,"Inspecting ME stock" end
   local ready,why=self.scanner:step(items)
@@ -450,7 +451,7 @@ function M:prepareStock(items)
     end
     if ready then self.state.stockReady=true; self.state.stockPhase="READY"; self.state.stockRemaining=0
     else self.state.stockPhase=self.state.stockReady and "SCANNING" or "PREPARING_STOCK" end
-    self.save()
+    if oldReady~=self.state.stockReady or oldPhase~=self.state.stockPhase or oldRemaining~=self.state.stockRemaining then self.save() end
   end
   return ready,why
 end
@@ -462,6 +463,8 @@ function M:step()
     return table.concat(pieces,"|")
   end
   local before=progress()
+  local oldError,oldFinished,oldStopped=self.state.error,self.state.finished,self.state.stopped
+  local oldErrors={}; for _,j in ipairs(self.state.jobs) do oldErrors[j.id]=j.error end
   local ok,items=pcall(self.storage.scan,self.storage)
   if not ok then self.state.error=tostring(items); self.save(); return false,"BLOCKED" end
   self.state.error=nil
@@ -502,7 +505,13 @@ function M:step()
     end end
   end
   self:observeParentStock(items)
-  self.save()
+  -- Cursor position, observation timestamps and fresh stock counts can be
+  -- recomputed after restart. Idle polls need no disk write. Physical/lifecycle
+  -- transitions retain their own durable checkpoints; persist new diagnostics
+  -- and terminal flags here as well.
+  local changed=progress()~=before or oldError~=self.state.error or oldFinished~=self.state.finished or oldStopped~=self.state.stopped
+  for _,j in ipairs(self.state.jobs) do if oldErrors[j.id]~=j.error then changed=true end end
+  if changed then self.save() end
   return active,complete and "DONE" or self.state.stopped and "STOPPED" or active and "RUNNING" or
     (scanOk and not scanned and "SCANNING") or (progress()~=before and "PROGRESS") or "BLOCKED"
 end

@@ -23,11 +23,14 @@ function M:port(ep)
 end
 function M:poll(fn,why)
   local start=self.now()
+  local interval=require("lib.config").pollInterval({storage=self.config},"storage")
+  local timeout=self.config.timeout or 60
   repeat
     local value=fn(); if value then return value end
-    assert(self.now()-start<(self.config.timeout or 60),why.."; request preserved, inspect power/channels/capacity")
+    local remaining=timeout-(self.now()-start)
+    assert(remaining>0,why.."; request preserved, inspect power/channels/capacity")
     -- React promptly when AE stocks/drains a slot; do not busy-poll OC calls.
-    self.wait(math.max(0.1,tonumber(self.config.pollSeconds) or 0.25))
+    self.wait(math.min(interval,remaining))
   until false
 end
 function M:validate()

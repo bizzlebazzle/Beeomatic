@@ -453,3 +453,20 @@ test("application launcher resolves both OpenOS and native Lua source prefixes",
     ok(env.package.path:sub(1,6)=="/home/")
   end
 end)
+
+test("saved five-second configurations run the foreground worker at half-second intervals",function()
+  local w=W.new(); w:addMachine("a"); w:build(); w.c.confirmCycles=1
+  w.inventories.hub[1]=W.bee("Spirit","princess"); w.inventories.hub[2]=W.bee("Spirit","drone",8)
+  O.with(w,function(files)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    local event=require("event"); local pull=event.pull; local waits=0
+    event.pull=function(seconds)
+      ok(seconds<=0.5,"worker still sleeping for the old general polling interval")
+      waits=waits+1; return pull(seconds)
+    end
+    local _,err=require("lib.cli").main("/project",{"populate","spirit","16"})
+    eq(err,nil,err); ok(waits>0)
+    local state=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
+    ok(state.finished)
+  end)
+end)

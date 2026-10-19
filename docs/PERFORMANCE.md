@@ -37,9 +37,13 @@ share reserves only when their exact identities match.
   Exact request preparation may enumerate same-label genetic variants. A bee-only
   API or filtered discovery could reduce large-network payloads but must preserve
   all supported item names and the pinned server API contract.
-- The general worker interval remains five seconds, Interface checks 0.25 seconds
-  and scanner steps 0.5 seconds unless explicitly configured. These are polling
-  intervals; component calls, disk writes and physical machines add their own time.
+- The worker now defaults to 0.5 seconds, and Interface/scanner checks to 0.1
+  seconds, including existing saved configurations. Optional workerPollSeconds
+  and per-subsystem pollSeconds settings override them with a 0.05-second minimum.
+  Unchanged idle ticks and stock-readiness checks avoid checkpoint writes, while
+  UI housing observations are limited to once per second. Movement, lifecycle,
+  changed diagnostics and terminal flags retain their checkpoints. Component
+  calls, disk writes and physical machines still add their own time.
 - The current external scanner still returns through ME. Unknown return variants
   are requested for physical inspection and verified before use. The planned
   output-chest layout is deliberately not implemented in this change.

@@ -46,7 +46,7 @@ function M.main(root,args)
   local scanner=require("lib.scanner").new(c.scanner,inv,state,save,computer.uptime,storage)
   local scheduler=require("lib.scheduler").new(c,state,components,inv,storage,scanner,save,computer.uptime)
   local function scanInterval()
-    return math.min(c.pollSeconds,math.max(0.1,tonumber(c.scanner.pollSeconds) or 0.5))
+    return math.min(Config.pollInterval(c,"worker"),Config.pollInterval(c,"scanner"))
   end
   local function unlocked() assert(not fs.exists(lock),"A worker lock exists. Stop the running worker before changing configuration.") end
   local function mutations(items)
@@ -86,7 +86,7 @@ function M.main(root,args)
         -- without resuming jobs from the previously drained plan.
         state.paused=false; state.stopped=false; state.stopping=false; save()
       else scheduler:resume(a[2] and cmd=="resume" and a[2] or nil) end
-      local lastDisplay=""
+      local lastDisplay=""; local nextObservation=0
       while true do
         applyControl()
         local active,status
@@ -105,7 +105,12 @@ function M.main(root,args)
             end
           end
         else active,status=scheduler:step() end
-        Status.observe(state,c,components,inv,computer.uptime()); save()
+        -- Housing details are display data. Do not repeatedly query every
+        -- housing or write a full recovery checkpoint just to redraw the UI.
+        local now=computer.uptime()
+        if now>=nextObservation or status=="DONE" or status=="STOPPED" or status=="BLOCKED" then
+          Status.observe(state,c,components,inv,now); nextObservation=now+1
+        end
         local display=Status.render(state,c,false)
         if display~=lastDisplay then Status.show(display); lastDisplay=display end
         if status=="DONE" or status=="STOPPED" then break end
@@ -113,7 +118,7 @@ function M.main(root,args)
           print("Progress saved. Repair the reported condition, then Beeomatic resume."); break
         end
         local scanning=not state.paused and (status=="SCANNING" or state.scan)
-        local name,_,char=event.pull(scanning and scanInterval() or c.pollSeconds)
+        local name,_,char=event.pull(scanning and scanInterval() or Config.pollInterval(c,"worker"))
         if name=="interrupted" then break end
         if name=="key_down" then
           if char==112 then state.paused=true elseif char==114 then scheduler:resume()

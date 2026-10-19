@@ -124,3 +124,32 @@ test("network leases and PREPARING assignment are saved before materialization",
   end
   w.scheduler:dispatch(job); eq(checked,2); eq(job.state,"RUNNING")
 end)
+
+test("fast polling fallbacks apply to saved five-second configurations with bounded overrides",function()
+  local C=require("lib.config"); local c={pollSeconds=5,storage={},scanner={}}
+  eq(C.pollInterval(c,"worker"),0.5); eq(C.pollInterval(c,"storage"),0.1); eq(C.pollInterval(c,"scanner"),0.1)
+  c.workerPollSeconds=0.2; c.storage.pollSeconds=0.01; c.scanner.pollSeconds=2
+  eq(C.pollInterval(c,"worker"),0.2); eq(C.pollInterval(c,"storage"),0.05); eq(C.pollInterval(c,"scanner"),2)
+  c.workerPollSeconds=math.huge; raises(function() C.pollInterval(c,"worker") end,"invalid worker")
+end)
+
+test("unchanged stock preparation does not write another readiness checkpoint",function()
+  local w=ME.new()
+  ok(w.scheduler:prepareStock(w.storage:scan())); local saved=w.saves
+  ok(w.scheduler:prepareStock(w.storage:scan())); eq(w.saves,saved)
+  w:addStock(ME.bee("Spirit","drone",8,true))
+  eq(w.scheduler:prepareStock(w.storage:scan()),false); ok(w.saves>saved); ok(w.state.scan)
+end)
+
+test("unchanged running polls write no checkpoints but changed obstruction diagnostics do",function()
+  local w=ME.new(); w.hideGenomes=false; w.c.minDrones=2
+  w:addStock(ME.bee("Spirit","princess")); w:addStock(ME.bee("Spirit","drone",8))
+  local job=W.job(w,"job","Spirit","populate"); job.count=32
+  w.scheduler:step(); eq(job.state,"RUNNING")
+  w.scheduler:step(); local saved=w.saves
+  for _=1,10 do w.time=w.time+0.1; w.scheduler:step() end
+  eq(w.saves,saved)
+  w.obstructed=true; w.scheduler:step(); ok(w.saves>saved); ok(job.error)
+  saved=w.saves; w.scheduler:step(); eq(w.saves,saved)
+  w.obstructed=false; w.scheduler:step(); ok(w.saves>saved); eq(job.error,nil)
+end)

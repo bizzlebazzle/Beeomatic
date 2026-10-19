@@ -59,10 +59,12 @@ last page. `--verbose` includes candidate alveary IDs and the full species UID
 mapping; `--no-pager` prints the entire report for redirection/copying. A verified
 target pair is reported directly without listing unnecessary breeding steps.
 
-Interface stocking/return checks default to 0.25 seconds; scan steps default to
-0.5 seconds rather than the general five-second worker interval. Existing saved
-configurations use these defaults automatically. Optional `storage.pollSeconds`
-and `scanner.pollSeconds` settings tune those checks (minimum 0.1 seconds).
+Interface stocking/return checks and scanner steps default to 0.1 seconds. The
+worker defaults to 0.5 seconds, including with an existing saved `pollSeconds=5`.
+Set top-level `workerPollSeconds`, `storage.pollSeconds` or `scanner.pollSeconds`
+to override their respective intervals (minimum 0.05 seconds). The original
+`pollSeconds` remains an upper bound. Housing details refresh at most once a
+second; unchanged stock-readiness and idle worker polls do not write checkpoints.
 These intervals affect detection delays; analyser and pipe processing still take
 their normal time, and exact returned bees are physically inspected before use.
 Polling intervals are not total batch timings: component calls and durable state
