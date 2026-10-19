@@ -87,6 +87,16 @@ needs recovery before its stock can be released. Never delete state to stop work
 If OpenOS provides another shell/process, `pause`, `resume`, and `stop` write
 `data/control.lua`. The foreground worker reads this mailbox at its bounded polling
 interval; it does not pretend a second command magically controls another process.
+The running screen refreshes in place on an available OpenOS terminal. It shows
+the target, completed/active/queued steps, scanner activity, and one line per busy
+alveary. Idle alvearies are counted together. Species names are shortened for
+readability. Routine scanner waiting is activity; actual failures appear under
+`Attention`. `q` lets active work finish before stopping.
+
+`status` uses the same compact overview. `status --verbose` includes full species
+IDs, job IDs, cycle/genetics counters, resident bees and flowers, storage counts,
+and recent diagnostic details. `logs` shows event history.
+
 `status` and `logs` read the last saved snapshot. `status` additionally refreshes resident bee/flower information
 from the registered housings without moving items or writing the worker's state.
 A missing housing is reported independently; raw bees show unknown flowers until

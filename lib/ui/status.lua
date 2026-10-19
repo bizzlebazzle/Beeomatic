@@ -28,7 +28,90 @@ function M.observe(state,c,components,inv,now)
   end
   state.housingObservedAt=now
 end
+local function speciesName(value)
+  local name=tostring(value or "none"):gsub("^.*%.species", "")
+  return (name:gsub("^%l",string.upper))
+end
+local activity={PREPARING="Loading bees",RUNNING="Breeding",COLLECTING="Collecting offspring",
+  ASSESSING="Checking offspring",PAUSED="Paused",WAITING="Waiting",IDLE="Idle",DONE="Complete"}
+-- These messages are normal scanner progress, despite being stored in state.error.
+local function routine(message)
+  return message=="Inspecting ME stock" or message=="Inspecting initial housing offspring"
+    or message=="Scanner batch returned; rescanning ME stock"
+    or message=="Waiting for analysed bees to return through ME"
+    or message=="Shared scanner processing reserved batch"
+    or message=="Scanner processing a reserved stack"
+    or message=="Retrying proven untouched scanner source"
+    or (message and (message:match("^Shared scanner analysing %d+ bees$") or message:match("^Scanning ")))
+end
+local function reason(message)
+  -- Strip Lua source locations from the overview; verbose retains the original.
+  return tostring(message):gsub("[^%s]+%.lua:%d+: ",""):gsub("[\r\n]+"," ")
+end
 function M.render(state,c,verbose)
+  if verbose then return M.details(state,c,true) end
+  local done,queued,paused,busy=0,0,0,0
+  local jobs={}; local warnings={}
+  if state.error and not routine(state.error) then warnings[#warnings+1]=reason(state.error) end
+  for _,j in ipairs(state.jobs or {}) do
+    jobs[j.id]=j
+    if j.state=="DONE" then done=done+1
+    elseif j.state=="WAITING" then queued=queued+1
+    elseif j.state=="PAUSED" then paused=paused+1
+    else busy=busy+1 end
+    if j.error then warnings[#warnings+1]=speciesName(j.species)..": "..reason(j.error) end
+  end
+  for _,a in ipairs(c.alvearies or {}) do
+    local housing=(state.housings or {})[a.id]
+    if housing and housing.error then
+      warnings[#warnings+1]=(a.name or a.id)..": cannot read housing"
+    end
+  end
+  local status=state.paused and "Paused" or state.finished and "Complete" or state.stopped and "Stopped"
+    or state.stopping and "Stopping after active work" or (#warnings>0 or paused>0) and "Needs attention" or "Working"
+  local target=state.pendingRequest and state.pendingRequest.target or state.target
+  local r={"BEEOMATIC | "..status,"Target: "..speciesName(target)}
+  if #(state.jobs or {})>0 then
+    r[#r+1]=string.format("Progress: %d/%d steps complete | %d active | %d queued%s",
+      done,#state.jobs,busy,queued,paused>0 and (" | "..paused.." paused") or "")
+  else r[#r+1]=state.pendingRequest and "Progress: preparing stock before planning" or "Progress: no saved work" end
+  local q=state.scan
+  if q then
+    local scanner={REQUESTING="Fetching bees",INSERTING="Sending bees for analysis",PROCESSING="Analysing bees",
+      VERIFYING="Checking returned bees",RETURNING="Returning analysed bees",EXTERNAL_RETURNED="Finishing analysis",
+      INSPECTED="Finishing inspection"}
+    r[#r+1]="Scanner: "..(scanner[q.phase or "PROCESSING"] or "Inspecting bees").." ("..(q.count or q.size or 1)..")"
+  elseif state.error and routine(state.error) then
+    r[#r+1]="Now: "..state.error
+  elseif state.stockPhase=="PREPARING_STOCK" or state.stockPhase=="SCANNING" then
+    r[#r+1]="Now: Checking stock"..((state.stockRemaining or 0)>0 and (" ("..state.stockRemaining.." drones remaining)") or "")
+  end
+  local idle=0
+  for _,a in ipairs(c.alvearies or {}) do
+    local m=(state.machines or {})[a.id] or {}; local j=jobs[m.job]
+    if m.job or (m.state and m.state~="IDLE") then
+      r[#r+1]=(a.name or a.id)..": "..(activity[m.state] or "Checking")..(j and (" - "..speciesName(j.species)) or "")
+    else idle=idle+1 end
+  end
+  if idle>0 then r[#r+1]="Alvearies idle: "..idle end
+  if #warnings>0 then
+    r[#r+1]="Attention: "..table.concat(warnings,"; ")
+    r[#r+1]="Details: Beeomatic status --verbose"
+  end
+  r[#r+1]="p pause | r resume | q stop after active work"
+  return table.concat(r,"\n")
+end
+-- Refresh the foreground dashboard instead of printing a new report every tick.
+-- Redirected output and hosts without a terminal keep ordinary printable reports.
+function M.show(text)
+  local ok,term=pcall(require,"term")
+  if ok and term.isAvailable and term.isAvailable() and term.clear and term.setCursor
+    and (not io.output or not io.stdout or io.output()==io.stdout) then
+    term.clear(); term.setCursor(1,1)
+  end
+  print(text)
+end
+function M.details(state,c,verbose)
   local r={"========== BEEOMATIC ==========","Target: "..tostring(state.target or "none"),
     "State: "..(state.paused and "PAUSED" or state.finished and "DONE" or state.stopping and "DRAINING" or "ACTIVE")}
   local done=0; for _,j in ipairs(state.jobs or {}) do if j.state=="DONE" then done=done+1 end end

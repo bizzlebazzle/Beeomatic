@@ -89,13 +89,12 @@ function M.main(root,args)
               local req=state.pendingRequest; local m=mutations(items)
               local plan,e=Planner.plan(req.target,m,items,c); assert(plan,e)
               Jobs.create(state,plan,req.mode,req.count,req.flags); state.pendingRequest=nil; save()
-              print(Planner.render(plan))
             end
           end
         else active,status=scheduler:step() end
         Status.observe(state,c,components,inv,computer.uptime()); save()
         local display=Status.render(state,c,false)
-        if display~=lastDisplay then print(display); lastDisplay=display end
+        if display~=lastDisplay then Status.show(display); lastDisplay=display end
         if status=="DONE" or status=="STOPPED" then break end
         if status=="BLOCKED" and not active and not state.paused then
           print("Progress saved. Repair the reported condition, then Beeomatic resume."); break
