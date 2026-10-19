@@ -82,7 +82,12 @@
       "queenCanBreed": true,
       "inputsEmptyAfterCycle": true,
       "completedCycleWitnessed": true,
-      "outputExtractionValidated": false
+      "outputExtractionReported": {
+        "combs": 9,
+        "drones": 2,
+        "princesses": 1,
+        "archiveDestinationSlots": [10, 11, 12]
+      }
     },
     "automatedOcRedstoneValidated": false,
     "applicationBreedingValidated": false

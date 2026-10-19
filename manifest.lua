@@ -14,6 +14,7 @@ return {
   "docs/TROUBLESHOOTING.md",
   "docs/VALIDATION.md",
   "install.lua",
+  "get.lua",
   "lib/bees.lua",
   "lib/breeders/alveary.lua",
   "lib/breeders/base.lua",

@@ -6,6 +6,36 @@ and OC cable connections to every configured component. Keep all breeder, storag
 scanner, routing and computer chunks loaded together. An Internet Card is not
 needed for the offline installation below.
 
+## Download from GitHub
+
+With an Internet Card, exit the Lua prompt with Ctrl+D and enter these commands
+at the OpenOS shell, one line at a time:
+
+```sh
+cd /home
+wget https://raw.githubusercontent.com/bizzlebazzle/Beeomatic/master/get.lua
+lua get.lua
+Beeomatic setup
+Beeomatic doctor
+```
+
+If `/home/get.lua` already exists, use `wget -f` to replace that bootstrap file.
+The downloader resolves `master` to a full commit SHA, downloads the release
+manifest and every listed file from that revision into `/tmp`, checks Lua syntax
+and staged file contents, then invokes the offline installer. A failed download
+leaves the installed program untouched. The installer retains existing `data/`
+and one previous generation of replaced program files. Stop the worker first.
+The final output prints the installed commit SHA. Temporary download files remain
+in `/tmp` until normal temporary-storage cleanup.
+
+To select a specific revision instead, run `lua get.lua FULL_COMMIT_SHA`.
+An optional second argument selects an absolute installation directory.
+Download uses GitHub's public API and raw file host; server Internet Card policy
+must permit both `api.github.com` and `raw.githubusercontent.com`.
+Complete hardware acceptance before starting a valuable breeding job.
+
+## Offline installation
+
 1. Copy the complete release folder into an OpenOS-visible filesystem, for example
    `/home/Beeomatic-source`. For single-player you can copy it into the computer's
    mounted filesystem directory under the world's `opencomputers` save data while

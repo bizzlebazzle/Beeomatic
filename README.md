@@ -19,8 +19,18 @@ Beeomatic plan spirit
 Beeomatic breed spirit
 ```
 
-Copy this complete folder to an OpenOS-visible disk before running the installer.
-There is no assumed public download URL. The main installed command is `Beeomatic`.
+Copy this complete folder to an OpenOS-visible disk before running the offline
+installer above. Internet Card installation from the public
+[GitHub repository](https://github.com/bizzlebazzle/Beeomatic) is also supported:
+
+```sh
+cd /home
+wget https://raw.githubusercontent.com/bizzlebazzle/Beeomatic/master/get.lua
+lua get.lua
+```
+
+The downloader fetches one consistent Git revision before installing and preserves
+existing data. The main installed command is `Beeomatic`.
 Use `Beeomatic help` for commands or see [installation](docs/INSTALLATION.md),
 [physical hardware/layout](docs/HARDWARE.md), [commands](docs/COMMANDS.md),
 [architecture](docs/ARCHITECTURE.md), [troubleshooting](docs/TROUBLESHOOTING.md), and
@@ -95,7 +105,7 @@ Beeomatic/
 ```
 
 Development check in this workspace: `python tests/run.py` runs Lua 5.2 and Lua 5.3.
-Current validation: **76 tests passed on each engine**, including the public CLI Spirit workflow,
+Current validation: **80 tests passed on each engine**, including the public CLI Spirit workflow,
 installer upgrades, exact selection of a second same-label AE2 genetic variant,
 concurrent machines, protected reserves and interrupted transfer recovery.
 Local `.tools/` and downloaded `research/` are ignored and not installed. No external
