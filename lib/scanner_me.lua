@@ -139,7 +139,8 @@ function M:step(items)
     q.ident=q.ident or (physical.stack.individual and physical.stack.individual.ident)
     if B.scanned(physical.stack) then
       -- An ME record without chromosomes is not proof the item needs analysis.
-      self.storage:catalogue(physical.stack); q.phase="INSPECTED"; self.save()
+      -- materialize already persisted the physical genome with its receipt.
+      q.phase="INSPECTED"; self.save()
       self.storage:cancel("scanner"); return self:finish()
     end
     q.source={endpoint=U.copy(physical.endpoint),slot=physical.slot}

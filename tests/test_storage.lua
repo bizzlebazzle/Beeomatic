@@ -2,6 +2,33 @@ local W=require("tests.mocks.world"); local B=require("lib.bees"); local U=requi
 local function world()
   local w=W.new(); w:addMachine("a"); w:build(); w.inventories.hub[1]=W.bee("Forest","drone",8); return w
 end
+
+test("bulk inventory scan preserves empty slots and avoids per-slot world calls",function()
+  local w=world(); w.inventories.hub[1]=nil; w.inventories.hub[87]=W.bee("Forest","drone",8)
+  local ep=w.c.storage.endpoints[1]; local p=w.proxies[ep.transposer]
+  local bulk=p.getAllStacks; local calls=0
+  p.getAllStacks=function(side) calls=calls+1; return bulk(side) end
+  p.getInventorySize=function() error("bulk scan should not query size separately") end
+  p.getStackInSlot=function() error("bulk scan should not read individual slots") end
+  local items=w.inv:scan(ep)
+  eq(calls,1); eq(#items,1); eq(items[1].slot,87); eq(items[1].stack.size,8)
+end)
+
+test("inventory scan fallback validates size once and keeps physical slot numbers",function()
+  local w=world(); w.inventories.hub[87]=W.bee("Meadows","princess")
+  local ep=w.c.storage.endpoints[1]; local p=w.proxies[ep.transposer]; p.getAllStacks=nil
+  local size,read=p.getInventorySize,p.getStackInSlot; local sizes,reads=0,0
+  p.getInventorySize=function(side) sizes=sizes+1; return size(side) end
+  p.getStackInSlot=function(side,slot) reads=reads+1; return read(side,slot) end
+  local items=w.inv:scan(ep)
+  eq(sizes,1); eq(reads,100); eq(#items,2); eq(items[2].slot,87)
+end)
+
+test("bulk inventory read failures do not masquerade as empty inventories",function()
+  local w=world(); local ep=w.c.storage.endpoints[1]
+  w.proxies[ep.transposer].getAllStacks=function() return nil,"inventory offline" end
+  raises(function() w.inv:scan(ep) end,"inventory offline")
+end)
 test("verified transfer records exact receipt",function()
   local w=world(); local item=w.storage:scan()[1]; local dest={id="a",transposer="tp1",side=3}
   w.inv:move(item,dest,10,2,"job"); eq(w.inventories.hub[1].size,6); eq(w.inventories.a[10].size,2)

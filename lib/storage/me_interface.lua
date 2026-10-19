@@ -58,8 +58,11 @@ function M:validate()
   end
   return true
 end
-function M:catalogue(stack)
-  if B.scanned(stack) then self.state.aeCatalog[B.identity(stack)]=U.copy(stack.individual); self.inv.save() end
+function M:catalogue(stack,deferSave)
+  if B.scanned(stack) then
+    self.state.aeCatalog[B.identity(stack)]=U.copy(stack.individual)
+    if not deferSave then self.inv.save() end
+  end
 end
 function M:scan()
   local pooled={}
@@ -160,7 +163,9 @@ function M:materialize(item,ep,owner,count)
       if s.size==count then return s end
     end
   end,"timeout waiting for Interface stock")
-  self:catalogue(stack); x.phase="READY"; self.inv.save()
+  -- Catalogue and READY form one durable checkpoint before the caller can move
+  -- the stack. Avoid writing/reading the whole state twice for this receipt.
+  self:catalogue(stack,true); x.phase="READY"; self.inv.save()
   return {endpoint=ep,slot=slot,stack=stack,batchId=item.batchId}
 end
 function M:clearRequest(x)

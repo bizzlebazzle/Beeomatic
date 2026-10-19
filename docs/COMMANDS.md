@@ -48,6 +48,11 @@ configurations use these defaults automatically. Optional `storage.pollSeconds`
 and `scanner.pollSeconds` settings tune those checks (minimum 0.1 seconds).
 These intervals affect detection delays; analyser and pipe processing still take
 their normal time, and exact returned bees are physically inspected before use.
+Polling intervals are not total batch timings: component calls and durable state
+writes also take time in-game. Inventory scans use `getAllStacks` snapshots when
+available to avoid repeated world reads for every empty chest/Interface slot.
+Components without that method retain individual reads with one size check per
+scan. Transfers still read their actual source/destination before committing.
 
 If no route is achievable, `plan` prints `Not enough verified parent stock to
 reach TARGET.` and returns to the shell without a traceback. Every breeding worker

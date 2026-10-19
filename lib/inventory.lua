@@ -8,12 +8,28 @@ function M:proxy(ep) return self.components:proxy(ep.transposer,{"getInventorySi
 function M:size(ep) return assert(self:proxy(ep).getInventorySize(ep.side),"inventory unavailable: "..ep.id) end
 function M:get(ep,slot) self:size(ep); return self:proxy(ep).getStackInSlot(ep.side,slot) end
 function M:scan(ep)
-  local r={}; for s=1,self:size(ep) do local stack=self:get(ep,s)
-    if stack then r[#r+1]={endpoint=ep,slot=s,stack=stack} end
-  end; return r
+  local p=self:proxy(ep); local r={}
+  if p.getAllStacks then
+    -- OC's snapshot iterator preserves slot positions, including empty slots.
+    -- Read exactly count() entries; nil in the middle is not end-of-inventory.
+    local snapshot,why=p.getAllStacks(ep.side)
+    assert(snapshot,why or ("inventory unavailable: "..ep.id))
+    for slot=1,snapshot.count() do local stack=snapshot()
+      if stack and stack.name then r[#r+1]={endpoint=ep,slot=slot,stack=stack} end
+    end
+  else
+    -- Older components/mocks: validate once per scan, not once per slot.
+    local size=assert(p.getInventorySize(ep.side),"inventory unavailable: "..ep.id)
+    for slot=1,size do local stack=p.getStackInSlot(ep.side,slot)
+      if stack then r[#r+1]={endpoint=ep,slot=slot,stack=stack} end
+    end
+  end
+  return r
 end
 function M:empty(ep)
-  for s=1,self:size(ep) do if not self:get(ep,s) then return s end end
+  local p=self:proxy(ep)
+  local size=assert(p.getInventorySize(ep.side),"inventory unavailable: "..ep.id)
+  for s=1,size do if not p.getStackInSlot(ep.side,s) then return s end end
   error("inventory full: "..ep.id)
 end
 function M:destination(ep,stack)
@@ -33,8 +49,9 @@ function M:reserve(item,owner)
   self.state.reservations[k]={owner=owner,identity=B.identity(actual)}; self.save(); return k
 end
 function M:release(owner)
-  for k,v in pairs(self.state.reservations) do if v.owner==owner then self.state.reservations[k]=nil end end
-  self.save()
+  local changed=false
+  for k,v in pairs(self.state.reservations) do if v.owner==owner then self.state.reservations[k]=nil; changed=true end end
+  if changed then self.save() end
 end
 function M:move(item,dest,slot,count,owner,receipt)
   assert(not self.state.pending,"unresolved transfer; reconcile before moving anything")

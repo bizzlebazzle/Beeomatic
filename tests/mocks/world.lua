@@ -32,6 +32,13 @@ function M.new()
     proxy.getStackInSlot=function(side,slot)
       local t=self.inventories[sides[side]]; assert(t,"unloaded inventory"); return U.copy(t[slot])
     end
+    proxy.getAllStacks=function(side)
+      local inventory=assert(self.inventories[sides[side]],"unloaded inventory")
+      local snapshot=U.copy(inventory); local slot=0
+      return setmetatable({count=function() return snapshot.size end},{__call=function()
+        slot=slot+1; return snapshot[slot]
+      end})
+    end
     proxy.transferItem=function(from,to,count,src,dst)
       self.moves=self.moves+1
       if self.failTransfer then return 0 end
