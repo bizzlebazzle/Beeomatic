@@ -32,6 +32,7 @@ Beeomatic storage scan
 Beeomatic bees list
 Beeomatic bees inspect spirit
 Beeomatic logs
+Beeomatic logs --crash
 Beeomatic help
 ```
 
@@ -95,7 +96,9 @@ readability. Routine scanner waiting is activity; actual failures appear under
 
 `status` uses the same compact overview. `status --verbose` includes full species
 IDs, job IDs, cycle/genetics counters, resident bees and flowers, storage counts,
-and recent diagnostic details. `logs` shows event history.
+and recent diagnostic details. `logs` shows event history. `logs --crash` pages
+through the last foreground worker traceback saved in `data/crash.log`, even if
+the saved job state cannot be loaded. Use `--no-pager` to print it in full.
 
 `status` and `logs` read the last saved snapshot. `status` additionally refreshes resident bee/flower information
 from the registered housings without moving items or writing the worker's state.

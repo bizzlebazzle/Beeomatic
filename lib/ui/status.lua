@@ -104,11 +104,15 @@ end
 -- Refresh the foreground dashboard instead of printing a new report every tick.
 -- Redirected output and hosts without a terminal keep ordinary printable reports.
 function M.show(text)
-  local ok,term=pcall(require,"term")
-  if ok and term.isAvailable and term.isAvailable() and term.clear and term.setCursor
-    and (not io.output or not io.stdout or io.output()==io.stdout) then
-    term.clear(); term.setCursor(1,1)
-  end
+  -- Screen/GPU calls can fail even after isAvailable succeeds (for example,
+  -- when a screen disconnects). Refreshing is optional; never abort the worker.
+  pcall(function()
+    local term=require("term")
+    if term.isAvailable and term.isAvailable() and term.clear and term.setCursor
+      and (not io.output or not io.stdout or io.output()==io.stdout) then
+      term.clear(); term.setCursor(1,1)
+    end
+  end)
   print(text)
 end
 function M.details(state,c,verbose)

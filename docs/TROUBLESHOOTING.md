@@ -4,6 +4,15 @@ Always preserve `data/config.lua`, `data/state.lua` and their `.bak` files. Do n
 delete bees or the journal to make a warning disappear. Stop other workers before
 changing configuration or moving stock involved in a pending transfer.
 
+`Beeomatic logs` reads the saved job-event history from `data/state.lua`. Older
+versions did not save uncaught worker tracebacks there. Updated workers save the
+latest foreground crash to `data/crash.log` and print the original error briefly.
+Run `Beeomatic logs --crash` to read that report with terminal paging (Enter/Space
+for next page, B for back, Q to close). `--no-pager` prints the full report.
+This command works even when saved configuration/state cannot be loaded. A crash
+from before this change cannot be recovered retroactively from this file; reproduce
+it after updating. Failures before the worker starts are outside this crash capture.
+
 | Report | Action |
 |---|---|
 | Complex `plan` targets fail with `too long without yielding` after scanning completes | The old planner scanned the full inventory repeatedly and compared unrelated princess/drone pairs without yielding to OpenOS. The corrected planner caches verified parent stock, checks relevant pairs and periodically yields during search and stock checks. Reboot after updating and retry `Beeomatic plan spirit`; keep your existing configuration and scanned bee data. |

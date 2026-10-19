@@ -6,7 +6,7 @@ Beeomatic doctor [--probe | --interface PORT | --adopt JOB | --retry JOB | --con
 Beeomatic plan SPECIES [--verbose] [--no-pager]
 Beeomatic breed SPECIES [--noFinalImprint | --onlyFinalImprint]
 Beeomatic convert SPECIES | populate SPECIES COUNT | imprint SPECIES
-Beeomatic status [--verbose] | logs
+Beeomatic status [--verbose] | logs [--crash]
 Beeomatic pause [JOB] | resume [JOB] [--recover] | stop
 Beeomatic alveary list | add | remove ID
 Beeomatic storage scan | bees list | bees inspect SPECIES
@@ -28,6 +28,15 @@ function M.main(root,args)
   local Planner=require("lib.planner"); local Mutations=require("lib.mutations")
   local Status=require("lib.ui.status"); local Diagnostics=require("lib.ui.diagnostics")
   local data=root.."/data"; fs.makeDirectory(data)
+  local a,f=M.parse(args); local cmd=U.lower(a[1]); local sub=U.lower(a[2])
+  local crashPath=data.."/crash.log"
+  -- Crash reports must remain readable even if loading configuration/state fails.
+  if cmd=="logs" and f.crash then
+    local report=io.open(crashPath,"r")
+    if not report then print("No saved crash report. Older versions did not save tracebacks."); return end
+    local text=report:read("*a"); report:close()
+    require("lib.ui.pager").show(text,{enabled=not f["no-pager"]}); return
+  end
   local cp=P.new(data.."/config.lua",fs); local sp=P.new(data.."/state.lua",fs)
   local ctl=P.new(data.."/control.lua",fs); local lock=data.."/worker.lock"
   local c=cp:load(Config.defaults()); local state=sp:load({jobs={},reservations={},transactions={},events={}})
@@ -36,7 +45,6 @@ function M.main(root,args)
   local Storage=require("lib.storage."..c.storage.kind); local storage=Storage.new(c.storage,inv,components)
   local scanner=require("lib.scanner").new(c.scanner,inv,state,save,computer.uptime,storage)
   local scheduler=require("lib.scheduler").new(c,state,components,inv,storage,scanner,save,computer.uptime)
-  local a,f=M.parse(args); local cmd=U.lower(a[1]); local sub=U.lower(a[2])
   local function scanInterval()
     return math.min(c.pollSeconds,math.max(0.1,tonumber(c.scanner.pollSeconds) or 0.5))
   end
@@ -110,7 +118,23 @@ function M.main(root,args)
       end
     end,debug.traceback)
     fs.remove(lock)
-    if not ok then error(err,0) end
+    if not ok then
+      -- Keep crash diagnostics separate from the breeding journal. A full disk
+      -- or failed report write must never replace the original worker error.
+      local report
+      local written,writeError=pcall(function()
+        report=assert(io.open(crashPath,"w"))
+        assert(report:write("Beeomatic worker crash\nCommand: "..table.concat(args," ").."\n\n"..tostring(err).."\n"))
+        assert(report:flush())
+        report:close(); report=nil
+      end)
+      if report then pcall(report.close,report) end
+      local first=tostring(err):match("^[^\r\n]+") or tostring(err)
+      print("Beeomatic stopped: "..first)
+      if written then print("Crash report: "..crashPath.."\nRead it with: Beeomatic logs --crash")
+      else print("Could not save crash report: "..tostring(writeError)) end
+      return nil,err
+    end
   end
   if cmd=="" or cmd=="help" then print(help); return end
   if cmd=="status" then
@@ -127,7 +151,7 @@ function M.main(root,args)
   if cmd=="resume" then
     if fs.exists(lock) and not f.recover then sendControl("resume",a[2]); return end
     assert(#state.jobs>0 or state.pendingRequest,"No saved work to resume")
-    run(); return
+    return run()
   end
   if cmd=="setup" or (cmd=="alveary" and sub=="add") then
     unlocked()
@@ -273,7 +297,7 @@ function M.main(root,args)
     assert(not state.pendingRequest,"Saved request exists; use resume")
     assert(#state.jobs==0 or state.finished or state.stopped,"Existing work is preserved; use resume or drain with stop")
     local count=cmd=="populate" and U.assertNumber(a[3],1,1000000) or nil
-    state.pendingRequest={target=a[2],mode=cmd,count=count,flags=f}; save(); run(); return
+    state.pendingRequest={target=a[2],mode=cmd,count=count,flags=f}; save(); return run()
   end
   error("Unknown command. Run Beeomatic help")
 end

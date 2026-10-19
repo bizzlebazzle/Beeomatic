@@ -65,3 +65,19 @@ test("foreground status refreshes an available terminal and falls back to plain 
   end)
   print=original; package.loaded.term=previous; assert(success,err)
 end)
+
+test("a failing terminal refresh cannot abort foreground breeding output",function()
+  local previous=package.loaded.term; local original=print
+  local calls={}
+  local success,err=pcall(function()
+    print=function(text) calls[#calls+1]=text end
+    for _,failure in ipairs({"isAvailable","clear","setCursor"}) do
+      package.loaded.term={isAvailable=function() return true end,
+        clear=function() end,setCursor=function() end}
+      package.loaded.term[failure]=function() error("screen disconnected during "..failure) end
+      Status.show(failure)
+    end
+    eq(calls,{"isAvailable","clear","setCursor"})
+  end)
+  print=original; package.loaded.term=previous; assert(success,err)
+end)

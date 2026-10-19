@@ -4,6 +4,60 @@ local function withAnswer(answer,fn)
   local success,err=xpcall(fn,debug.traceback); io.read=read
   assert(success,err)
 end
+
+test("worker crashes save a traceback and keep the original error visible without scrolling",function()
+  local w=W.new(); w:addMachine("a"); w:build()
+  w.inventories.hub[1]=W.bee("Spirit","princess")
+  w.inventories.hub[2]=W.bee("Spirit","drone",8)
+  O.with(w,function(files,out)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    require("event").pull=function() error("simulated foreground failure") end
+    local result,err=require("lib.cli").main("/project",{"breed","spirit"})
+    eq(result,nil); ok(err:find("simulated foreground failure",1,true))
+    local report=files["/project/data/crash.log"]
+    ok(report:find("Command: breed spirit",1,true)); ok(report:find("simulated foreground failure",1,true))
+    ok(report:find("stack traceback:",1,true)); eq(files["/project/data/worker.lock"],nil)
+    local state=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
+    ok(#state.jobs>0); ok(not state.finished)
+    local text=table.concat(out,"\n")
+    ok(text:find("Beeomatic stopped:",1,true)); ok(text:find("Beeomatic logs --crash",1,true))
+    ok(not text:find("stack traceback:",1,true))
+    -- Reading diagnostics never depends on successfully loading breeding data.
+    files["/project/data/state.lua"]="invalid"; files["/project/data/state.lua.bak"]="invalid"
+    require("lib.cli").main("/project",{"logs","--crash","--no-pager"})
+    eq(out[#out],report)
+  end)
+end)
+
+test("failure to write a crash report does not mask the worker error or keep its lock",function()
+  local w=W.new(); w:addMachine("a"); w:build()
+  w.inventories.hub[1]=W.bee("Spirit","princess")
+  w.inventories.hub[2]=W.bee("Spirit","drone",8)
+  O.with(w,function(files,out)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    require("event").pull=function() error("original worker failure") end
+    local open=io.open
+    io.open=function(path,mode)
+      if path=="/project/data/crash.log" then return nil,"disk full" end
+      return open(path,mode)
+    end
+    local success,result,err=pcall(require("lib.cli").main,"/project",{"breed","spirit"})
+    io.open=open
+    ok(success); eq(result,nil); ok(err:find("original worker failure",1,true))
+    eq(files["/project/data/worker.lock"],nil)
+    local text=table.concat(out,"\n")
+    ok(text:find("original worker failure",1,true)); ok(text:find("Could not save crash report:",1,true))
+    ok(text:find("disk full",1,true))
+  end)
+end)
+
+test("crash logs explain when no crash report exists",function()
+  local w=W.new(); w:addMachine("a"); w:build()
+  O.with(w,function(_,out)
+    require("lib.cli").main("/project",{"logs","--crash"})
+    ok(table.concat(out,"\n"):find("Older versions did not save tracebacks.",1,true))
+  end)
+end)
 test("plan reports unavailable stock without throwing a traceback or moving bees",function()
   local w=W.new(); w:addMachine("a"); w:build()
   w.recipes={spirit={W.route("Unusual","Aware"),W.route("Unusual","Mystical")}}
