@@ -1,5 +1,12 @@
 local U=require("lib.util"); local Config=require("lib.config")
 local M={}
+local function callable(v)
+  local mt=type(v)=="table" and getmetatable(v)
+  return type(v)=="function" or (type(mt)=="table" and type(mt.__call)=="function")
+end
+local function callback(fn)
+  return setmetatable({}, {__call=function(_,...) return fn(...) end})
+end
 function M.bee(species,kind,n,inactive,overrides)
   local sp={name=species,uid="test.species"..species:lower(),temperature="Normal",humidity="Normal"}
   local g={species=sp,fertility=3,temperatureTolerance="NONE",humidityTolerance="NONE",nocturnal=false,
@@ -70,12 +77,16 @@ function M.new()
     local t=self.inventories[id]; t[4]=nil; t[2]=nil; t[6]=U.copy(p); t[8]=U.copy(d)
   end
   function w:build()
+    -- Real OpenOS proxy callbacks are callable tables, not necessarily functions.
+    for _,proxy in pairs(self.proxies) do for name,value in pairs(proxy) do
+      if type(value)=="function" then proxy[name]=callback(value) end
+    end end
     local api={proxy=function(address) assert(self.proxies[address],"component missing "..address); return self.proxies[address] end,
       list=function()
         local kinds={}; for address in pairs(self.proxies) do kinds[address]=address:match("^tp") and "transposer" or "bee_housing" end
         return pairs(kinds)
       end,methods=function(address)
-        local r={}; for k,v in pairs(self.proxies[address]) do if type(v)=="function" then r[k]=true end end; return r
+        local r={}; for k,v in pairs(self.proxies[address]) do if callable(v) then r[k]=false end end; return r
       end,doc=function() return "mock callback" end}
     self.components=require("lib.components").new(api)
     self.save=function() self.saves=self.saves+1 end

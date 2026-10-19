@@ -8,7 +8,7 @@ function M.probe(components,out)
       local ok,doc=pcall(components.api.doc,c.address,m)
       out("  "..m.." "..(ok and tostring(doc or "") or ""))
     end
-    if c.methods.getInventorySize and c.methods.getStackInSlot then
+    if c.methods.getInventorySize~=nil and c.methods.getStackInSlot~=nil then
       local ok,invs=pcall(components.inventories,components,c.address)
       if ok then for _,i in ipairs(invs) do
         out("  side "..i.side.." inventory size "..i.size)

@@ -5,7 +5,7 @@ Forestry **4.11.37**, AE2 **rv3-beta-1050-GTNH**, Gendustry **1.9.13-GTNH**.
 These versions are verified from the release manifest and OC/Forestry tagged source.
 There has been **no in-game execution** in this workspace.
 
-Current automated result: **60 tests passed, zero failures**, using Lua 5.2. This
+Current automated result: **62 tests passed, zero failures, on each of Lua 5.2 and Lua 5.3**. This
 includes the public command path, persistent foreground events, installer copy and
 upgrade preservation, and exact selection of a non-first same-label ME variant.
 
@@ -21,8 +21,10 @@ Or on this Windows workspace, where a local Lupa runtime was installed:
 python tests/run.py
 ```
 
-The Python wrapper imports `lupa.lua52`, syntax-checks every project Lua file and
-runs the same test suite. To provision another development host, install Lupa
+The Python wrapper imports `lupa.lua52` and `lupa.lua53`, syntax-checks every project Lua file and
+runs the same test suite on both engines. Component mocks use callable tables and
+indirect (`false`) method metadata, matching the user's observed OpenOS proxies.
+To provision another development host, install Lupa
 (`python -m pip install --target .tools lupa`). That is a development dependency,
 not a Minecraft installation requirement.
 

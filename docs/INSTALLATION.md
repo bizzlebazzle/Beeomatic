@@ -1,6 +1,6 @@
 # Install on GTNH 2.9.0 Beta 3
 
-Use an OpenComputers computer running **OpenOS with the Lua 5.2 architecture**.
+Use an OpenComputers computer running **OpenOS with Lua 5.2 or Lua 5.3**.
 Give it a writable hard drive, sufficient RAM, a screen/keyboard, stable power,
 and OC cable connections to every configured component. Keep all breeder, storage,
 scanner, routing and computer chunks loaded together. An Internet Card is not

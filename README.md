@@ -94,8 +94,8 @@ Beeomatic/
     VALIDATION.md, API_EVIDENCE.json
 ```
 
-Development check in this workspace: `python tests/run.py` runs the Lua 5.2 engine.
-Current validation: **60 tests passed**, including the public CLI Spirit workflow,
+Development check in this workspace: `python tests/run.py` runs Lua 5.2 and Lua 5.3.
+Current validation: **62 tests passed on each engine**, including the public CLI Spirit workflow,
 installer upgrades, exact selection of a second same-label AE2 genetic variant,
 concurrent machines, protected reserves and interrupted transfer recovery.
 Local `.tools/` and downloaded `research/` are ignored and not installed. No external

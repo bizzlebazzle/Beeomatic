@@ -80,3 +80,11 @@ and does not claim that a staging chest is the alveary's native inventory.
 Lua targets OpenOS Lua **5.2**: no native bitwise operators, `//`, `goto` dependency,
 Lua 5.4 resource syntax, or third-party Lua packages. Tests use the actual Lua 5.2
 runtime distributed with Lupa on the development host.
+
+Initial multiplayer probing also confirmed OpenOS running **Lua 5.3**, an
+`me_interface` with callable-table methods, and a stored Wintry Drone exposing
+`tag` as a string while `individual.active` was absent. The full suite now runs on
+both Lua 5.2 and 5.3. Proxy validation uses `component.methods(address)` rather than
+requiring callbacks to have Lua type `function`; metadata value `false` means an
+indirect callback, not a missing method. This probe confirms network visibility
+and NBT exposure, not exact export or breeding behavior.
