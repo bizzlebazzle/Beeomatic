@@ -11,6 +11,11 @@ the computer facing east. A transposer transfer moved one exact-NBT drone from
 buffer side 5 to archive side 3, emptied the buffer, and exposed that same drone
 to ME after adding the archive storage bus. The complete OC-controlled export
 cycle and application breeding remain unverified.
+The same transposer now accesses the nine-slot alveary on side 4. Separate manual
+witnesses showed a Meadows Princess in slot 1 with `getQueen()` non-nil and a
+Wintry Drone in slot 2 with `getDrone()` non-nil. The housing component reports
+type `items` on this server; registration checks its methods rather than its type.
+Output slots, sided transfers and a completed breeding cycle remain unverified.
 
 Current automated result: **76 tests passed, zero failures, on each of Lua 5.2 and Lua 5.3**. This
 includes the public command path, persistent foreground events, installer copy and

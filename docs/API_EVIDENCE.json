@@ -61,6 +61,20 @@
       "storageBusNetworkCount": 1,
       "networkExactNbtMatch": true
     },
+    "alvearyInputWitnesses": {
+      "componentTypeObserved": "items",
+      "methodsObserved": ["canBreed", "getQueen", "getBeeParents", "getBeeBreedingData", "listAllSpecies", "getDrone"],
+      "transposerSide": 4,
+      "inventorySlots": 9,
+      "princessSlot": 1,
+      "princessWitness": "Meadows Princess",
+      "getQueenNonNilWithPrincessOnly": true,
+      "droneSlot": 2,
+      "droneWitness": "Wintry Drone",
+      "getDroneNonNilWithDroneOnly": true,
+      "outputSlotsWitnessed": false,
+      "completedCycleWitnessed": false
+    },
     "automatedOcRedstoneValidated": false,
     "applicationBreedingValidated": false
   }
