@@ -30,7 +30,7 @@ The installer now writes that known root directly into `/usr/bin/Beeomatic`, whi
 sets module paths and calls the CLI without inferring a root from debug metadata.
 This change still needs an in-game retest.
 
-Current automated result: **96 tests passed, zero failures, on each of Lua 5.2 and Lua 5.3**. This
+Current automated result: **102 tests passed, zero failures, on each of Lua 5.2 and Lua 5.3**. This
 includes the public command path, persistent foreground events, installer copy and
 upgrade preservation, and exact selection of a non-first same-label ME variant.
 Download tests cover consistent revision selection, saved-data preservation,
@@ -54,6 +54,14 @@ an in-game UI acceptance check.
 Endpoint tests also cover skipping a lone named transposer, distinct prompts for
 consecutive inventory roles, menu-number-to-world-side mapping, invalid choices,
 refreshing inventory lists and attaching an inventory after an empty discovery.
+Heading checks cover colour restoration (including output failure), palette colour
+preservation and plain-text fallback on monochrome or unavailable terminals. Export
+mode checks cover explanation before selection, invalid-input retry, the redstone
+default and preservation of an existing explicit callback configuration.
+Export-direction tests cover all six names, numeric world sides, saved defaults
+and invalid-input retry. Direction semantics were checked against the pinned
+`DriverExportBus.scala` and `part-bus-beta3.scala` sources: the side selects the
+part on the ME cable host, with the receiving inventory outward along that side.
 
 Run automated tests on a development machine with Lua 5.2:
 

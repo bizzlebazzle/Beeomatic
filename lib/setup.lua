@@ -2,6 +2,26 @@ local U=require("lib.util"); local C=require("lib.config"); local B=require("lib
 local M={}
 function M.new(config,components,inv,save,read,out)
   local w={c=config,components=components,inv=inv,save=save,read=read or io.read,out=out or print}
+  function w:heading(text)
+    local gpu,previous,palette
+    if self.out==print then
+      pcall(function()
+        local term=require("term"); local candidate=term.gpu()
+        if candidate and candidate.getDepth()>1 then
+          io.stdout:flush()
+          previous,palette=candidate.getForeground()
+          candidate.setForeground(0x55FFFF)
+          gpu=candidate
+        end
+      end)
+    end
+    local ok,err=pcall(self.out,"== "..text.." ==")
+    if gpu then
+      pcall(function() io.stdout:flush() end)
+      pcall(gpu.setForeground,previous,palette)
+    end
+    if not ok then error(err,0) end
+  end
   function w:ask(label,default)
     self.out(label..(default~=nil and (" ["..tostring(default).."]") or "")..": ")
     local value=self.read(); assert(value,"Setup interrupted; completed sections are saved")
@@ -30,7 +50,7 @@ function M.new(config,components,inv,save,read,out)
         end
       end
       local pages=math.max(1,math.ceil(#choices/2)); page=math.min(page,pages)
-      self.out(label.." - choose a component (page "..page.."/"..pages..")")
+      self:heading(label.." - choose a component (page "..page.."/"..pages..")")
       local defaultNumber
       for i,c in ipairs(choices) do if c.address==default then defaultNumber=i end end
       if #choices==0 then self.out("No compatible components found. Connect one and refresh.") end
@@ -46,7 +66,7 @@ function M.new(config,components,inv,save,read,out)
         end
       end
       self.out("R refresh | N connect new | > next page | < previous page")
-      self.out("Select a COMPONENT number. Inventory selection is a separate step.")
+      self.out("Select the number of the component you want to use.")
       local answer=self:ask("Component number",defaultNumber):lower()
       if answer=="r" then onlyNew=nil; page=1
       elseif answer=="n" then
@@ -78,13 +98,13 @@ function M.new(config,components,inv,save,read,out)
   end
   function w:endpoint(label,default)
     default=default or {}
-    self.out("Registering inventory: "..label)
+    self:heading("Registering inventory: "..label)
     self.out("Step 1/2: choose the transposer beside "..label..".")
     local address=self:address("Transposer for "..label,{"getInventorySize","getStackInSlot","transferItem"},default.transposer,true)
     local named=self.c.componentNames and self.c.componentNames[address]
     local side
     repeat
-      self.out("Step 2/2: which attached inventory is "..label.."?")
+      self:heading("Step 2/2: which attached inventory is "..label.."?")
       self.out("Transposer: "..(named and named.name or address))
       self.out("Directions below are FROM the transposer TO each inventory.")
       local _,choices=self.components:inventorySummary(address)
@@ -108,6 +128,7 @@ function M.new(config,components,inv,save,read,out)
     assert(ep.id~="","inventory ID cannot be empty"); self.inv:size(ep); return ep
   end
   function w:storage()
+    self:heading("Storage setup")
     self.out("Storage: a shared physical archive is the transfer hub. Every breeder transposer must reach that same inventory, or its own registered storage inventory.")
     local kind=self:ask("Storage type: chest or ae2",self.c.storage.kind):lower()
     assert(kind=="chest" or kind=="ae2","choose chest or ae2")
@@ -116,18 +137,24 @@ function M.new(config,components,inv,save,read,out)
       s.endpoints[1]=self:endpoint("Archive chest",s.endpoints[1]); self.save()
     end
     if kind=="ae2" then
-      self.out("Attach an ME STORAGE BUS to the archive. Keep it on a dedicated bee subnet. Add an adapter on an ME interface/controller, database component, and an adapter exposing a separate export bus into a buffer chest. The buffer MUST NOT have a storage/import bus.")
+      self:heading("ME network access")
+      self.out("The archive chest needs an ME STORAGE BUS on your dedicated bee subnet.")
+      self.out("Next choose the ME interface/controller adapter used to read network stock.")
       s.address=self:address("ME interface/controller address",{"getItemsInNetwork","store"},s.address)
+      self.out("Next choose the OC database used to remember exact bee item types.")
+      self.out("Its entries are temporary scratch space; use a dedicated database.")
       s.database=self:address("Database component address",{"clear","get"},s.database)
       s.databaseSlots=self:number("Dedicated database capacity (number of entries shown in its GUI)",1,4096,s.databaseSlots or 9)
-      s.exportMode=self:ask("Export control: redstone (Beta 3 workaround) or callback",s.exportMode or "redstone"):lower()
-      assert(s.exportMode=="redstone" or s.exportMode=="callback","choose redstone or callback")
+      self:exportControl()
+      self:heading("Export bus and receiving chest")
+      self.out("Choose the adapter exposing the ME export bus that sends bees to a buffer chest.")
+      self.out("This buffer is separate from the archive: no storage/import bus on it.")
       local methods={"setExportConfiguration"}
       if s.exportMode=="redstone" then
         methods[#methods+1]="getExportConfiguration"; methods[#methods+1]="getExportSlotSize"
       else methods[#methods+1]="exportIntoSlot" end
       s.exportAddress=self:address("ME export bus component address",methods,s.exportAddress)
-      s.exportSide=self:number("Direction the export bus faces (relative to its host block)",0,5,s.exportSide)
+      s.exportSide=self:exportDirection(s.exportSide)
       s.buffer=self:endpoint("Isolated export buffer",s.buffer)
       if s.exportMode=="redstone" then
         self.out("Set the ME bus to ACTIVE WITH SIGNAL. An OC Redstone Card must be the sole signal source. Remove the manual lever. Connect the chosen computer output face to the bus through verified redstone wiring. Signal stays ON until an exact physical receipt arrives; bus speed is not assumed.")
@@ -146,6 +173,39 @@ function M.new(config,components,inv,save,read,out)
       s.storageBusVerified=self:yes("Is the archive exposed by a storage bus on the dedicated subnet?",false)
       self.save()
     end
+  end
+  function w:exportDirection(default)
+    local names={"down","up","north","south","west","east"}
+    self:heading("Which way does the export bus send bees?")
+    self.out("Start at the ME cable block that carries the export bus.")
+    self.out("Follow the bus outward towards the buffer chest receiving the bees:")
+    self.out("ME cable block -> export bus -> buffer chest")
+    self.out("Example: chest SOUTH of the cable block means south (3).")
+    self.out("This is a world direction, not a side of the OC adapter or transposer.")
+    self.out("0 down | 1 up | 2 north | 3 south | 4 west | 5 east")
+    repeat
+      local answer=self:ask("Export direction (name or number)",default~=nil and names[default+1] or nil):lower():match("^%s*(.-)%s*$")
+      for i,name in ipairs(names) do if answer==name then return i-1 end end
+      local n=tonumber(answer)
+      if n and n%1==0 and n>=0 and n<=5 then return n end
+      self.out("Enter down, up, north, south, west, east, or a number from 0 to 5.")
+    until false
+  end
+  function w:exportControl()
+    self:heading("How should Beeomatic start and stop ME exports?")
+    self.out("redstone (recommended for your tested GTNH Beta 3 setup):")
+    self.out("  Beeomatic enables the export bus using an OC redstone output.")
+    self.out("  It waits for bees in the buffer, then switches the signal off.")
+    self.out("  Needs an OC Redstone Card wired to a bus set to ACTIVE WITH SIGNAL.")
+    self.out("callback (only for an installation where this command has been tested):")
+    self.out("  Asks the ME adapter to export directly using exportIntoSlot.")
+    self.out("  This failed with config=null on your tested server. Use redstone here.")
+    self.out("Press Enter to keep the option shown in brackets.")
+    repeat
+      local mode=self:ask("Export control: redstone or callback",self.c.storage.exportMode or "redstone"):lower()
+      if mode=="redstone" or mode=="callback" then self.c.storage.exportMode=mode; return end
+      self.out("Enter redstone or callback, or press Enter to keep the default.")
+    until false
   end
   function w:addAlveary()
     local a={id=self:ask("Unique alveary ID (letters/numbers/underscore)"),enabled=true,priority=#self.c.alvearies+1}

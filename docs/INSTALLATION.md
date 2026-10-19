@@ -111,6 +111,17 @@ Transposer previews show world sides, inventory sizes and up to two occupied slo
 per inventory. Use a distinctive item in a previewed slot to identify a chest, then
 refresh; previews never move items. Full method documentation is available separately
 through `Beeomatic doctor --probe` and is not printed during normal setup.
+Component-picker and inventory headings use cyan on colour terminals, restoring
+the previous text colour immediately afterward. Monochrome terminals retain `==`
+heading markers. The ME export-control question explains both modes before asking:
+`redstone` enables the bus using the wired OC Redstone Card and watches the physical
+buffer for receipts; `callback` invokes `exportIntoSlot` directly. Use `redstone`
+on the tested Beta 3 server, where the callback failed with `config=null`.
+The export direction runs from the ME cable block carrying the bus, through the
+export bus, towards the buffer chest. It is a world direction: `down` (0), `up`
+(1), `north` (2), `south` (3), `west` (4), `east` (5). Setup accepts either the name
+or number. For example, a buffer chest south of the cable block means `south`/3.
+Use the cable-to-chest direction, not the adapter's orientation or a transposer side.
 After upgrading program files, reboot the OpenComputer before testing to clear
 OpenOS's cached application modules.
 

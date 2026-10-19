@@ -12,6 +12,72 @@ local function picker(w,answers)
   return wizard,output,snapshots
 end
 
+test("setup headings colour only the heading and restore palette colours after output errors",function()
+  local oldPrint,oldTerm=print,package.loaded.term
+  local foreground,palette=3,true; local calls={}
+  local gpu={getDepth=function() return 8 end,getForeground=function() return foreground,palette end,
+    setForeground=function(value,index) foreground,palette=value,index; calls[#calls+1]={value,index} end}
+  package.loaded.term={gpu=function() return gpu end}
+  local success,err=pcall(function()
+    print=function(text) eq(foreground,0x55FFFF); eq(text,"== Components ==") end
+    local wizard=require("lib.setup").new({},nil,nil,function() end)
+    wizard:heading("Components"); eq(foreground,3); eq(palette,true)
+    print=function() error("output interrupted") end; wizard.out=print
+    raises(function() wizard:heading("Components") end,"output interrupted")
+    eq(foreground,3); eq(palette,true); eq(#calls,4)
+  end)
+  print=oldPrint; package.loaded.term=oldTerm
+  assert(success,err)
+end)
+
+test("setup headings remain readable on monochrome and unavailable terminals",function()
+  local oldPrint,oldTerm=print,package.loaded.term; local output={}
+  local success,err=pcall(function()
+    print=function(text) output[#output+1]=text end
+    local wizard=require("lib.setup").new({},nil,nil,function() end)
+    package.loaded.term={gpu=function() return {getDepth=function() return 1 end,
+      setForeground=function() error("must not change monochrome colour") end} end}
+    wizard:heading("Mono")
+    package.loaded.term={gpu=function() error("no GPU") end}
+    wizard:heading("Plain")
+    eq(output,{"== Mono ==","== Plain =="})
+  end)
+  print=oldPrint; package.loaded.term=oldTerm
+  assert(success,err)
+end)
+
+test("export control explains the recommendation before prompting and defaults to redstone",function()
+  local w=W.new(); w:build()
+  local wizard,out=picker(w,{"invalid",""})
+  wizard:exportControl(); eq(w.c.storage.exportMode,"redstone")
+  local text=table.concat(out,"\n")
+  local _,explanation=text:find("This failed with config=null",1,true)
+  local prompt=text:find("Export control: redstone or callback",1,true)
+  ok(explanation<prompt); ok(text:find("Enter redstone or callback",1,true))
+end)
+
+test("export direction accepts world direction names and numbers without changing side mapping",function()
+  local w=W.new(); w:build()
+  local wizard=picker(w,{"down","UP"," north ","south","west","east","0","5"})
+  for side=0,5 do eq(wizard:exportDirection(),side) end
+  eq(wizard:exportDirection(),0); eq(wizard:exportDirection(),5); eq(w.moves,0)
+end)
+
+test("export direction retains the saved side and retries invalid input",function()
+  local w=W.new(); w:build()
+  local wizard,out=picker(w,{"6","-1","2.5","front",""})
+  eq(wizard:exportDirection(3),3)
+  local text=table.concat(out,"\n")
+  ok(text:find("Export direction (name or number) [south]",1,true))
+  ok(text:find("ME cable block -> export bus -> buffer chest",1,true))
+end)
+
+test("export control preserves an existing explicit callback selection",function()
+  local w=W.new(); w:build(); w.c.storage.exportMode="callback"
+  local wizard=picker(w,{""}); wizard:exportControl()
+  eq(w.c.storage.exportMode,"callback")
+end)
+
 test("component picker filters capabilities and persists friendly names across reloads",function()
   local w=W.new(); w:addMachine("a"); w:addMachine("b"); w:build()
   local wizard,out,saved=picker(w,{"2","Second transposer"})
