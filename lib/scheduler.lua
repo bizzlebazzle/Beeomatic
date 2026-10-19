@@ -66,6 +66,20 @@ function M:populationMinimum(items,target)
   -- above the reserve, but do not demand an unreachable population target.
   return low and self.c.reserveDrones+1 or self.c.minDrones
 end
+function M:observeParentStock(items)
+  -- Use the same whole-storage snapshot as storageCounts, including stock owned
+  -- by population helpers. Selection still applies its usual ownership rules.
+  self.state.parentStock={}
+  for _,j in ipairs(self.state.jobs) do
+    if j.state=="WAITING" and j.error=="Waiting for stable parent population" then
+      for _,parent in ipairs(j.route and j.route.parents or {}) do
+        if not self.state.parentStock[parent] then
+          self.state.parentStock[parent]={count=self:count(items,parent,"drone"),minimum=self:populationMinimum(items,parent)}
+        end
+      end
+    end
+  end
+end
 function M:conversionDonor(i,items,target)
   return G.purity(i.stack,target)<2 and self:canSpend(i,items) and
     (G.purity(i.stack,target)>0 or G.fertileDonor(i.stack))
@@ -475,6 +489,7 @@ function M:step()
       self.storage:releaseBatches(j.id); j.lineage=nil; self.inv:release(j.id)
     end end
   end
+  self:observeParentStock(items)
   self.save()
   return active,complete and "DONE" or self.state.stopped and "STOPPED" or active and "RUNNING" or
     (scanOk and not scanned and "SCANNING") or (progress()~=before and "PROGRESS") or "BLOCKED"

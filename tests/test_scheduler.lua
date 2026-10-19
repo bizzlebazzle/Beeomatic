@@ -55,6 +55,8 @@ test("base parents populate before mutation even when a spendable pair exists",f
   w.inventories.hub[2].size=32
   local j=W.job(w,"one","Common","breed",W.route("Forest","Meadows"))
   w.scheduler:step(); eq(j.state,"WAITING"); eq(w.moves,0)
+  eq(w.state.parentStock.forest,{count=16,minimum=32})
+  eq(w.state.parentStock.meadows,{count=32,minimum=32})
   local helper=w.state.jobs[2]; eq(helper.mode,"populate"); eq(helper.species,"forest"); eq(helper.count,32)
   for cycle=1,3 do
     w.scheduler:step(); eq(helper.state,"RUNNING"); eq(j.state,"WAITING")
@@ -65,6 +67,7 @@ test("base parents populate before mutation even when a spendable pair exists",f
   end
   for tick=1,3 do if j.state~="RUNNING" then w.scheduler:step() end end
   eq(helper.state,"DONE"); eq(j.state,"RUNNING")
+  eq(w.state.parentStock,{})
 end)
 
 test("both base parents schedule population and duplicate requests share helpers",function()

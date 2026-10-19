@@ -93,8 +93,12 @@ The running screen refreshes in place on an available OpenOS terminal. It shows
 the target, completed/active/queued steps, scanner activity, and one line per busy
 alveary. Idle alvearies are counted together. Species names are shortened for
 readability. Routine scanner waiting is activity; actual failures appear under
-`Attention`, with each alert on its own line. Parent preparation is shown as
-`Waiting for stable parent population`. `q` lets active work finish before stopping.
+`Attention`, with each alert on its own line. Parent preparation is normal work:
+`Planned: Eldritch - Waiting for stable parent population`, followed by each
+parent's analysed drone count/required minimum and any ongoing stable-cycle
+confirmation. Counts use the latest storage snapshot and include stock held by
+population helpers; breeding still respects ownership and reserve rules. Such
+waits do not trigger `Needs attention`. `q` lets active work finish before stopping.
 
 `status` uses the same compact overview. `status --verbose` includes full species
 IDs, job IDs, cycle/genetics counters, resident bees and flowers, storage counts,

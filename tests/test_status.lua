@@ -38,13 +38,23 @@ test("compact status keeps real scanner and job failures visible",function()
   ok(text:find("BEEOMATIC | Needs attention",1,true)); ok(text:find("b: cannot read housing",1,true))
 end)
 
-test("parent population alerts use short wording for both saved and new messages",function()
+test("parent population waits are normal planned status with counts and stability",function()
   for _,message in ipairs({"Waiting for parent drone population and stable confirmation cycles","Waiting for stable parent population"}) do
     local state=sample()
     state.jobs[2].species="magicbees.specieseldritch"; state.jobs[2].error=message
+    state.jobs[2].route={parents={"attuned","cultivated"}}
+    state.parentStock={attuned={count=12,minimum=32},cultivated={count=40,minimum=32}}
+    state.jobs[3]={id="helper",species="attuned",mode="populate",state="RUNNING",confirmed=1}
+    config.confirmCycles=2
     local text=Status.render(state,config,false)
-    ok(text:find("Attention:\n  Eldritch: Waiting for stable parent population\n",1,true))
+    ok(text:find("BEEOMATIC | Working",1,true)); ok(not text:find("Attention:",1,true))
+    ok(text:find("Planned: Eldritch - Waiting for stable parent population\n  Attuned: 12/32 drones | stable cycles 1/2\n  Cultivated: 40/32 drones",1,true))
     ok(not text:find("stable confirmation cycles",1,true))
+    state.jobs[1].error="missing flowers"
+    text=Status.render(state,config,false)
+    ok(text:find("BEEOMATIC | Needs attention",1,true)); ok(text:find("Attention:\n  Common: missing flowers",1,true))
+    state.jobs[2].state="RUNNING"; state.jobs[2].error=nil
+    ok(not Status.render(state,config,false):find("Planned: Eldritch",1,true))
   end
 end)
 

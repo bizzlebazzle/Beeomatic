@@ -51,6 +51,10 @@ local function reason(message)
   -- Strip Lua source locations from the overview; verbose retains the original.
   return tostring(message):gsub("[^%s]+%.lua:%d+: ",""):gsub("[\r\n]+"," ")
 end
+local function parentWait(j)
+  return j.state=="WAITING" and (j.error=="Waiting for stable parent population"
+    or j.error=="Waiting for parent drone population and stable confirmation cycles")
+end
 function M.render(state,c,verbose)
   if verbose then return M.details(state,c,true) end
   local done,queued,paused,busy=0,0,0,0
@@ -62,7 +66,7 @@ function M.render(state,c,verbose)
     elseif j.state=="WAITING" then queued=queued+1
     elseif j.state=="PAUSED" then paused=paused+1
     else busy=busy+1 end
-    if j.error then warnings[#warnings+1]=speciesName(j.species)..": "..reason(j.error) end
+    if j.error and not parentWait(j) then warnings[#warnings+1]=speciesName(j.species)..": "..reason(j.error) end
   end
   for _,a in ipairs(c.alvearies or {}) do
     local housing=(state.housings or {})[a.id]
@@ -97,6 +101,20 @@ function M.render(state,c,verbose)
     else idle=idle+1 end
   end
   if idle>0 then r[#r+1]="Alvearies idle: "..idle end
+  for _,j in ipairs(state.jobs or {}) do if parentWait(j) then
+    r[#r+1]="Planned: "..speciesName(j.species).." - Waiting for stable parent population"
+    for _,parent in ipairs(j.route and j.route.parents or {}) do
+      local stock=(state.parentStock or {})[parent] or {}
+      local stable=""
+      for _,helper in ipairs(state.jobs or {}) do
+        if helper.species==parent and helper.mode=="populate" and helper.state~="DONE" then
+          stable=" | stable cycles "..(helper.confirmed or 0).."/"..(c.confirmCycles or 2)
+          break
+        end
+      end
+      r[#r+1]="  "..speciesName(parent)..": "..tostring(stock.count or "?").."/"..tostring(stock.minimum or c.minDrones or "?").." drones"..stable
+    end
+  end end
   if #warnings>0 then
     r[#r+1]="Attention:"
     for _,warning in ipairs(warnings) do r[#r+1]="  "..warning end
