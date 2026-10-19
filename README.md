@@ -21,7 +21,7 @@ Beeomatic breed spirit
 
 For offline installation, copy only the paths listed in `manifest.lua`, preserving
 their directories. Tests and documentation stay on the PC. The compact release
-is approximately 104 KiB of file contents (30 files), plus filesystem overhead and
+is approximately 105 KiB of file contents (31 files), plus filesystem overhead and
 runtime data. Internet Card installation from the public
 [GitHub repository](https://github.com/bizzlebazzle/Beeomatic) is also supported:
 
@@ -37,6 +37,9 @@ Use `Beeomatic help` for commands or see [installation](docs/INSTALLATION.md),
 [physical hardware/layout](docs/HARDWARE.md), [commands](docs/COMMANDS.md),
 [architecture](docs/ARCHITECTURE.md), [troubleshooting](docs/TROUBLESHOOTING.md), and
 the [reference implementation review](docs/REFERENCE_REVIEW.md).
+
+After installing this version, run `update` at the OpenOS shell to download a
+fresh `/home/get.lua` and run it. Stop Beeomatic before updating and reboot after.
 
 `breed spirit` uses the recipes returned by your server. Ethereal + Aware is a
 preferred route only when Forestry actually reports it. Missing dependencies are

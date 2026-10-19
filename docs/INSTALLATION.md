@@ -31,7 +31,7 @@ removed after success or failure; empty staging directories can remain for reuse
 The downloader does not use `/tmp`, which can be a much smaller filesystem than
 the hard drive.
 
-The compact release contains 30 files, approximately **104 KiB of file contents**
+The compact release contains 31 files, approximately **105 KiB of file contents**
 before filesystem allocation overhead. This includes all application modules,
 `install.lua` and `manifest.lua`. It excludes documentation, tests, mocks, research,
 the example configuration, the repository launcher, the separate robot helper and
@@ -47,6 +47,26 @@ An optional second argument selects an absolute installation directory.
 Download uses GitHub's public API and raw file host; server Internet Card policy
 must permit both `api.github.com` and `raw.githubusercontent.com`.
 Complete hardware acceptance before starting a valuable breeding job.
+
+### Quick updates
+
+The installer also creates `/usr/bin/update`. Stop Beeomatic, then type:
+
+```sh
+update
+```
+
+This changes to `/home`, downloads `get.lua` with `wget -f`, and runs the freshly
+downloaded installer. If the download fails, the update stops. Reboot afterward
+to clear cached application modules. Like `get.lua`, it defaults to installing
+in `/home/Beeomatic`; use `update FULL_COMMIT_SHA /absolute/install/path` for a
+specific revision and destination.
+
+To add the shortcut to an older installation after these files are published:
+
+```sh
+wget -f https://raw.githubusercontent.com/bizzlebazzle/Beeomatic/master/update.lua /usr/bin/update
+```
 
 ## Offline installation
 

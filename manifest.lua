@@ -30,4 +30,5 @@ return {
   "lib/ui/status.lua",
   "lib/util.lua",
   "manifest.lua",
+  "update.lua",
 }

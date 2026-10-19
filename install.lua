@@ -30,6 +30,8 @@ end
 writeAtomic("/usr/bin/Beeomatic","local root="..string.format("%q",dest).."\n"..
   'package.path=root.."/?.lua;"..root.."/?/init.lua;"..package.path\n'..
   'return require("lib.cli").main(root,{...})\n')
+writeAtomic("/usr/bin/update",'return assert(loadfile('..
+  string.format("%q",dest.."/update.lua")..'))(...)\n')
 fs.makeDirectory(dest.."/data")
 print("Installed Beeomatic in "..dest..". Existing data/configuration were preserved.")
 print("Run: Beeomatic setup\nThen: Beeomatic doctor\nThen: Beeomatic plan spirit\nThen: Beeomatic breed spirit")
