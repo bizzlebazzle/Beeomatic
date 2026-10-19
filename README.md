@@ -95,8 +95,13 @@ Beeomatic/
 ```
 
 Development check in this workspace: `python tests/run.py` runs Lua 5.2 and Lua 5.3.
-Current validation: **62 tests passed on each engine**, including the public CLI Spirit workflow,
+Current validation: **64 tests passed on each engine**, including the public CLI Spirit workflow,
 installer upgrades, exact selection of a second same-label AE2 genetic variant,
 concurrent machines, protected reserves and interrupted transfer recovery.
 Local `.tools/` and downloaded `research/` are ignored and not installed. No external
 Lua library is needed on the Minecraft computer.
+
+Multiplayer testing found the GTNH 2.9 Beta 3 `exportIntoSlot` **config=null**
+integration bug. NBT listing/database copies and physical genetic inspection work;
+autonomous direct ME export is currently blocked on that installation. See the
+compatibility guide for evidence and the pending redstone workaround investigation.

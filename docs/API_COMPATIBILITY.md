@@ -88,3 +88,23 @@ both Lua 5.2 and 5.3. Proxy validation uses `component.methods(address)` rather 
 requiring callbacks to have Lua type `function`; metadata value `false` means an
 indirect callback, not a missing method. This probe confirms network visibility
 and NBT exposure, not exact export or breeding behavior.
+
+## Confirmed blocker during multiplayer export testing
+
+The user's Beta 3 installation successfully copied the Wintry Drone into the OC
+database with byte-identical NBT, but `exportIntoSlot(3,1)` returned `nil` plus
+`Cannot invoke ... because "config" is null`. The network drone remained stored
+and no chest receipt appeared. This matches
+[GTNH issue #25284](https://github.com/GTNewHorizons/GT-New-Horizons-Modpack/issues/25284).
+At the pinned OC tag, `DriverExportBus` still uses `getInventoryByName("config")`;
+AE2 rv3-beta-1050's `PartSharedItemBus` exposes the new configuration through
+`getAEInventoryByName(StorageName.CONFIG)`. The filter configuration callbacks
+already use the new API, explaining why configuration succeeds while export fails.
+
+The current Lua backend reports this incompatibility, preserves callback error
+details and the pending journal, and attempts filter cleanup. It cannot repair a
+Java callback from Lua. Ordinary redstone-controlled bus operation is a candidate
+workaround requiring an in-game test; no automatic fallback is claimed yet.
+Until a workaround is validated/implemented or the underlying integration is
+fixed, direct autonomous ME extraction is blocked on this installation. Physical
+chest inspection and NBT copying have passed; breeding and exact exports have not.

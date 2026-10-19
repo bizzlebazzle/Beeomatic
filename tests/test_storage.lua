@@ -81,3 +81,21 @@ test("shared archive falls back to another registered transposer view",function(
   local w=world(); w:addMachine("b"); w.proxies.tp1=nil
   eq(#w.storage:scan(),1)
 end)
+test("AE2 config-null callback failure preserves detail and clears the filter",function()
+  local w,raw=aeWorld(false); local cleared=false
+  local set=w.proxies.bus.setExportConfiguration
+  w.proxies.bus.setExportConfiguration=function(side,slot,address,...)
+    if not address then cleared=true end; return set(side,slot,address,...)
+  end
+  w.proxies.bus.exportIntoSlot=function() return nil,'Cannot invoke inventory method because "config" is null' end
+  raises(function() w.ae:materialize({network=true,endpoint={id="ME"},slot="x",stack=raw},w.c.storage.endpoints[1],"j") end,
+    "known GTNH exportIntoSlot config=null incompatibility")
+  ok(cleared); ok(w.state.pendingExternal.lastError:find('"config" is null',1,true))
+  ok(w.state.pendingExternal.compatibilityIssue); eq(w.inventories.buffer[1],nil)
+end)
+test("AE2 preserves secondary return errors from non-throwing callbacks",function()
+  local w,raw=aeWorld(false)
+  w.proxies.bus.exportIntoSlot=function() return nil,"no inventory" end
+  raises(function() w.ae:materialize({network=true,endpoint={id="ME"},slot="x",stack=raw},w.c.storage.endpoints[1],"j") end,"no inventory")
+  eq(w.state.pendingExternal.lastError,"no inventory"); eq(w.state.pendingExternal.compatibilityIssue,nil)
+end)

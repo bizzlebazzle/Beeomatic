@@ -80,10 +80,20 @@ function M:materialize(item,endpoint,owner)
   -- The bus may export a whole stack; keep the exact excess in the local hub.
   self.inv.state.pendingExternal={kind="ME_EXPORT",owner=owner,dest=buffer,slot=dstSlot,identity=B.identity(item.stack)}
   self.inv.save()
-  local ok,result=pcall(bus.exportIntoSlot,cfg.exportSide,dstSlot)
-  bus.setExportConfiguration(cfg.exportSide,1) -- clear even on failed export
+  local ok,result,detail=pcall(bus.exportIntoSlot,cfg.exportSide,dstSlot)
+  local clearOK,clearResult,clearDetail=pcall(bus.setExportConfiguration,cfg.exportSide,1)
   local got=self.inv:get(buffer,dstSlot)
-  assert(ok and result and got and B.identity(got)==B.identity(item.stack),"AE2 export failed/uncertain; inspect buffer and run doctor")
+  if not (ok and result and got and B.identity(got)==B.identity(item.stack) and clearOK and clearResult) then
+    local reason=not ok and tostring(result) or tostring(detail or result or "no export receipt")
+    if not clearOK or not clearResult then reason=reason.."; filter cleanup failed: "..tostring(clearDetail or clearResult) end
+    local x=self.inv.state.pendingExternal; x.lastError=reason
+    if reason:find("config",1,true) and reason:find("null",1,true) then
+      x.compatibilityIssue="https://github.com/GTNewHorizons/GT-New-Horizons-Modpack/issues/25284"
+      reason=reason.."; known GTNH exportIntoSlot config=null incompatibility. Do not repeat this callback; validate a redstone-controlled export path."
+    end
+    self.inv.save()
+    error("AE2 export failed/uncertain; inspect buffer and run doctor. "..reason)
+  end
   self.inv.state.pendingExternal=nil; self.inv.save()
   local physical={endpoint=buffer,slot=dstSlot,stack=got}
   local deposited=self.inv:move(physical,bridge,self.inv:destination(bridge,got),got.size,owner)
