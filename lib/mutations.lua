@@ -1,12 +1,13 @@
 local B=require("lib.bees"); local U=require("lib.util")
 local M={}; M.__index=M
 function M.new(housing,aliases)
-  return setmetatable({housing=housing,aliases=aliases or {},names={},cache={}},M)
+  return setmetatable({housing=housing,aliases=aliases or {},names={},labels={},cache={}},M)
 end
 function M:index(items)
   local function add(s)
     if type(s)=="table" and s.name then
       local id=U.lower(s.uid or s.name); self.names[U.lower(s.name)]=id; self.names[id]=id
+      self.labels[id]=s.name
     end
   end
   if self.housing.listAllSpecies then for _,s in pairs(self.housing.listAllSpecies() or {}) do add(s) end end
@@ -33,10 +34,15 @@ function M:parents(name)
   for _,p in pairs(assert(self.housing.getBeeParents(name),"Forestry returned no mutation data")) do
     assert(p.allele1 and p.allele2 and tonumber(p.chance),"unrecognized Forestry mutation shape")
     local q=U.copy(p)
-    local function id(s) return self:resolve(type(s)=="table" and (s.uid or s.name) or s) end
+    local function id(s)
+      local resolved=self:resolve(type(s)=="table" and (s.uid or s.name) or s)
+      if type(s)=="table" and s.name then self.labels[resolved]=s.name end
+      return resolved
+    end
     q.parents={id(p.allele1),id(p.allele2)}; r[#r+1]=q
   end
   table.sort(r,function(a,b) return table.concat(a.parents,"+")<table.concat(b.parents,"+") end)
   self.cache[name]=r; return r
 end
+function M:displayName(name) return B.displayName(self.labels[self:resolve(name)] or name) end
 return M

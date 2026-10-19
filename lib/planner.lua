@@ -1,6 +1,7 @@
 local B=require("lib.bees"); local E=require("lib.environment"); local U=require("lib.util")
 local M={}
 function M.plan(target,mutations,items,c)
+  local requested=target
   target=mutations:resolve(target)
   -- OpenOS resets the CPU watchdog when sleeping, even with a zero timeout.
   -- Count inner-loop work too: one route can inspect thousands of bee stacks.
@@ -39,19 +40,27 @@ function M.plan(target,mutations,items,c)
     end end
     -- When actual parent genomes exist, route ranking includes their survival
     -- requirements, not merely mutation condition descriptions.
-    local knownPair=false; local climate={}
+    local knownPair=false; local climate={}; local climateFailures,climateSeen={},{}
     local function checkPairs(princessSpecies,droneSpecies)
       for _,ps in ipairs(stock(princessSpecies).princess) do
         for _,ds in ipairs(stock(droneSpecies).drone) do
           checkpoint()
           knownPair=true
-          for _,a in ipairs(E.select(c.alvearies,route,ps,ds,{})) do climate[a.id]=true end
+          local compatible,why=E.select(c.alvearies,route,ps,ds,{})
+          for _,a in ipairs(compatible) do climate[a.id]=true end
+          if #compatible==0 and why~="" and not climateSeen[why] then
+            climateSeen[why]=true
+            if #climateFailures<6 then climateFailures[#climateFailures+1]=why end
+          end
         end
       end
     end
     checkPairs(route.parents[1],route.parents[2])
     if route.parents[1]~=route.parents[2] then checkPairs(route.parents[2],route.parents[1]) end
-    if knownPair then suitable=U.keys(climate) end
+    if knownPair then
+      suitable=U.keys(climate)
+      if #suitable==0 and #climateFailures>0 then unresolved=climateFailures end
+    end
     if #suitable==0 then cost=cost+100000 end
     local pref=c.preferred[name]
     if not pref then
@@ -210,18 +219,69 @@ function M.plan(target,mutations,items,c)
   end
   local order={}
   for _,n in ipairs(settled) do checkpoint(); if needed[n.species] then order[#order+1]=n end end
-  return {target=target,root=root,order=order}
-end
-function M.render(plan)
-  local lines={"Target: "..plan.target}; local seen={}
-  local function walk(n,depth)
-    local label=n.available and " [stock present]" or n.conversion and " [convert spare princess]" or
-      (" ["..tostring(n.route.chance).."% base; alvearies: "..table.concat(n.suitable,",").."]")
-    lines[#lines+1]=string.rep("  ",depth)..n.species..label
-    if n.environmentPending then lines[#lines+1]=string.rep("  ",depth+1).."Actual parent genes checked at dispatch" end
-    for _,r in ipairs(n.unresolved or {}) do lines[#lines+1]=string.rep("  ",depth+1).."requires "..r end
-    if not seen[n.species] then seen[n.species]=true; for _,ch in ipairs(n.children) do walk(ch,depth+1) end end
+  local names={}
+  for _,n in ipairs(order) do
+    checkpoint()
+    names[n.species]=mutations.displayName and mutations:displayName(n.species) or B.displayName(n.species)
   end
-  walk(plan.root,0); return table.concat(lines,"\n")
+  return {target=target,requested=requested,root=root,order=order,names=names}
+end
+function M.render(plan,options)
+  options=options or {}
+  local function name(id) return (plan.names or {})[id] or B.displayName(id) end
+  local stock,steps,checks={}, {}, {}
+  local breeds,conversions=0,0
+  for _,n in ipairs(plan.order) do
+    if n.available then stock[#stock+1]=name(n.species)
+    else
+      steps[#steps+1]=n
+      if n.conversion then conversions=conversions+1
+      else
+        breeds=breeds+1
+        if #(n.suitable or {})==0 then checks[#checks+1]={step=#steps,node=n} end
+      end
+    end
+  end
+  local lines={"Breeding plan: "..name(plan.target),
+    string.format("%d breeding step%s | %d princess conversion%s | %d species in stock",
+      breeds,breeds==1 and "" or "s",conversions,conversions==1 and "" or "s",#stock)}
+  if #checks>0 then
+    lines[#lines+1]=""
+    lines[#lines+1]="NEEDS ATTENTION: "..#checks..(#checks==1 and " step has" or " steps have").." no confirmed suitable alveary."
+    for _,check in ipairs(checks) do
+      lines[#lines+1]="  Step "..check.step.." - "..name(check.node.species)..":"
+      local reasons=check.node.unresolved or {}
+      if #reasons==0 then lines[#lines+1]="    Check registered alvearies and parent climate requirements."
+      else for _,reason in ipairs(reasons) do lines[#lines+1]="    "..reason end end
+    end
+    lines[#lines+1]="  Review these requirements before starting breeding."
+  end
+  lines[#lines+1]=""
+  if #stock>0 then table.sort(stock); lines[#lines+1]="Stock present: "..table.concat(stock,", ") end
+  if #steps==0 then
+    lines[#lines+1]="Target already has a verified princess and drones; no mutations needed."
+  else
+    lines[#lines+1]=""
+    lines[#lines+1]="Steps in breeding order (shared prerequisites listed once):"
+    for i,n in ipairs(steps) do
+      if n.conversion then
+        lines[#lines+1]=string.format("%2d. Recover %s princess from spare drones",i,name(n.species))
+      else
+        local parents={}; for _,id in ipairs(n.route.parents) do parents[#parents+1]=name(id) end
+        lines[#lines+1]=string.format("%2d. %s <- %s (%g%% base)%s",i,name(n.species),table.concat(parents," + "),n.route.chance,
+          #(n.suitable or {})==0 and " [CHECK]" or "")
+        if options.verbose then lines[#lines+1]="    Alvearies: "..(#(n.suitable or {})>0 and table.concat(n.suitable,", ") or "none confirmed") end
+      end
+    end
+    lines[#lines+1]=""
+    lines[#lines+1]="Parent genes, spare princesses and drone reserves are checked before each step."
+    local commandTarget=plan.requested or plan.target
+    lines[#lines+1]="To start: Beeomatic breed "..(commandTarget:find("%s") and string.format("%q",commandTarget) or commandTarget)
+  end
+  if options.verbose then
+    lines[#lines+1]=""; lines[#lines+1]="Species IDs:"
+    for _,n in ipairs(plan.order) do lines[#lines+1]="  "..name(n.species).." = "..n.species end
+  end
+  return table.concat(lines,"\n")
 end
 return M

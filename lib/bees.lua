@@ -1,5 +1,12 @@
 local U=require("lib.util")
 local M={}
+function M.displayName(v)
+  local name=type(v)=="table" and (v.name or v.uid) or v
+  name=tostring(name or "unknown")
+  local suffix=name:match("^.-%.species[%.:_]?(.+)$")
+  if suffix then name=suffix:gsub("(%l)(%u)","%1 %2"):gsub("[_%-]"," ") end
+  return (name:gsub("^%l",string.upper))
+end
 function M.species(v) if type(v)=="table" then return U.lower(v.uid or v.name) end; return U.lower(v) end
 function M.matches(v,target)
   target=U.lower(target)

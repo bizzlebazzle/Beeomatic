@@ -10,6 +10,10 @@ local manifest,reason=loadfile(src.."manifest.lua")
 assert(manifest,"Cannot load "..src.."manifest.lua: "..tostring(reason))
 local files=manifest()
 local function writeAtomic(path,text)
+  if fs.exists(path) then
+    local existing=assert(io.open(path,"rb")); local previous=existing:read("*a"); existing:close()
+    if previous==text then return end -- Preserve backups and disk space for real changes.
+  end
   fs.makeDirectory(fs.path(path))
   local f=assert(io.open(path..".tmp","wb")); assert(f:write(text)); assert(f:flush()); f:close()
   local check=assert(io.open(path..".tmp","rb")); assert(check:read("*a")==text); check:close()

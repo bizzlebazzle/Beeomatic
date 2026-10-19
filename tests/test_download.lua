@@ -65,6 +65,10 @@ test("compact download avoids tiny temporary disk and cleans staging after upgra
     files["/tmp/unrelated"]="keep"
     assert(loadfile("get.lua"))(revision)
     assert(loadfile("get.lua"))(revision)
+    eq(files["/home/Beeomatic/lib/setup.lua.previous"],nil)
+    files["/home/Beeomatic/lib/setup.lua.previous"]="retained older version"
+    assert(loadfile("get.lua"))(revision)
+    eq(files["/home/Beeomatic/lib/setup.lua.previous"],"retained older version")
     eq(files["/home/Beeomatic/data/config.lua"],"saved configuration")
     eq(files["/tmp/unrelated"],"keep")
     for _,url in ipairs(requests) do

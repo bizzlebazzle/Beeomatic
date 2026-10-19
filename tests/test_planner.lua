@@ -76,7 +76,7 @@ test("Spirit with exponentially shared ancestry produces one ordered job per spe
     eq(#p.order,29); ordered(p)
     local state={}; require("lib.jobs").create(state,p,"breed")
     eq(#state.jobs,27); eq(state.jobs[#state.jobs].species,"spirit")
-    ok(P.render(p):find("ethereal",1,true)); ok(P.render(p):find("aware",1,true))
+    ok(P.render(p):find("Ethereal",1,true)); ok(P.render(p):find("Aware",1,true))
     c.maxPlanExpansion=29
     local bounded=assert(run(recipes,founders(),"spirit",c)); eq(#bounded.order,29)
   end)
@@ -176,7 +176,7 @@ test("Spirit recursively obtains missing Ethereal and Aware",function()
   local recipes={spirit={W.route("Ethereal","Aware")},ethereal={W.route("Forest","Meadows")},aware={W.route("Forest","Common")},common={W.route("Forest","Meadows")}}
   local stock=pair("Forest"); for _,s in ipairs(pair("Meadows")) do stock[#stock+1]=s end
   local p=assert(run(recipes,stock)); eq(#p.order,6); ok(not p.root.children[1].available)
-  ok(P.render(p):find("ethereal",1,true)); ok(P.render(p):find("aware",1,true))
+  ok(P.render(p):find("Ethereal",1,true)); ok(P.render(p):find("Aware",1,true))
 end)
 test("alternate achievable route beats missing parents",function()
   local stock=pair("Forest"); for _,s in ipairs(pair("Meadows")) do stock[#stock+1]=s end

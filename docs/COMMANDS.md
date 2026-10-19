@@ -10,6 +10,8 @@ Beeomatic doctor
 Beeomatic doctor --probe
 Beeomatic doctor --interface scanner_port
 Beeomatic plan spirit
+Beeomatic plan spirit --verbose
+Beeomatic plan spirit --no-pager
 Beeomatic breed spirit
 Beeomatic breed spirit --noFinalImprint
 Beeomatic breed spirit --onlyFinalImprint
@@ -42,6 +44,19 @@ failures preserve progress; repair the scanner and rerun `plan TARGET` to contin
 Scanning requires no running worker or unfinished breeding work; use `resume`
 for saved breeding work instead.
 
+The plan starts with a summary, any condition/climate checks requiring attention,
+and the species already in verified stock. Numbered recipes list prerequisites
+before offspring, with each shared prerequisite included once. Chances are base
+mutation percentages, not completion estimates. `[CHECK]` marks steps for which no
+suitable alveary is currently confirmed; their reasons appear above the recipes.
+Parent genes and spendable reserves are checked again when each step starts.
+
+Long plans pause at terminal-sized pages. Enter or Space advances, B goes back,
+and Q or Escape closes the report without starting breeding. Enter closes the
+last page. `--verbose` includes candidate alveary IDs and the full species UID
+mapping; `--no-pager` prints the entire report for redirection/copying. A verified
+target pair is reported directly without listing unnecessary breeding steps.
+
 Interface stocking/return checks default to 0.25 seconds; scan steps default to
 0.5 seconds rather than the general five-second worker interval. Existing saved
 configurations use these defaults automatically. Optional `storage.pollSeconds`
@@ -54,8 +69,8 @@ available to avoid repeated world reads for every empty chest/Interface slot.
 Components without that method retain individual reads with one size check per
 scan. Transfers still read their actual source/destination before committing.
 
-If no route is achievable, `plan` prints `Not enough verified parent stock to
-reach TARGET.` and returns to the shell without a traceback. Every breeding worker
+If no route is achievable, `plan` explains missing founders, unresolved cycles or
+the distinct-species graph limit and returns to the shell without a traceback. Every breeding worker
 start/resume verifies all initial drones before dispatch. `PREPARING_STOCK`
 inspects unknown variants and completes required analysis at the shared station. A mutation preference is a tie-breaking
 preference among runtime-confirmed routes, not a recipe assertion. Spirit's

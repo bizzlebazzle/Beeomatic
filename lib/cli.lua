@@ -3,7 +3,7 @@ local B=require("lib.bees"); local Jobs=require("lib.jobs")
 local M={}
 local help=[[Beeomatic setup [--reconfigure]
 Beeomatic doctor [--probe | --interface PORT | --adopt JOB | --retry JOB | --confirm ALVEARY | --robot ALVEARY]
-Beeomatic plan SPECIES
+Beeomatic plan SPECIES [--verbose] [--no-pager]
 Beeomatic breed SPECIES [--noFinalImprint | --onlyFinalImprint]
 Beeomatic convert SPECIES | populate SPECIES COUNT | imprint SPECIES
 Beeomatic status [--verbose] | logs
@@ -267,7 +267,7 @@ function M.main(root,args)
       local message=reason or ("Not enough verified parent stock to reach "..a[2]..".")
       print(message); return nil,message
     end
-    print(Planner.render(plan)); return
+    require("lib.ui.pager").show(Planner.render(plan,{verbose=f.verbose}),{enabled=not f["no-pager"]}); return
   end
   if cmd=="breed" or cmd=="convert" or cmd=="populate" or cmd=="imprint" then
     unlocked(); assert(a[2],"Specify a species")

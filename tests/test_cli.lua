@@ -26,7 +26,7 @@ test("plan prompts for raw bees even when verified target stock is sufficient an
     files["/project/data/config.lua"]="return "..U.encode(w.c)
     withAnswer("n",function() require("lib.cli").main("/project",{"plan","spirit"}) end)
     local text=table.concat(out,"\n")
-    ok(text:find("scan all unscanned bees now? [y/N]",1,true)); ok(text:find("[stock present]",1,true))
+    ok(text:find("scan all unscanned bees now? [y/N]",1,true)); ok(text:find("Stock present: Spirit",1,true))
     eq(w.moves,0); eq(files["/project/data/state.lua"],nil)
   end)
 end)
@@ -44,7 +44,7 @@ test("plan scans all raw castes then plans from refreshed ME stock without creat
     end
     withAnswer("yes",function() require("lib.cli").main("/project",{"plan","spirit"}) end)
     local text=table.concat(out,"\n")
-    ok(text:find("Scanning complete.",1,true),text); ok(text:find("[stock present]",1,true),text)
+    ok(text:find("Scanning complete.",1,true),text); ok(text:find("Stock present: Spirit",1,true),text)
     local state=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
     eq(#state.jobs,0); eq(state.pendingRequest,nil); eq(state.scan,nil); eq(files["/project/data/worker.lock"],nil); ok(waits>0)
     for _,s in pairs(w.cells) do ok(require("lib.bees").scanned(s)) end
@@ -64,7 +64,7 @@ test("plan scan failure preserves progress and can continue on a later plan",fun
     w.finishScan=finish; w:finishScan()
     withAnswer("y",function() require("lib.cli").main("/project",{"plan","spirit"}) end)
     local text=table.concat(out,"\n"); ok(text:find("Scanning complete.",1,true),text)
-    ok(text:find("[stock present]",1,true),text)
+    ok(text:find("Stock present: Spirit",1,true),text)
   end)
 end)
 
@@ -190,8 +190,9 @@ test("installer copies manifest, preserves data and creates valid command launch
       end}))
     launcher("breed","spirit"); eq(destination,"/home/Test"); eq(arguments,{"breed","spirit"})
     eq(launcherPackage.path,"/home/Test/?.lua;/home/Test/?/init.lua;/lib/?.lua")
+    files["/home/Test/lib/cli.lua"]="older CLI"
     assert(loadfile("install.lua"))("/home/Test")
-    eq(files["/home/Test/data/state.lua"],"user state"); ok(files["/home/Test/lib/cli.lua.previous"])
+    eq(files["/home/Test/data/state.lua"],"user state"); eq(files["/home/Test/lib/cli.lua.previous"],"older CLI")
   end)
 end)
 test("installer refuses to overwrite a running installation",function()

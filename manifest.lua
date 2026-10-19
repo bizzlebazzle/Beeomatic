@@ -29,6 +29,7 @@ return {
   "lib/storage/receipts.lua",
   "lib/templates.lua",
   "lib/ui/diagnostics.lua",
+  "lib/ui/pager.lua",
   "lib/ui/status.lua",
   "lib/util.lua",
   "manifest.lua",
