@@ -2,6 +2,7 @@
 import os
 import pathlib
 import sys
+import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / '.tools'))
@@ -16,3 +17,30 @@ for version, runtime in [('5.2', LuaRuntime), ('5.3', Lua53Runtime)]:
         lua.execute('assert(load(...))', source.read_text(encoding='utf-8'))
     print(f'Lua {version} syntax: {len(sources)} files', flush=True)
     lua.execute((ROOT / 'tests/run.lua').read_text(encoding='utf-8'))
+    # Real allocator limit, not just timing or table-size mocks. The old giant
+    # serialization buffer fails here; streaming save + verification + reload fit.
+    with tempfile.TemporaryDirectory(prefix='memory-', dir=ROOT / 'tests') as folder:
+        limited = runtime(max_memory=2 * 1024 * 1024, unpack_returned_tuples=True)
+        limited.execute('''
+          package.path="./?.lua;"..package.path
+          U=require("lib.util"); P=require("lib.persistence"); state={}
+          for i=1,1600 do
+            state[i]={tag=string.rep(string.char(i%256),500)..i,
+              genome={species="Forest",fertility=3}}
+          end
+          collectgarbage("collect")
+          local oldSucceeded=pcall(U.encode,state)
+          assert(not oldSucceeded,"fixture must reproduce the old memory failure")
+          collectgarbage("collect")
+          store=P.new(...,{exists=function() return false end,
+            rename=function(a,b) return os.rename(a,b) end})
+          store:save(state)
+          state=nil; collectgarbage("collect")
+          local restored=assert(store:readFile(store.path))
+          assert(#restored==1600)
+          for i=1,1600 do
+            assert(restored[i].tag==string.rep(string.char(i%256),500)..i)
+            assert(restored[i].genome.fertility==3)
+          end
+        ''', str(pathlib.Path(folder) / 'state.lua'))
+        print(f'Lua {version}: 1,600 records saved, verified and reloaded within 2 MiB; old encoder exhausted memory', flush=True)

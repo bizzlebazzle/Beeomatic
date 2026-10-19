@@ -5,8 +5,7 @@ function M.new(path,fs)
 end
 function M:readFile(path)
   local f=io.open(path,"r"); if not f then return nil end
-  local s=f:read("*a"); f:close()
-  local fn=load(s,"="..path,"t",{})
+  local fn=load(function() return f:read(4096) end,"="..path,"t",{}); f:close()
   if not fn then return nil end
   local ok,v=pcall(fn); if ok and type(v)=="table" then return v end
 end
@@ -21,8 +20,27 @@ function M:load(default)
 end
 function M:save(value)
   local tmp=self.path..".tmp"
-  local f=assert(io.open(tmp,"w")); assert(f:write("return "..U.encode(value).."\n")); assert(f:flush()); f:close()
-  assert(self:readFile(tmp),"state verification failed")
+  local f=assert(io.open(tmp,"w"))
+  local ok,why=pcall(function()
+    U.write(value,function(chunk) assert(f:write(chunk)) end)
+    assert(f:flush())
+  end)
+  f:close(); assert(ok,why)
+  -- Compare the exact written bytes in bounded chunks. Loading the temporary
+  -- document would allocate a second complete state while the live one exists.
+  f=assert(io.open(tmp,"r"))
+  ok,why=pcall(function()
+    U.write(value,function(chunk)
+      local offset=1
+      while offset<=#chunk do
+        local actual=f:read(#chunk-offset+1)
+        assert(actual and #actual>0 and actual==chunk:sub(offset,offset+#actual-1),"state verification failed")
+        offset=offset+#actual
+      end
+    end)
+    assert(f:read(1)==nil,"state verification failed")
+  end)
+  f:close(); assert(ok,why)
   if self.fs.exists(self.path) then
     if self.fs.exists(self.path..".bak") then assert(self.fs.remove(self.path..".bak")) end
     assert(self.fs.rename(self.path,self.path..".bak"))

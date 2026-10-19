@@ -63,7 +63,8 @@ function M.new()
   w.proxies.me={getItemsInNetwork=function(filter)
     assert(not w.offline,"ME network offline")
     local r={}; for _,key in ipairs(U.keys(w.cells)) do local s=w.cells[key]
-      if not filter or (s.name==filter.name and s.damage==filter.damage and s.label==filter.label) then
+      if not filter or ((not filter.name or s.name==filter.name) and
+        (filter.damage==nil or s.damage==filter.damage) and (not filter.label or s.label==filter.label)) then
         local copy=U.copy(s); if w.hideGenomes then copy.individual=nil end; r[#r+1]=copy
       end
     end; return r

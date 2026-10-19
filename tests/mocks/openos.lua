@@ -15,7 +15,7 @@ function M.with(world,fn,quotas)
     mode=mode or "r"
     if mode:find("r",1,true) and files[path]==nil then return nil,"not found" end
     if mode:find("w",1,true) then files[path]="" end
-    local f={}
+    local f={}; local position=1
     function f:write(s)
       if quotas then
         local temporary=path:sub(1,5)=="/tmp/"
@@ -28,7 +28,12 @@ function M.with(world,fn,quotas)
       end
       files[path]=(files[path] or "")..s; return self
     end
-    function f:read() return files[path] end
+    function f:read(count)
+      local data=files[path]
+      if count=="*a" or count==nil then local result=data:sub(position); position=#data+1; return result end
+      if position>#data then return nil end
+      local result=data:sub(position,position+count-1); position=position+#result; return result
+    end
     function f:flush() return self end
     -- OpenOS filesystem close can succeed without returning any values.
     function f:close() end

@@ -57,21 +57,22 @@ function M:finish()
 end
 -- Count both cells and local Interface buffers so refill/cleanup cannot look like
 -- a new analysed return. External pipes are the sole producer on this path.
-function M:snapshot()
+function M:snapshot(name,damage)
   local result={}
   local function add(s)
-    if s and B.kind(s) then
+    if s and B.kind(s) and (not name or (s.name==name and s.damage==damage)) then
       local key=B.identity(s)
       if result[key] then result[key].size=result[key].size+s.size else result[key]=U.copy(s) end
     end
   end
-  for _,s in pairs(assert(self.storage:network().getItemsInNetwork(),"ME network unavailable")) do add(s) end
+  local filter=name and {name=name,damage=damage} or nil
+  for _,s in pairs(assert(self.storage:network().getItemsInNetwork(filter),"ME network unavailable")) do add(s) end
   for _,ep in ipairs(self.storage.config.endpoints) do for _,i in ipairs(self.inv:scan(ep)) do add(i.stack) end end
   return result
 end
 function M:externalResult(q)
   local result
-  for key,s in pairs(self:snapshot()) do
+  for key,s in pairs(self:snapshot(q.name,q.damage)) do
     local before=q.before[key] or 0
     local delta=s.size-before
     if key~=q.identity and s.name==q.name and s.damage==q.damage and delta>0 then
@@ -88,7 +89,7 @@ function M:externalResult(q)
   end
   assert(self:empty(),"external scanner input still contains bees after a complete return; audit the path")
   -- Preserve the exact return identity before requesting it for inspection.
-  q.resultItem=result; q.phase="VERIFYING"; self.save()
+  q.resultItem=result; q.before=nil; q.phase="VERIFYING"; self.save()
   return self:verifyExternal(q)
 end
 function M:verifyExternal(q)
@@ -124,7 +125,7 @@ function M:step(items)
       ident=candidate.stack.individual and candidate.stack.individual.ident,started=self.now()}
     if c.mode=="external" then
       self.state.scannerSequence=(self.state.scannerSequence or 0)+1; q.sequence=self.state.scannerSequence
-      q.before={}; for key,s in pairs(self:snapshot()) do q.before[key]=s.size end
+      q.before={}; for key,s in pairs(self:snapshot(q.name,q.damage)) do q.before[key]=s.size end
     end
     self.state.scan=q; self.save()
   end

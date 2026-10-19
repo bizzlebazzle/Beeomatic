@@ -67,7 +67,7 @@ end
 function M:scan()
   local pooled={}
   local function add(s)
-    if s and (s.size or 0)>0 then
+    if s and B.kind(s) and (s.size or 0)>0 then
       local key=B.identity(s); local entry=pooled[key]
       if entry then entry.size=entry.size+s.size else pooled[key]=U.copy(s) end
       if B.scanned(s) then self.state.aeCatalog[key]=U.copy(s.individual) end
@@ -77,6 +77,22 @@ function M:scan()
   -- Stocked Interface inventories are local buffers, not cells on this same grid.
   -- Never attach a storage bus to these ports: that would expose them twice.
   for _,ep in ipairs(self.config.endpoints) do for _,i in ipairs(self.inv:scan(ep)) do add(i.stack) end end
+  -- Forget obsolete genotypes from previous analysis/breeding generations, but
+  -- retain every genome still in stock or referenced by recoverable work.
+  local keep={}
+  for _,request in pairs(self.state.meRequests) do keep[request.identity]=true end
+  for _,batch in pairs(self.state.meBatches) do keep[batch.identity]=true end
+  for _,tx in ipairs({self.state.pending or {},self.state.pendingExternal or {}}) do
+    if tx.identity then keep[tx.identity]=true end
+  end
+  local scan=self.state.scan
+  if scan then
+    if scan.identity then keep[scan.identity]=true end
+    if scan.resultItem then keep[B.identity(scan.resultItem.stack)]=true end
+  end
+  for key in pairs(self.state.aeCatalog) do
+    if not pooled[key] and not keep[key] then self.state.aeCatalog[key]=nil end
+  end
   local result={}
   for _,key in ipairs(U.keys(pooled)) do
     local s=pooled[key]; s.individual=s.individual or U.copy(self.state.aeCatalog[key])

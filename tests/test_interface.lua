@@ -42,6 +42,33 @@ test("external scanner uses one chest transfer and verifies automatic AE returns
   ok(w.scheduler:prepareStock(w.storage:scan())); eq(w.state.stockPhase,"READY")
 end)
 
+test("external scanner baseline excludes unrelated castes and releases it after return detection",function()
+  local w=externalScanner(); local raw=ME.bee("Spirit","drone",8,true)
+  w:addStock(raw); w:addStock(ME.bee("Forest","princess")); w:addStock(ME.bee("Forest","queen"))
+  w.scanner:step(w.storage:scan())
+  local count=0; for _ in pairs(w.state.scan.before) do count=count+1 end
+  eq(count,1); eq(w.state.scan.before[B.identity(raw)],8)
+  w:returnExternal()
+  local materialize=w.storage.materialize
+  w.storage.materialize=function(self,item,...)
+    if w.state.scan.phase=="VERIFYING" then eq(w.state.scan.before,nil) end
+    return materialize(self,item,...)
+  end
+  w.scanner:step({}); eq(w.state.scan,nil)
+end)
+
+test("ME stock drops obsolete cached genomes but retains recoverable request references",function()
+  local w=ME.new(); local live=ME.bee("Spirit","drone",8); w:addStock(live)
+  local B=require("lib.bees"); local old=ME.bee("Forest","drone",8)
+  w.state.aeCatalog[B.identity(live)]=U.copy(live.individual)
+  w.state.aeCatalog[B.identity(old)]=U.copy(old.individual)
+  w.state.aeCatalog.protected={species="retained"}
+  w.state.meRequests.test={identity="protected"}
+  local items=w.storage:scan()
+  eq(w.state.aeCatalog[B.identity(old)],nil); ok(w.state.aeCatalog[B.identity(live)])
+  ok(w.state.aeCatalog.protected); ok(B.scanned(items[1].stack))
+end)
+
 test("external scanner drains every initial drone across multiple batches",function()
   local w=externalScanner(); w:addStock(ME.bee("Spirit","drone",130,true)); local count=0
   for _=1,12 do
