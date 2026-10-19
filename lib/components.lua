@@ -21,9 +21,9 @@ function M:discover()
 end
 -- Small read-only previews for setup; do not print genetics or API documentation.
 function M:inventorySummary(address)
-  local sides={"down","up","north","south","west","east"}; local lines={}
+  local sides={"down","up","north","south","west","east"}; local lines,choices={},{}
   local ok,p=pcall(self.proxy,self,address,{"getInventorySize","getStackInSlot"})
-  if not ok then return {"Inventory preview unavailable"} end
+  if not ok then return {"Inventory preview unavailable"},choices end
   for side=0,5 do
     local yes,n=pcall(p.getInventorySize,side)
     if yes and type(n)=="number" and n>0 then
@@ -40,10 +40,11 @@ function M:inventorySummary(address)
       local line=sides[side+1].." ("..side.."): "..n.." slots | "..
         (#samples>0 and table.concat(samples,", ") or (failed and "contents unavailable" or "empty"))
       lines[#lines+1]=#line>72 and line:sub(1,69).."..." or line
+      choices[#choices+1]={side=side,size=n,summary=lines[#lines]}
     elseif not yes then lines[#lines+1]=sides[side+1]..": unavailable" end
   end
   if #lines==0 then lines[1]="No adjacent inventories detected" end
-  return lines
+  return lines,choices
 end
 function M:inventories(address)
   local p=self:proxy(address,{"getInventorySize","getStackInSlot"}); local r={}

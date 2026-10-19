@@ -74,6 +74,44 @@ test("inventory preview is bounded read-only and tolerates failing inventory rea
   ok(text:find("contents unavailable",1,true)); eq(w.moves,0)
 end)
 
+test("endpoint skips a lone named transposer and advances through distinct inventory roles",function()
+  local w=W.new(); w:addMachine("a"); w:build()
+  w.c.componentNames.tp1={name="Bee hub",kind="transposer"}
+  local wizard,out=picker(w,{"1","archive","2","buffer"})
+  local archive=wizard:endpoint("Archive chest")
+  local buffer=wizard:endpoint("Isolated export buffer")
+  eq(archive,{id="archive",transposer="tp1",side=0})
+  eq(buffer,{id="buffer",transposer="tp1",side=3})
+  local text=table.concat(out,"\n")
+  ok(text:find("Selected Archive chest:",1,true))
+  ok(text:find("Inventory number for Isolated export buffer",1,true))
+  ok(not text:find("Component number",1,true))
+  ok(not text:find("distinctive item",1,true)); eq(w.moves,0)
+end)
+
+test("inventory refresh stays on the target and saved world side maps to a menu number",function()
+  local w=W.new(); w:addMachine("a"); w:build()
+  w.c.componentNames.tp1={name="Bee hub",kind="transposer"}
+  local wizard,out=picker(w,{"0","r","",""})
+  local ep=wizard:endpoint("Alveary inventory",{transposer="tp1",side=3,id="alveary_1"})
+  eq(ep.side,3); eq(ep.id,"alveary_1")
+  local text=table.concat(out,"\n")
+  ok(text:find("That inventory number is not listed",1,true))
+  ok(text:find("Inventory number for Alveary inventory [2]",1,true))
+  eq(w.moves,0)
+end)
+
+test("inventory selection can refresh after initially finding no inventories",function()
+  local w=W.new(); w:addTransposer("tp1",{}); w:build()
+  w.c.componentNames.tp1={name="Bee hub",kind="transposer"}
+  local wizard,out=picker(w,{function()
+    w:addTransposer("tp1",{[5]="hub"}); return "r"
+  end,"1","archive"})
+  local ep=wizard:endpoint("Archive chest")
+  eq(ep.side,5)
+  ok(table.concat(out,"\n"):find("No inventories detected",1,true))
+end)
+
 test("normal setup does not dump diagnostic method documentation",function()
   local w=W.new(); w:addMachine("a"); w:build(); w.c.setupStep=5
   w.components.api.doc=function() error("setup must not request method documentation") end

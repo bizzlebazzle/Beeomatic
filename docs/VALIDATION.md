@@ -30,7 +30,7 @@ The installer now writes that known root directly into `/usr/bin/Beeomatic`, whi
 sets module paths and calls the CLI without inferring a root from debug metadata.
 This change still needs an in-game retest.
 
-Current automated result: **93 tests passed, zero failures, on each of Lua 5.2 and Lua 5.3**. This
+Current automated result: **96 tests passed, zero failures, on each of Lua 5.2 and Lua 5.3**. This
 includes the public command path, persistent foreground events, installer copy and
 upgrade preservation, and exact selection of a non-first same-label ME variant.
 Download tests cover consistent revision selection, saved-data preservation,
@@ -51,6 +51,9 @@ reload, invalid input, refresh, newly connected components, pagination, missing
 saved addresses, interruption, read-only bounded inventory previews and omission
 of diagnostic documentation during normal setup. The revised wizard still needs
 an in-game UI acceptance check.
+Endpoint tests also cover skipping a lone named transposer, distinct prompts for
+consecutive inventory roles, menu-number-to-world-side mapping, invalid choices,
+refreshing inventory lists and attaching an inventory after an empty discovery.
 
 Run automated tests on a development machine with Lua 5.2:
 

@@ -80,10 +80,19 @@ work without a migration. Lists show two components per page: `>` and `<` change
 pages, `R` refreshes, and `N` takes a snapshot before asking you to connect a new
 component. It then lists only newly discovered compatible components for selection.
 Use `R` to return to the complete list. Enter retains an available current selection.
+When registering an inventory, a lone already named compatible transposer is reused
+automatically. Otherwise, choose the transposer first. A separate numbered menu then
+asks which attached inventory serves the named role (archive, alveary, buffer, etc.).
+Select its inventory menu number, not its world-side number; directions and contents
+are identification hints. Empty inventories can be selected. `R` refreshes this
+inventory menu without returning to transposer selection. The saved side remains
+the actual world direction, so existing configuration remains compatible.
 Transposer previews show world sides, inventory sizes and up to two occupied slots
 per inventory. Use a distinctive item in a previewed slot to identify a chest, then
 refresh; previews never move items. Full method documentation is available separately
 through `Beeomatic doctor --probe` and is not printed during normal setup.
+After upgrading program files, reboot the OpenComputer before testing to clear
+OpenOS's cached application modules.
 
 Register a physical archive, each housing, its transposer view,
 actual slot roles and operating environment. The wizard performs read-only input

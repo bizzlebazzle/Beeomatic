@@ -11,7 +11,7 @@ function M.new(config,components,inv,save,read,out)
   function w:number(label,lo,hi,default)
     while true do local ok,n=pcall(U.assertNumber,self:ask(label,default),lo,hi); if ok then return n end; self.out(tostring(n)) end
   end
-  function w:address(label,methods,default)
+  function w:address(label,methods,default,useNamedSingle)
     local registry=self.c.componentNames or {}
     local page,onlyNew=1,nil
     while true do
@@ -20,6 +20,14 @@ function M.new(config,components,inv,save,read,out)
         local compatible=not c.error
         for _,method in ipairs(methods) do if c.methods[method]==nil then compatible=false end end
         if compatible and (not onlyNew or not onlyNew[c.address]) then choices[#choices+1]=c end
+      end
+      if useNamedSingle and #choices==1 and registry[choices[1].address] then
+        local selected=choices[1]
+        local ok,p=pcall(self.components.proxy,self.components,selected.address,methods)
+        if ok then
+          self.out("Using the only available transposer: "..registry[selected.address].name)
+          return p.address or selected.address
+        end
       end
       local pages=math.max(1,math.ceil(#choices/2)); page=math.min(page,pages)
       self.out(label.." - choose a component (page "..page.."/"..pages..")")
@@ -38,7 +46,7 @@ function M.new(config,components,inv,save,read,out)
         end
       end
       self.out("R refresh | N connect new | > next page | < previous page")
-      self.out("Identify inventories with a distinctive item, then refresh; nothing is moved.")
+      self.out("Select a COMPONENT number. Inventory selection is a separate step.")
       local answer=self:ask("Component number",defaultNumber):lower()
       if answer=="r" then onlyNew=nil; page=1
       elseif answer=="n" then
@@ -70,11 +78,33 @@ function M.new(config,components,inv,save,read,out)
   end
   function w:endpoint(label,default)
     default=default or {}
-    self.out(label..": put this inventory directly against the chosen transposer. Sides are world directions: 0 down, 1 up, 2 north, 3 south, 4 west, 5 east.")
-    local address=self:address("Transposer",{"getInventorySize","getStackInSlot","transferItem"},default.transposer)
-    for _,i in ipairs(self.components:inventories(address)) do self.out("  side "..i.side..": "..i.size.." slots") end
-    local side=self:number("Inventory side",0,5,default.side)
-    local ep={id=self:ask("Physical inventory ID (use SAME ID for views of the SAME shared chest)",default.id),transposer=address,side=side}
+    self.out("Registering inventory: "..label)
+    self.out("Step 1/2: choose the transposer beside "..label..".")
+    local address=self:address("Transposer for "..label,{"getInventorySize","getStackInSlot","transferItem"},default.transposer,true)
+    local named=self.c.componentNames and self.c.componentNames[address]
+    local side
+    repeat
+      self.out("Step 2/2: which attached inventory is "..label.."?")
+      self.out("Transposer: "..(named and named.name or address))
+      self.out("Directions below are FROM the transposer TO each inventory.")
+      local _,choices=self.components:inventorySummary(address)
+      local defaultNumber
+      for i,choice in ipairs(choices) do
+        self.out(i..". "..choice.summary)
+        if choice.side==default.side then defaultNumber=i end
+      end
+      if #choices==0 then self.out("No inventories detected. Check adjacency and loaded chunks.") end
+      self.out("Choose an INVENTORY number above, or R to refresh this list.")
+      self.out("Contents are identification hints; an empty chest can also be selected.")
+      local answer=self:ask("Inventory number for "..label,defaultNumber):lower()
+      local n=tonumber(answer)
+      local choice=n and n%1==0 and choices[n]
+      if choice then side=choice.side; self.out("Selected "..label..": "..choice.summary)
+      elseif answer~="r" then self.out("That inventory number is not listed. Please choose again.") end
+    until side~=nil
+    self.out("Give this physical inventory a short ID, e.g. archive or alveary_1.")
+    self.out("Reuse its ID when registering the SAME inventory from another transposer.")
+    local ep={id=self:ask("Inventory ID for "..label,default.id),transposer=address,side=side}
     assert(ep.id~="","inventory ID cannot be empty"); self.inv:size(ep); return ep
   end
   function w:storage()
@@ -126,7 +156,7 @@ function M.new(config,components,inv,save,read,out)
     a.address=self:address("Housing component address",{"getQueen","getDrone","getBeeParents","canBreed"})
     a.backend=self:ask("Inventory backend: alveary (direct access) or routed (external gated pipes)","alveary"):lower()
     assert(a.backend=="alveary" or a.backend=="routed","choose alveary or routed")
-    local ep=self:endpoint("This alveary's exposed inventory")
+    local ep=self:endpoint(a.backend=="routed" and "Input staging chest for "..a.name or "Alveary inventory for "..a.name)
     a.transposer=ep.transposer; a.side=ep.side
     a.storage=self:endpoint("Archive chest as viewed by THIS transposer",self.c.storage.endpoints[1])
     assert(a.storage.transposer==a.transposer and a.storage.side~=a.side,"breeder and archive need separate sides on the same transposer")
