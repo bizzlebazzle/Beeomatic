@@ -42,6 +42,13 @@ failures preserve progress; repair the scanner and rerun `plan TARGET` to contin
 Scanning requires no running worker or unfinished breeding work; use `resume`
 for saved breeding work instead.
 
+Interface stocking/return checks default to 0.25 seconds; scan steps default to
+0.5 seconds rather than the general five-second worker interval. Existing saved
+configurations use these defaults automatically. Optional `storage.pollSeconds`
+and `scanner.pollSeconds` settings tune those checks (minimum 0.1 seconds).
+These intervals affect detection delays; analyser and pipe processing still take
+their normal time, and exact returned bees are physically inspected before use.
+
 If no route is achievable, `plan` prints `Not enough verified parent stock to
 reach TARGET.` and returns to the shell without a traceback. Every breeding worker
 start/resume verifies all initial drones before dispatch. `PREPARING_STOCK`

@@ -37,6 +37,9 @@ function M.main(root,args)
   local scanner=require("lib.scanner").new(c.scanner,inv,state,save,computer.uptime,storage)
   local scheduler=require("lib.scheduler").new(c,state,components,inv,storage,scanner,save,computer.uptime)
   local a,f=M.parse(args); local cmd=U.lower(a[1]); local sub=U.lower(a[2])
+  local function scanInterval()
+    return math.min(c.pollSeconds,math.max(0.1,tonumber(c.scanner.pollSeconds) or 0.5))
+  end
   local function unlocked() assert(not fs.exists(lock),"A worker lock exists. Stop the running worker before changing configuration.") end
   local function mutations(items)
     local source
@@ -97,7 +100,8 @@ function M.main(root,args)
         if status=="BLOCKED" and not active and not state.paused then
           print("Progress saved. Repair the reported condition, then Beeomatic resume."); break
         end
-        local name,_,char=event.pull(c.pollSeconds)
+        local scanning=not state.paused and (status=="SCANNING" or state.scan)
+        local name,_,char=event.pull(scanning and scanInterval() or c.pollSeconds)
         if name=="interrupted" then break end
         if name=="key_down" then
           if char==112 then state.paused=true elseif char==114 then scheduler:resume()
@@ -238,13 +242,15 @@ function M.main(root,args)
         ok,why=pcall(function()
           local lastMessage
           while true do
-            items=storage:scan()
+            -- A pending scanner batch carries its own exact source/return state.
+            -- Refresh all stock only when selecting the next batch.
+            items=state.scan and {} or storage:scan()
             local ready,message
             if storage.prepare and not storage:prepare(items) then message="Inspecting ME stock"
             else ready,message=scanner:step(items) end
             if ready then break end
             if message and message~=lastMessage then print(message); lastMessage=message end
-            local name,_,char=event.pull(c.pollSeconds)
+            local name,_,char=event.pull(scanInterval())
             if name=="interrupted" or (name=="key_down" and char==113) then
               error("Scanning stopped; progress saved. Run Beeomatic plan "..a[2].." again to continue.",0)
             end

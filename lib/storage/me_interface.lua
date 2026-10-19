@@ -26,7 +26,8 @@ function M:poll(fn,why)
   repeat
     local value=fn(); if value then return value end
     assert(self.now()-start<(self.config.timeout or 60),why.."; request preserved, inspect power/channels/capacity")
-    self.wait(1)
+    -- React promptly when AE stocks/drains a slot; do not busy-poll OC calls.
+    self.wait(math.max(0.1,tonumber(self.config.pollSeconds) or 0.25))
   until false
 end
 function M:validate()

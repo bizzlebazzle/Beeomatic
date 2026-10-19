@@ -37,11 +37,16 @@ test("plan scans all raw castes then plans from refreshed ME stock without creat
   w:addStock(ME.bee("Forest","queen",1,true))
   O.with(w,function(files,out)
     files["/project/data/config.lua"]="return "..U.encode(w.c)
+    local event=require("event"); local pull=event.pull; local waits=0
+    event.pull=function(seconds)
+      ok(seconds<=0.5,"scan loop should not use the five-second worker delay")
+      waits=waits+1; return pull(seconds)
+    end
     withAnswer("yes",function() require("lib.cli").main("/project",{"plan","spirit"}) end)
     local text=table.concat(out,"\n")
     ok(text:find("Scanning complete.",1,true),text); ok(text:find("[stock present]",1,true),text)
     local state=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
-    eq(#state.jobs,0); eq(state.pendingRequest,nil); eq(state.scan,nil); eq(files["/project/data/worker.lock"],nil)
+    eq(#state.jobs,0); eq(state.pendingRequest,nil); eq(state.scan,nil); eq(files["/project/data/worker.lock"],nil); ok(waits>0)
     for _,s in pairs(w.cells) do ok(require("lib.bees").scanned(s)) end
   end)
 end)
