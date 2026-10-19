@@ -34,7 +34,7 @@ function M.main(root,args)
   local function save() sp:save(state) end
   local components=Components.new(); local inv=Inventory.new(components,state,save)
   local Storage=require("lib.storage."..c.storage.kind); local storage=Storage.new(c.storage,inv,components)
-  local scanner=require("lib.scanner").new(c.scanner,inv,state,save,computer.uptime)
+  local scanner=require("lib.scanner").new(c.scanner,inv,state,save,computer.uptime,storage)
   local scheduler=require("lib.scheduler").new(c,state,components,inv,storage,scanner,save,computer.uptime)
   local a,f=M.parse(args); local cmd=U.lower(a[1]); local sub=U.lower(a[2])
   local function unlocked() assert(not fs.exists(lock),"A worker lock exists. Stop the running worker before changing configuration.") end
@@ -75,11 +75,11 @@ function M.main(root,args)
         local active,status
         if state.pendingRequest and not state.paused then
           local items=storage:scan()
-          if storage.prepare and not storage:prepare(items) then status="INSPECTING_ME"
-          else
-            local ready,why=scanner:step(items)
+          do
+            local ready,why=scheduler:prepareStock(items)
             if not ready then status="SCANNING"; state.error=why; save()
             else
+              items=storage:scan()
               local req=state.pendingRequest; local m=mutations(items)
               local plan,e=Planner.plan(req.target,m,items,c); assert(plan,e)
               Jobs.create(state,plan,req.mode,req.count,req.flags); state.pendingRequest=nil; save()

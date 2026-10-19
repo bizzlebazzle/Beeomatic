@@ -11,7 +11,7 @@ function M.defaults()
 end
 function M.validate(c)
   assert(c.version==1,"unsupported configuration version")
-  assert(c.storage and (c.storage.kind=="chest" or c.storage.kind=="ae2"),"unsupported storage backend")
+  assert(c.storage and (c.storage.kind=="chest" or c.storage.kind=="ae2" or c.storage.kind=="me_interface"),"unsupported storage backend")
   U.assertNumber(c.concurrency,1,32); U.assertNumber(c.pollSeconds,1,300)
   U.assertNumber(c.maxCycles,1,100000); U.assertNumber(c.confirmCycles,1,100)
   U.assertNumber(c.reserveDrones,1,100000); U.assertNumber(c.reservePrincesses,1,100000)

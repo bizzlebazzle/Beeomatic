@@ -29,6 +29,7 @@ function M:items(owner)
   local all=self.storage:scan(); local items={}
   for _,i in ipairs(all) do
     local held=self.state.reservations[U.location(i.endpoint,i.slot)]
+    if self.storage.interface and i.owner and i.owner~=owner then held=true end
     for _,j in ipairs(self.state.jobs) do
       local loc=j.lineage
       if j.id~=owner and j.state~="DONE" and loc and loc.endpoint.id==i.endpoint.id and loc.slot==i.slot and
@@ -48,7 +49,9 @@ function M:template(j,items)
   return T.get(self.c.templates,items)
 end
 function M:protected(i)
-  return self.c.templates.enabled and i.endpoint.id==self.c.templates.endpointId and i.slot==self.c.templates.slot
+  local t=self.c.templates
+  return t.enabled and ((t.identity and B.identity(i.stack)==t.identity) or
+    (not t.identity and i.endpoint.id==t.endpointId and i.slot==t.slot))
 end
 function M:count(items,target,kind) return B.count(items,target,kind,true) end
 function M:canSpend(i,items,paired,templateUse)
@@ -165,7 +168,11 @@ function M:completion(j,items,template)
 end
 function M:dispatch(j)
   local items=self:items(j.id); local template=self:template(j,items)
-  if self:completion(j,items,template) then j.state="DONE"; j.error=nil; self:log(j.species.." complete; stable stock archived"); return end
+  if self:completion(j,items,template) then
+    j.state="DONE"; j.error=nil
+    if self.storage.releaseBatches then self.storage:releaseBatches(j.id) end
+    self:log(j.species.." complete; stable stock archived"); return
+  end
   if j.mode=="convert" and j.baseline==nil then j.baseline=self:count(items,j.species,"princess"); self.save() end
   local p,d,why,cycleTarget=self:select(j,items,template)
   if not p or not d then j.error=why; return end
@@ -194,12 +201,13 @@ function M:dispatch(j)
   end
   j.machine=a.id; j.state="PREPARING"; j.expectedPrincess=U.copy(p.stack); j.cycleTarget=cycleTarget
   self.state.machines[a.id]={job=j.id,state="PREPARING",lastInteraction=self.now()}; self.save()
-  p=self.storage:materialize(p,a.storage,j.id); self.inv:reserve(p,j.id)
-  d=self.storage:materialize(d,a.storage,j.id); self.inv:reserve(d,j.id)
+  p=self.storage:materialize(p,a.storage,j.id,1); self.inv:reserve(p,j.id)
+  d=self.storage:materialize(d,a.storage,j.id,1); self.inv:reserve(d,j.id)
   -- Persist selection before insertion. Recovery never repeats PREPARING blindly.
   j.preparedPrincess={endpoint=p.endpoint,slot=p.slot,identity=B.identity(p.stack)}
   j.preparedDrone={endpoint=d.endpoint,slot=d.slot,identity=B.identity(d.stack)}; self.save()
   backend:insertPrincess(p,j.id); backend:insertDrone(d,j.id,p.stack)
+  if self.storage.releasePort then self.storage:releasePort(a.storage); self.inv:release(j.id) end
   if backend.start then backend:start() end
   j.state="RUNNING"; j.started=self.now(); j.cycles=j.cycles+1; j.error=nil
   self.state.machines[a.id].state="RUNNING"; self.save()
@@ -219,13 +227,20 @@ function M:advance(j)
   if j.state=="COLLECTING" then
     j.resultLocations=j.resultLocations or {}
     local function receipt(i)
+      if i.batchId then
+        for _,loc in ipairs(j.resultLocations) do if loc.root==i.root then return end end
+        j.resultLocations[#j.resultLocations+1]={root=i.root}; self.save(); return
+      end
       for _,loc in ipairs(j.resultLocations) do if loc.endpoint.id==i.endpoint.id and loc.slot==i.slot then return end end
       j.resultLocations[#j.resultLocations+1]={endpoint=i.endpoint,slot=i.slot}; self.save()
     end
     -- Reconstruct a receipt committed immediately before a crash in the collector.
     for _,tx in ipairs(self.state.transactions) do
       if tx.owner==j.id and tx.id and tx.id>(j.collectionAfter or math.huge) and tx.dest.id==b.config.storage.id then
-        receipt({endpoint=tx.dest,slot=tx.destSlot})
+        if tx.dest.managed then
+          local id="receipt/"..tx.id
+          if self.state.meBatches[id] then receipt({batchId=id,root=self.state.meBatches[id].root}) end
+        else receipt({endpoint=tx.dest,slot=tx.destSlot}) end
       end
     end
     b:collectResults(self.storage,j.id,receipt)
@@ -238,12 +253,13 @@ function M:advance(j)
     local items=self:items(j.id); local template=self:template(j,items)
     local own={}
     for _,i in ipairs(items) do for _,loc in ipairs(j.resultLocations or {}) do
-      if i.endpoint.id==loc.endpoint.id and i.slot==loc.slot then own[#own+1]=i; break end
+      if (loc.root and i.root==loc.root) or (loc.endpoint and i.endpoint.id==loc.endpoint.id and i.slot==loc.slot) then own[#own+1]=i; break end
     end end
     local p=self:best(own,"princess",j.species)
     local d=self:best(own,"drone",j.species)
     assert(p,"No analyzed princess in this job's collected offspring; inspect archive")
     j.lineage={endpoint=p.endpoint,slot=p.slot,identity=B.identity(p.stack)}
+    if self.storage.releaseBatches then self.storage:releaseBatches(j.id,p.batchId) end
     if p and d and G.complete(p.stack,d.stack,j.species,self.c,template and template.stack.individual.active) then
       j.confirmed=j.confirmed+1
     else j.confirmed=0 end
@@ -254,6 +270,7 @@ function M:advance(j)
 end
 function M:resume(id)
   self.state.paused=false; self.state.stopped=false; self.state.stopping=false
+  if self.storage.interface then self.state.stockReady=false; self.state.stockPhase="PREPARING_STOCK" end
   for _,j in ipairs(self.state.jobs) do if (not id or j.id==id) and j.state=="PAUSED" then
     assert(j.previous~="PREPARING","Partial insertion: inspect inputs and use doctor recovery before resuming")
     j.state=j.previous or "WAITING"; j.error=nil; j.previous=nil
@@ -269,6 +286,7 @@ function M:recover()
   if self.storage.reconcile then local yes,err=self.storage:reconcile(); assert(yes,err) end
   self.storage:scan()
   if self.state.scan then self.state.scan.started=self.now() end
+  if self.storage.interface then self.state.stockReady=false; self.state.stockPhase="PREPARING_STOCK" end
   for _,j in ipairs(self.state.jobs) do
     if j.machine then
       local success,err=pcall(function()
@@ -297,6 +315,10 @@ function M:retryInsertion(j)
   assert(j.machine,"job has no reserved machine")
   assert(not self.state.pending and not self.state.pendingExternal,"reconcile transfers before retry")
   local b=self:backend(j.machine); assert(b:isReady(),"machine must be empty before retry")
+  if self.storage.interface then
+    self.storage:cancel(j.id); self.inv:release(j.id); self.state.machines[j.machine]={state="IDLE"}
+    j.machine=nil; j.state="WAITING"; j.previous=nil; j.error=nil; self.save(); return
+  end
   for _,source in ipairs({j.preparedPrincess,j.preparedDrone}) do
     local actual=self.inv:get(source.endpoint,source.slot)
     assert(actual and B.identity(actual)==source.identity,"restore the recorded source items before retrying insertion")
@@ -316,16 +338,52 @@ function M:adopt(j)
     assert(tx.owner==j.id and tx.dest.id==b.endpoint.id and tx.destSlot==b:getSlots().drone,
       "pending transfer is not this job's final drone insertion")
     local src=self.inv:get(tx.source,tx.slot)
-    assert((not src and tx.before==tx.count) or (src and src.size==tx.before-tx.count and B.identity(src)==tx.identity),
+    assert((tx.source.managed and tx.returned==tx.count) or (not src and tx.before==tx.count) or (src and src.size==tx.before-tx.count and B.identity(src)==tx.identity),
       "cannot prove source count decreased by intended drone count")
     assert(B.kind(q)=="queen" and B.scanned(q) and j.expectedPrincess and
       U.equal(q.individual.active,j.expectedPrincess.individual.active) and
       U.equal(q.individual.inactive,j.expectedPrincess.individual.inactive),"queen genome does not witness this insertion")
-    tx.phase="ADOPTED_OBSERVED_MATING"; self.state.transactions[#self.state.transactions+1]=tx; self.state.pending=nil
+    tx.phase="ADOPTED_OBSERVED_MATING"; require("lib.storage.receipts").commit(self.state,tx)
+    self.state.transactions[#self.state.transactions+1]=tx; self.state.pending=nil
   end
   j.state=status=="FINISHED" and "COLLECTING" or "RUNNING"
   if status=="FINISHED" then j.collectionAfter=self.state.transferSequence or 0; j.resultLocations={} end
   j.previous=nil; j.error=nil; j.started=self.now(); self.save()
+  if self.storage.releasePort then self.storage:releasePort(b.config.storage) end
+end
+function M:prepareStock(items)
+  if self.storage.interface and not self.state.stockReady then self.state.stockPhase="PREPARING_STOCK" end
+  if self.storage.prepare and not self.storage:prepare(items) then return false,"Inspecting ME stock" end
+  local ready,why=self.scanner:step(items)
+  if self.storage.interface then
+    local remaining=0
+    for _,i in ipairs(items) do if B.kind(i.stack)=="drone" and not B.scanned(i.stack) then remaining=remaining+i.stack.size end end
+    if self.state.scan then remaining=math.max(remaining,self.state.scan.count or 0) end
+    self.state.stockRemaining=remaining
+    if ready then
+      -- Offspring left in registered housings must not bypass the initial gate.
+      for _,a in ipairs(self.c.alvearies) do
+        local backend=self:backend(a.id)
+        local output=a.routing and a.routing.output or backend.endpoint
+        for _,slot in ipairs(a.slots.outputs) do local s=self.inv:get(output,slot)
+          if B.kind(s)=="drone" and not B.scanned(s) then
+            local m=self.state.machines[a.id]
+            if not (m and m.job) then self.storage:deposit({endpoint=output,slot=slot,stack=s},a.storage,"scanner") end
+            ready=false; why="Inspecting initial housing offspring"; break
+          end
+        end
+        if not ready then break end
+      end
+      if ready and self.c.scanner.enabled then
+        assert(not self.inv:get(self.c.scanner.input,self.c.scanner.inputSlot) and #self.scanner:outputs()==0,
+          "untracked shared scanner contents; audit before starting")
+      end
+    end
+    if ready then self.state.stockReady=true; self.state.stockPhase="READY"; self.state.stockRemaining=0
+    else self.state.stockPhase=self.state.stockReady and "SCANNING" or "PREPARING_STOCK" end
+    self.save()
+  end
+  return ready,why
 end
 function M:step()
   if self.state.paused then return false,"PAUSED" end
@@ -342,14 +400,9 @@ function M:step()
   for _,i in ipairs(items) do local kind=B.kind(i.stack)
     if self.state.storageCounts[kind] then self.state.storageCounts[kind]=self.state.storageCounts[kind]+i.stack.size end
   end
-  if self.storage.prepare then
-    local success,ready=pcall(self.storage.prepare,self.storage,items)
-    if not success then self.state.error=tostring(ready); self.save(); return false,"BLOCKED" end
-    if not ready then return false,"INSPECTING_ME" end
-  end
-  local scanOk,scanned,reason=pcall(self.scanner.step,self.scanner,items)
-  if not scanOk then self.state.error=tostring(scanned); scanned=false; self.save() end
-  if not scanned then self.state.error=reason end
+  local scanOk,scanned,reason=pcall(self.prepareStock,self,items)
+  if not scanOk then self.state.error=tostring(scanned); scanned=false; self.save()
+  elseif not scanned then self.state.error=reason end
   -- Advance machines even when a different scanner operation is outstanding.
   for _,j in ipairs(self.state.jobs) do
     if j.state=="RUNNING" or j.state=="COLLECTING" or j.state=="ASSESSING" then
@@ -371,11 +424,11 @@ function M:step()
     if j.state~="DONE" then complete=false end
     if j.state=="RUNNING" or j.state=="COLLECTING" or j.state=="ASSESSING" then active=true end
   end
-  self.state.finished=complete
+  complete=complete and scanned; self.state.finished=complete
   local reserved=false; for _,m in pairs(self.state.machines) do if m.job then reserved=true end end
   if self.state.stopping and not active and not reserved then self.state.stopped=true end
   self.save()
   return active,complete and "DONE" or self.state.stopped and "STOPPED" or active and "RUNNING" or
-    (scanOk and self.state.scan and "SCANNING") or (progress()~=before and "PROGRESS") or "BLOCKED"
+    (scanOk and not scanned and "SCANNING") or (progress()~=before and "PROGRESS") or "BLOCKED"
 end
 return M

@@ -3,7 +3,8 @@ local M={}
 function M.get(config,items)
   if not config.enabled then return nil end
   for _,i in ipairs(items) do
-    if i.endpoint.id==config.endpointId and i.slot==config.slot then
+    if (config.identity and B.identity(i.stack)==config.identity) or
+      (not config.identity and i.endpoint.id==config.endpointId and i.slot==config.slot) then
       assert(B.kind(i.stack)=="drone" and B.scanned(i.stack),"template must be an analyzed drone")
       assert(i.stack.size>=(config.reserve or 1),"replenish template drones; reserve protected")
       return i

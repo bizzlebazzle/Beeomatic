@@ -1,6 +1,7 @@
 local B=require("lib.bees"); local U=require("lib.util")
 local M={}; M.__index=M
-function M.new(config,inv,state,save,now)
+function M.new(config,inv,state,save,now,storage)
+  if storage and storage.interface then return require("lib.scanner_me").new(config,inv,state,save,now,storage) end
   return setmetatable({config=config,inv=inv,state=state,save=save,now=now},M)
 end
 function M:step(items)

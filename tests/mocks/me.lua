@@ -44,6 +44,12 @@ function M.new()
       end
     end
   end
+  function w:finishScan()
+    local source=assert(self.inventories.analyser[1],"no scanner input")
+    local species=source.label:match("^(.-) %w+$")
+    self.inventories.analyser[2]=M.bee(species,B.kind(source),source.size)
+    self.inventories.analyser[1]=nil
+  end
   for _,port in ipairs(w.c.storage.endpoints) do
     local id=port.id
     w.proxies[port.address]={getInterfaceConfiguration=function(slot) return U.copy(w.filters[id][slot]) end,
@@ -75,6 +81,8 @@ function M.new()
     w.time=w.time+seconds; if w.interrupt then error("interrupted") end; w:tick()
   end}
   w.storage=require("lib.storage.me_interface").new(w.c.storage,w.inv,w.components,w.runtime)
+  w.scanner=require("lib.scanner").new(w.c.scanner,w.inv,w.state,w.save,function() return w.time end,w.storage)
+  w.scheduler=require("lib.scheduler").new(w.c,w.state,w.components,w.inv,w.storage,w.scanner,w.save,function() return w.time end)
   return w
 end
 return M

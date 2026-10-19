@@ -78,13 +78,18 @@ function M:scan()
     local remaining=s.size
     for _,id in ipairs(U.keys(self.state.meBatches)) do local batch=self.state.meBatches[id]
       if batch.identity==key then
-        local n=math.min(remaining,batch.count)
+        local q=self.state.scan
+        local inScanner=q and q.batchId==id and q.identity==key and not q.returned and
+          (q.phase=="PROCESSING" or q.phase=="RETURNING" or (q.phase=="INSERTING" and q.source and
+            self.state.meRequests[U.location(q.source.endpoint,q.source.slot)] and
+            self.state.meRequests[U.location(q.source.endpoint,q.source.slot)].consumed))
+        local available=batch.count-(inScanner and q.count or 0)
+        local n=math.min(remaining,available)
         if n>0 then local copy=U.copy(s); copy.size=n
           result[#result+1]={network=true,endpoint={id="ME"},slot=id,batchId=id,root=batch.root,
             owner=batch.owner,stack=copy}; remaining=remaining-n
         end
-        local scanning=self.state.scan and self.state.scan.batchId==id
-        assert(n==batch.count or scanning,"owned ME batch missing: "..id.."; audit stock before resuming")
+        assert(n==available,"owned ME batch missing: "..id.."; audit stock before resuming")
       end
     end
     if remaining>0 then local copy=U.copy(s); copy.size=remaining

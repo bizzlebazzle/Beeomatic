@@ -86,7 +86,7 @@ function M:reconcile()
     local sourceProof=(not src and tx.before==tx.count) or
       (src and src.size==tx.before-tx.count and B.identity(src)==tx.identity)
     local destProof=dst and dst.size==(tx.destBefore or 0)+tx.count and B.identity(dst)==tx.identity
-    if (tx.returned==tx.count and ((tx.dest.managed and sourceProof) or (tx.source.managed and destProof))) or
+    if (tx.returned==tx.count and ((tx.dest.managed and sourceProof) or (tx.source.managed and (destProof or tx.scanning)))) or
       (tx.source.managed and destProof) or (tx.dest.managed and sourceProof and destProof) then
       tx.phase="COMMITTED_RECOVERED"; Receipts.commit(self.state,tx)
       self.state.transactions[#self.state.transactions+1]=tx; self.state.pending=nil

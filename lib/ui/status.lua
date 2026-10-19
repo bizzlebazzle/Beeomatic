@@ -3,6 +3,8 @@ function M.render(state,c,verbose)
   local r={"========== BEEOMATIC ==========","Target: "..tostring(state.target or "none"),
     "State: "..(state.paused and "PAUSED" or state.finished and "DONE" or state.stopping and "DRAINING" or "ACTIVE")}
   local done=0; for _,j in ipairs(state.jobs or {}) do if j.state=="DONE" then done=done+1 end end
+  if state.stockPhase then r[#r+1]="Stock: "..state.stockPhase.."; drones awaiting inspection/analysis="..(state.stockRemaining or 0) end
+  if state.scan and state.scan.phase then r[#r+1]="Shared scanner: "..state.scan.phase.." ("..state.scan.count.." bees)" end
   r[#r+1]="Completed operations: "..done.."/"..#(state.jobs or {})
   for _,a in ipairs(c.alvearies) do
     local m=(state.machines or {})[a.id] or {}

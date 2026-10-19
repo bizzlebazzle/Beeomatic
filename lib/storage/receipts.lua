@@ -30,6 +30,7 @@ function M.commit(state,tx)
       local id="receipt/"..tx.id
       state.meBatches[id]={root=id,owner=tx.owner,identity=tx.identity,count=tx.count,stack=U.copy(stack)}
     end
+    if tx.owner=="scanner" and tx.transform and state.scan then state.scan.returned=true end
   end
   tx.meApplied=true
 end

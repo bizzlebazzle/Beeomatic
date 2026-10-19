@@ -19,6 +19,7 @@ return {
   "lib/planner.lua",
   "lib/robot.lua",
   "lib/scanner.lua",
+  "lib/scanner_me.lua",
   "lib/scheduler.lua",
   "lib/setup.lua",
   "lib/storage/ae2.lua",
