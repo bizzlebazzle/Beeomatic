@@ -94,10 +94,15 @@ function M:scan()
     if not pooled[key] and not keep[key] then self.state.aeCatalog[key]=nil end
   end
   local result={}
+  local batches={}
+  for _,id in ipairs(U.keys(self.state.meBatches)) do
+    local identity=self.state.meBatches[id].identity
+    batches[identity]=batches[identity] or {}; local group=batches[identity]; group[#group+1]=id
+  end
   for _,key in ipairs(U.keys(pooled)) do
     local s=pooled[key]; s.individual=s.individual or U.copy(self.state.aeCatalog[key])
     local remaining=s.size
-    for _,id in ipairs(U.keys(self.state.meBatches)) do local batch=self.state.meBatches[id]
+    for _,id in ipairs(batches[key] or {}) do local batch=self.state.meBatches[id]
       if batch.identity==key then
         local q=self.state.scan
         local inScanner=q and q.batchId==id and q.identity==key and not q.returned and
@@ -125,17 +130,27 @@ function M:scan()
 end
 function M:selectEntry(item)
   assert(type(item.stack.tag)=="string","Exact ME requests require compressed NBT: enable OC allowItemStackNBTTags")
+  local identity=B.identity(item.stack)
+  local db=self.components:proxy(self.config.database,{"clear","get"})
+  -- Keep only one reusable entry. Re-read its exact NBT before every reuse so
+  -- an externally changed database can never select another bee genotype.
+  local cached=self.databaseEntry
+  if cached and cached.identity==identity and B.identity(db.get(cached.slot))==identity then return cached.slot end
+  self.databaseEntry=nil
   local filter={name=item.stack.name,damage=item.stack.damage,label=item.stack.label}
   local matches=assert(self:network().getItemsInNetwork(filter),"ME unavailable")
   local n,total=0,0
-  for _,s in pairs(matches) do n=n+1; if B.identity(s)==B.identity(item.stack) then total=total+s.size end end
+  for _,s in pairs(matches) do n=n+1; if B.identity(s)==identity then total=total+s.size end end
   assert(total>0,"selected ME variant is unavailable")
   assert(n<=self.config.databaseSlots,"same-label variants exceed dedicated database capacity")
-  local db=self.components:proxy(self.config.database,{"clear","get"})
-  for slot=1,self.config.databaseSlots do db.clear(slot) end
+  -- store fills empty slots starting at one. Only the n slots we read need
+  -- clearing; old entries above n are never considered for this request.
+  for slot=1,n do db.clear(slot) end
   assert(self:network().store(filter,self.config.database,1,n),"ME database copy failed")
   for slot=1,n do local entry=db.get(slot)
-    if entry and B.identity(entry)==B.identity(item.stack) then return slot end
+    if entry and B.identity(entry)==identity then
+      self.databaseEntry={identity=identity,slot=slot}; return slot
+    end
   end
   error("database did not preserve exact bee NBT")
 end

@@ -1,11 +1,15 @@
 local M={}; M.__index=M
-function M.new(component) return setmetatable({api=component or require("component")},M) end
+function M.new(component) return setmetatable({api=component or require("component"),capabilities={}},M) end
 function M:proxy(address,methods)
   assert(address and address~="","explicit component address required")
   local p=self.api.proxy(address); assert(p,"component unavailable: "..address)
   -- OpenOS can expose callbacks as callable tables with protected metatables.
   -- component.methods is authoritative; false means indirect, not unavailable.
-  local advertised=methods and #methods>0 and self.api.methods(address) or {}
+  local entry=self.capabilities[address]
+  if methods and #methods>0 and (not entry or entry.proxy~=p) then
+    entry={proxy=p,methods=self.api.methods(address)}; self.capabilities[address]=entry
+  end
+  local advertised=entry and entry.methods or {}
   for _,m in ipairs(methods or {}) do
     assert(advertised[m]~=nil and p[m]~=nil,address.." missing method "..m)
   end

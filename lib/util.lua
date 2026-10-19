@@ -55,7 +55,13 @@ function M.write(v,sink)
   end
   emit("return "); visit(v); emit("\n"); flush()
 end
-function M.equal(a,b) return M.encode(a)==M.encode(b) end
+function M.equal(a,b)
+  if a==b then return true end
+  if type(a)~="table" or type(b)~="table" then return false end
+  for k,v in pairs(a) do if not M.equal(v,b[k]) then return false end end
+  for k in pairs(b) do if a[k]==nil then return false end end
+  return true
+end
 function M.assertNumber(v,lo,hi)
   local n=tonumber(v); assert(n and n%1==0 and n>=lo and n<=hi,"invalid number: "..tostring(v)); return n
 end

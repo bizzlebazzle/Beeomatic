@@ -7,6 +7,13 @@ end
 function M:proxy(ep) return self.components:proxy(ep.transposer,{"getInventorySize","getStackInSlot","transferItem"}) end
 function M:size(ep) return assert(self:proxy(ep).getInventorySize(ep.side),"inventory unavailable: "..ep.id) end
 function M:get(ep,slot) self:size(ep); return self:proxy(ep).getStackInSlot(ep.side,slot) end
+-- One availability check for a group of fresh reads, never cached item contents.
+function M:readSlots(ep,slots)
+  local p=self:proxy(ep); assert(p.getInventorySize(ep.side),"inventory unavailable: "..ep.id)
+  local result={}
+  for _,slot in ipairs(slots) do result[slot]=p.getStackInSlot(ep.side,slot) end
+  return result
+end
 function M:scan(ep)
   local p=self:proxy(ep); local r={}
   if p.getAllStacks then
@@ -41,12 +48,14 @@ function M:destination(ep,stack)
   end
   return self:empty(ep)
 end
-function M:reserve(item,owner)
+function M:reserve(item,owner,deferSave)
   local k=U.location(item.endpoint,item.slot); local old=self.state.reservations[k]
   assert(not old or old.owner==owner,"item already reserved: "..k)
   local actual=self:get(item.endpoint,item.slot)
   assert(actual and B.identity(actual)==B.identity(item.stack),"source identity changed")
-  self.state.reservations[k]={owner=owner,identity=B.identity(actual)}; self.save(); return k
+  self.state.reservations[k]={owner=owner,identity=B.identity(actual)}
+  if not deferSave then self.save() end
+  return k,actual
 end
 function M:release(owner)
   local changed=false
@@ -56,8 +65,8 @@ end
 function M:move(item,dest,slot,count,owner,receipt)
   assert(not self.state.pending,"unresolved transfer; reconcile before moving anything")
   assert(item.endpoint.transposer==dest.transposer,"transfer endpoints must share a transposer")
-  self:reserve(item,owner)
-  local src=self:get(item.endpoint,item.slot); local dst=self:get(dest,slot)
+  -- The reservation and movement intent share the checkpoint before transferItem.
+  local _,src=self:reserve(item,owner,true); local dst=self:get(dest,slot)
   assert(not dst or (B.identity(dst)==B.identity(src) and dst.size+count<=(dst.maxSize or 1)),
     "destination is incompatible/full: "..dest.id..":"..slot)
   assert(count>0 and count<=src.size,"invalid transfer amount")

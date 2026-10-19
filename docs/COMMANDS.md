@@ -69,7 +69,13 @@ Polling intervals are not total batch timings: component calls and durable state
 writes also take time in-game. Inventory scans use `getAllStacks` snapshots when
 available to avoid repeated world reads for every empty chest/Interface slot.
 Components without that method retain individual reads with one size check per
-scan. Transfers still read their actual source/destination before committing.
+scan. Transfers still read their actual source/destination before committing. Grouped slot reads
+share one inventory-availability check. Component capability discovery is reused
+while the component proxy is unchanged; actual item contents are read fresh.
+ME requests clear only the database slots needed for their matching variants.
+A single previous database entry can be reused after reading and verifying its
+exact NBT again. Transfers save the reservation with the movement intent, retaining
+the before-move intent, moved-count and verified-receipt checkpoints.
 
 If no route is achievable, `plan` explains missing founders, unresolved cycles or
 the distinct-species graph limit and returns to the shell without a traceback. Every breeding worker

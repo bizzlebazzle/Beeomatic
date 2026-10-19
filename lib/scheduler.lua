@@ -90,8 +90,8 @@ function M:canSpend(i,items,paired,templateUse)
   if B.kind(s)=="drone" then
     if templateUse and s.size<=(self.c.templates.reserve or 1) then return false end
     -- Reserve at least one of this exact useful genotype, not merely visible species.
-    local same=0
-    for _,x in ipairs(items) do if B.kind(x.stack)=="drone" and B.identity(x.stack)==B.identity(s) then same=same+x.stack.size end end
+    local same=0; local identity=B.identity(s)
+    for _,x in ipairs(items) do if B.kind(x.stack)=="drone" and B.identity(x.stack)==identity then same=same+x.stack.size end end
     return same>self.c.reserveDrones
   end
   if B.kind(s)=="princess" then
@@ -422,7 +422,8 @@ function M:prepareStock(items)
       for _,a in ipairs(self.c.alvearies) do
         local backend=self:backend(a.id)
         local output=a.routing and a.routing.output or backend.endpoint
-        for _,slot in ipairs(a.slots.outputs) do local s=self.inv:get(output,slot)
+        local stacks=self.inv:readSlots(output,a.slots.outputs)
+        for _,slot in ipairs(a.slots.outputs) do local s=stacks[slot]
           if B.kind(s)=="drone" and not B.scanned(s) then
             local m=self.state.machines[a.id]
             if not (m and m.job) then self.storage:deposit({endpoint=output,slot=slot,stack=s},a.storage,"scanner") end

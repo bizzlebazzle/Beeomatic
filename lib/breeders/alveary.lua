@@ -28,8 +28,9 @@ end
 function M:isReady()
   self:validate()
   local s=self:getSlots()
-  if self.inv:get(self.endpoint,s.princess) or self.inv:get(self.endpoint,s.drone) then return false,"input occupied" end
-  for _,n in ipairs(s.outputs) do if self.inv:get(self.endpoint,n) then return false,"output occupied" end end
+  local inputs=self.inv:readSlots(self.endpoint,{s.princess,s.drone})
+  if inputs[s.princess] or inputs[s.drone] then return false,"input occupied" end
+  if next(self.inv:readSlots(self.endpoint,s.outputs)) then return false,"output occupied" end
   local h=self:housing()
   if h.getQueen() or h.getDrone() then return false,"housing/inventory map disagrees" end
   return true
@@ -50,15 +51,15 @@ function M:insertDrone(item,owner,princess)
 end
 function M:getCycleState()
   local s=self:getSlots(); local h=self:housing()
-  local input=self.inv:get(self.endpoint,s.princess)
-  local drone=self.inv:get(self.endpoint,s.drone)
+  local inputs=self.inv:readSlots(self.endpoint,{s.princess,s.drone})
+  local input,drone=inputs[s.princess],inputs[s.drone]
   local queen=h.getQueen(); local hd=h.getDrone()
   if input or drone or queen or hd then
     if h.canBreed() then return "RUNNING" end
     return "RUNNING","housing reports it cannot work; check climate, flowers, outputs and special conditions"
   end
   local p,d=0,0
-  for _,slot in ipairs(s.outputs) do local stack=self.inv:get(self.endpoint,slot)
+  for _,stack in pairs(self.inv:readSlots(self.endpoint,s.outputs)) do
     if B.kind(stack)=="princess" then p=p+stack.size end
     if B.kind(stack)=="drone" then d=d+stack.size end
   end
@@ -67,7 +68,8 @@ function M:getCycleState()
 end
 function M:collectResults(storage,owner,onReceipt)
   local r={}
-  for _,slot in ipairs(self:getSlots().outputs) do local stack=self.inv:get(self.endpoint,slot)
+  local slots=self:getSlots().outputs; local stacks=self.inv:readSlots(self.endpoint,slots)
+  for _,slot in ipairs(slots) do local stack=stacks[slot]
     if stack then
       r[#r+1]=storage:deposit({endpoint=self.endpoint,slot=slot,stack=stack},self.config.storage,owner)
       if onReceipt then onReceipt(r[#r]) end

@@ -19,8 +19,8 @@ function M.observe(state,c,components,inv,now)
       local qs,ds
       if not a.routing and a.backend~="routed" then
         local ep={id="breeder/"..a.id,transposer=a.transposer,side=a.side}
-        qs=inv:get(ep,a.slots and a.slots.princess or 1)
-        ds=inv:get(ep,a.slots and a.slots.drone or 2)
+        local ps,dsSlot=a.slots and a.slots.princess or 1,a.slots and a.slots.drone or 2
+        local inputs=inv:readSlots(ep,{ps,dsSlot}); qs=inputs[ps]; ds=inputs[dsSlot]
       end
       return {queen=beeInfo(queen,qs,"princess/queen"),drone=beeInfo(drone,ds,"drone")}
     end)
