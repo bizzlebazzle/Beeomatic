@@ -25,6 +25,8 @@ return {
   "lib/storage/ae2_export.lua",
   "lib/storage/base.lua",
   "lib/storage/chest.lua",
+  "lib/storage/me_interface.lua",
+  "lib/storage/receipts.lua",
   "lib/templates.lua",
   "lib/ui/diagnostics.lua",
   "lib/ui/status.lua",
