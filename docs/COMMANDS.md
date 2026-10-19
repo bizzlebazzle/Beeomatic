@@ -25,6 +25,7 @@ Beeomatic pause job3
 Beeomatic resume
 Beeomatic resume job3
 Beeomatic stop
+Beeomatic cancel
 Beeomatic alveary list
 Beeomatic alveary add
 Beeomatic alveary remove hot_dry_1
@@ -129,6 +130,14 @@ Confirmation asks about each exact requirement string and saves only explicit
 block, biome, dimension, equipment or world condition changes. No inference from a
 generic robot reply is sufficient. Structured route `environment` constraints
 are supported by the planner/backend if supplied by an extension/configuration.
+
+To discard a pending request before its plan has been created, exit the worker
+with Ctrl+C if it is running, then use `Beeomatic cancel`. This also clears requests
+stranded by the old stopped-plan replacement bug. It preserves the old drained
+jobs and all scanner/transfer/ownership records; a new request reconciles those
+records before breeding. It refuses cancellation while a worker lock or active
+machine/job assignment remains. Once the request has become a plan, `cancel`
+leaves that plan intact; use `stop` to drain it.
 
 Recovery tools for a reserved job:
 

@@ -5,6 +5,76 @@ local function withAnswer(answer,fn)
   assert(success,err)
 end
 
+test("cancel clears a stranded request and allows a new breeding request",function()
+  local w=W.new(); w:addMachine("a"); w:build(); w.c.confirmCycles=1; w.c.minDrones=2
+  W.job(w,"old-plan","Forest","populate")
+  w.state.pendingRequest={target="unwanted",mode="breed",flags={}}
+  w.state.stopped=false
+  w.inventories.hub[1]=W.bee("Spirit","princess")
+  w.inventories.hub[2]=W.bee("Spirit","drone",8)
+  O.with(w,function(files,out)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    files["/project/data/state.lua"]="return "..U.encode(w.state)
+    require("lib.cli").main("/project",{"cancel"})
+    local state=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
+    eq(state.pendingRequest,nil); ok(state.stopped); eq(state.jobs,w.state.jobs); eq(w.moves,0)
+    ok(table.concat(out,"\n"):find("Cancelled pending request for unwanted",1,true))
+    local _,err=require("lib.cli").main("/project",{"populate","spirit","2"})
+    eq(err,nil,err)
+    state=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
+    ok(state.finished); eq(state.target,"test.speciesspirit")
+  end)
+end)
+
+test("cancel preserves pending scanner and transfer recovery records without moving bees",function()
+  local w=W.new(); w:addMachine("a"); w:build()
+  w.state.pendingRequest={target="unwanted",mode="breed"}
+  w.state.scan={phase="PROCESSING",count=8,started=10}
+  w.state.pending={phase="INTENT",owner="scanner"}
+  w.state.pendingExternal={phase="INTENT"}
+  w.state.meRequests={scanner={phase="READY"}}
+  w.state.meBatches={batch={owner="scanner",count=8}}
+  w.state.reservations={slot={owner="scanner"}}
+  O.with(w,function(files,out)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    files["/project/data/state.lua"]="return "..U.encode(w.state)
+    require("lib.cli").main("/project",{"cancel"})
+    local state=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
+    for _,key in ipairs({"scan","pending","pendingExternal","meRequests","meBatches","reservations","jobs","transactions"}) do
+      eq(state[key],w.state[key],key)
+    end
+    eq(state.pendingRequest,nil); eq(w.moves,0)
+    ok(table.concat(out,"\n"):find("recovery records retained",1,true))
+  end)
+end)
+
+test("cancel refuses a running worker or live job assignment without rewriting state",function()
+  for _,blocked in ipairs({"worker","machine","job"}) do
+    local w=W.new(); w:addMachine("a"); w:build()
+    w.state.pendingRequest={target="unwanted",mode="breed"}
+    if blocked=="machine" then w.state.machines.a={job="old"} end
+    if blocked=="job" then local j=W.job(w,"old","Forest"); j.machine="a" end
+    O.with(w,function(files)
+      files["/project/data/config.lua"]="return "..U.encode(w.c)
+      local before="return "..U.encode(w.state); files["/project/data/state.lua"]=before
+      if blocked=="worker" then files["/project/data/worker.lock"]="running" end
+      local _,err=require("lib.cli").main("/project",{"cancel"})
+      ok(err); eq(files["/project/data/state.lua"],before); eq(w.moves,0)
+    end)
+  end
+end)
+
+test("cancel with no pending request keeps the existing breeding plan",function()
+  local w=W.new(); w:addMachine("a"); w:build(); W.job(w,"old","Forest")
+  O.with(w,function(files,out)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    local before="return "..U.encode(w.state); files["/project/data/state.lua"]=before
+    require("lib.cli").main("/project",{"cancel"})
+    eq(files["/project/data/state.lua"],before); eq(w.moves,0)
+    ok(table.concat(out,"\n"):find("No pending request to cancel",1,true))
+  end)
+end)
+
 test("a new request after draining stopped jobs completes without resuming the old plan",function()
   local w=W.new(); w:addMachine("a"); w:build(); w.c.confirmCycles=1; w.c.minDrones=2
   local old=W.job(w,"old-plan","Forest","populate")

@@ -7,7 +7,7 @@ Beeomatic plan SPECIES [--verbose] [--no-pager]
 Beeomatic breed SPECIES [--noFinalImprint | --onlyFinalImprint]
 Beeomatic convert SPECIES | populate SPECIES COUNT | imprint SPECIES
 Beeomatic status [--verbose] | logs [--crash]
-Beeomatic pause [JOB] | resume [JOB] [--recover] | stop
+Beeomatic pause [JOB] | resume [JOB] [--recover] | stop | cancel
 Beeomatic alveary list | add | remove ID
 Beeomatic storage scan | bees list | bees inspect SPECIES
 Beeomatic help
@@ -142,6 +142,29 @@ function M.main(root,args)
     end
   end
   if cmd=="" or cmd=="help" then print(help); return end
+  if cmd=="cancel" then
+    local function refused(message) print(message); return nil,message end
+    if fs.exists(lock) then return refused("A worker lock exists. Exit the running worker with Ctrl+C before cancelling its pending request.") end
+    if not state.pendingRequest then print("No pending request to cancel. Saved jobs remain; use stop to drain active work."); return end
+    for _,m in pairs(state.machines or {}) do
+      if m.job then return refused("A machine is still assigned; recover/drain existing work before cancelling the pending request.") end
+    end
+    for _,j in ipairs(state.jobs) do
+      if j.machine or j.state=="RUNNING" or j.state=="COLLECTING" or j.state=="ASSESSING" or j.state=="PREPARING" then
+        return refused("A job still has active work; recover/drain it before cancelling the pending request.")
+      end
+    end
+    local target=state.pendingRequest.target
+    -- The pending request passed admission after the previous plan was drained.
+    -- Restore that plan's stopped status, including requests stranded by old code.
+    -- Keep all scanner, transfer, ownership and job records for reconciliation.
+    state.pendingRequest=nil; state.stopped=true; state.stopping=false; save()
+    print("Cancelled pending request for "..tostring(target)..". You can start a new request.")
+    if state.scan or state.pending or state.pendingExternal or next(state.meRequests or {}) then
+      print("Scanner/transfer recovery records retained; they will be reconciled before new breeding starts.")
+    end
+    return
+  end
   if cmd=="status" then
     Status.observe(state,c,components,inv,computer.uptime()); print(Status.render(state,c,f.verbose)); return
   end
