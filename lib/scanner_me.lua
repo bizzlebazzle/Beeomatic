@@ -12,6 +12,15 @@ function M:outputs()
   else items=self.inv:scan(c.output) end
   return items
 end
+function M:empty()
+  local seen={}
+  for _,ep in ipairs({self.config.input,self.config.output}) do
+    local key=ep.transposer..":"..ep.side
+    if not seen[key] then for _,item in ipairs(self.inv:scan(ep)) do if B.kind(item.stack) then return false end end end
+    seen[key]=true
+  end
+  return true
+end
 function M:validate()
   local c=self.config
   assert(c.enabled,"Shared scanner required: configure it to inspect all initial drone variants")
@@ -39,7 +48,7 @@ function M:step(items)
     for _,i in ipairs(items) do if B.kind(i.stack) and not B.scanned(i.stack) then candidate=i; break end end
     if not candidate then return true end
     self:validate()
-    assert(not self.inv:get(c.input,c.inputSlot) and #self:outputs()==0,"shared scanner contains unrelated stock; audit before starting")
+    assert(self:empty(),"shared scanner contains unrelated stock; audit before starting")
     local count=math.min(candidate.stack.size,candidate.stack.maxSize or 64,c.batchSize or 64)
     q={phase="REQUESTING",item=U.copy(candidate),identity=B.identity(candidate.stack),batchId=candidate.batchId,
       name=candidate.stack.name,damage=candidate.stack.damage,count=count,
@@ -62,10 +71,10 @@ function M:step(items)
   end
   if q.phase=="INSERTING" then
     local request=self.state.meRequests[U.location(q.source.endpoint,q.source.slot)]
-    if not (request and request.consumed) then
+    if not q.inserted and not (request and request.consumed) then
       local stack=assert(self.inv:get(q.source.endpoint,q.source.slot),"scanner source disappeared; audit before retry")
       assert(B.identity(stack)==q.identity and stack.size==q.count,"scanner source changed")
-      assert(not self.inv:get(c.input,c.inputSlot) and #self:outputs()==0,"scanner input insertion ambiguous")
+      assert(self:empty(),"scanner input insertion ambiguous")
       self.inv:move({endpoint=q.source.endpoint,slot=q.source.slot,stack=stack,batchId=q.batchId,scanning=true},
         c.input,c.inputSlot,q.count,"scanner",function(got,n)
           -- The analyser may consume its input immediately; its isolated output

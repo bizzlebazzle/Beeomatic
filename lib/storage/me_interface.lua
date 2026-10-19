@@ -80,9 +80,9 @@ function M:scan()
       if batch.identity==key then
         local q=self.state.scan
         local inScanner=q and q.batchId==id and q.identity==key and not q.returned and
-          (q.phase=="PROCESSING" or q.phase=="RETURNING" or (q.phase=="INSERTING" and q.source and
+          (q.phase=="PROCESSING" or q.phase=="RETURNING" or (q.phase=="INSERTING" and (q.inserted or (q.source and
             self.state.meRequests[U.location(q.source.endpoint,q.source.slot)] and
-            self.state.meRequests[U.location(q.source.endpoint,q.source.slot)].consumed))
+            self.state.meRequests[U.location(q.source.endpoint,q.source.slot)].consumed))))
         local available=batch.count-(inScanner and q.count or 0)
         local n=math.min(remaining,available)
         if n>0 then local copy=U.copy(s); copy.size=n
@@ -180,12 +180,44 @@ end
 function M:reconcile()
   assert(not self.state.pendingExternal,"legacy export journal exists; reconcile with the previous installation before migration")
   for _,key in ipairs(U.keys(self.state.meRequests)) do local x=self.state.meRequests[key]
-    if x.consumed or x.phase=="RETURNING" then self:clearRequest(x) end
+    if x.consumed or x.phase=="RETURNING" or (x.owner=="scanner" and not self.state.scan) then self:clearRequest(x) end
   end
   return true
 end
 function M:releaseBatches(owner,keep)
   for id,batch in pairs(self.state.meBatches) do if batch.owner==owner and id~=keep then self.state.meBatches[id]=nil end end
   self.inv.save()
+end
+function M:probe(ep)
+  self:validate()
+  assert(not self.state.pending and not self.state.pendingExternal and not self.state.scan and not next(self.state.meRequests),
+    "reconcile active transfers and scanner requests before probing")
+  assert(#self.inv:scan(ep)==0,"empty this Interface inventory before probing")
+  local item
+  for _,i in ipairs(self:scan()) do
+    if not i.owner and B.kind(i.stack)=="drone" and i.stack.size>=2 then item=i; break end
+  end
+  assert(item,"probe needs at least two identical analysed drones in ME")
+  local before=0
+  for _,s in pairs(self:network().getItemsInNetwork()) do if B.identity(s)==B.identity(item.stack) then before=before+s.size end end
+  local success,err=pcall(function()
+    local p=self:materialize(item,ep,"scanner",2)
+    assert(B.scanned(p.stack),"probe sample is unanalysed; scan it first")
+    self.inv:move(p,ep,ep.returnSlot or 9,1,"scanner",function(got,n) return not got and n==1 end)
+    self:releasePort(ep)
+    self:poll(function() return not self.inv:get(ep,ep.returnSlot or 9) end,"probe return blocked")
+    self:poll(function()
+      local count=0
+      for _,s in pairs(self:network().getItemsInNetwork()) do if B.identity(s)==B.identity(item.stack) then count=count+s.size end end
+      return count==before
+    end,"probe exact ME count did not return to its starting value")
+  end)
+  if not success then
+    if not self.state.pending then pcall(self.cancel,self,"scanner") end
+    error(err,0)
+  end
+  self.state.interfaceProbes=self.state.interfaceProbes or {}
+  self.state.interfaceProbes[ep.id]={identity=B.identity(item.stack),requested=2,extracted=1,returned=true,time=self.now()}
+  self.inv.save(); return true
 end
 return M

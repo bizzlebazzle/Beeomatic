@@ -25,6 +25,7 @@ function M.new(config,components,inv,save,read,out)
   function w:ask(label,default)
     self.out(label..(default~=nil and (" ["..tostring(default).."]") or "")..": ")
     local value=self.read(); assert(value,"Setup interrupted; completed sections are saved")
+    if value:lower()=="back" then error({setupBack=true},0) end
     if value=="" and default~=nil then return tostring(default) end; return value
   end
   function w:yes(label,default) return self:ask(label,default and "yes" or "no"):lower()=="yes" end
@@ -96,11 +97,11 @@ function M.new(config,components,inv,save,read,out)
       end
     end
   end
-  function w:endpoint(label,default)
+  function w:endpoint(label,default,fixedTransposer)
     default=default or {}
     self:heading("Registering inventory: "..label)
     self.out("Step 1/2: choose the transposer beside "..label..".")
-    local address=self:address("Transposer for "..label,{"getInventorySize","getStackInSlot","transferItem"},default.transposer,true)
+    local address=fixedTransposer or self:address("Transposer for "..label,{"getInventorySize","getStackInSlot","transferItem"},default.transposer,true)
     local named=self.c.componentNames and self.c.componentNames[address]
     local side
     repeat
@@ -122,167 +123,175 @@ function M.new(config,components,inv,save,read,out)
       if choice then side=choice.side; self.out("Selected "..label..": "..choice.summary)
       elseif answer~="r" then self.out("That inventory number is not listed. Please choose again.") end
     until side~=nil
-    self.out("Give this physical inventory a short ID, e.g. archive or alveary_1.")
+    self.out("Give this physical inventory a short ID, e.g. port_1 or alveary_1.")
     self.out("Reuse its ID when registering the SAME inventory from another transposer.")
     local ep={id=self:ask("Inventory ID for "..label,default.id),transposer=address,side=side}
     assert(ep.id~="","inventory ID cannot be empty"); self.inv:size(ep); return ep
   end
+  function w:port(label,default,transposer)
+    local ep=self:endpoint(label,default,transposer)
+    ep.address=self:address("Adapter at "..label,{"getInterfaceConfiguration","setInterfaceConfiguration"},default and default.address)
+    ep.managed=true; ep.princessSlot=1; ep.droneSlot=2; ep.returnSlot=9
+    assert(self.inv:size(ep)==9,"use a full-block ME Interface with nine inventory slots")
+    for _,old in ipairs(self.c.storage.endpoints) do
+      assert(old.id==ep.id or old.address~=ep.address,"Interface already registered under another port ID")
+    end
+    return ep
+  end
+  function w:registerEndpoint(ep)
+    for n,old in ipairs(self.c.storage.endpoints) do
+      if old.id==ep.id and old.transposer==ep.transposer then self.c.storage.endpoints[n]=ep; return end
+    end
+    self.c.storage.endpoints[#self.c.storage.endpoints+1]=ep
+  end
   function w:storage()
     self:heading("Storage setup")
-    self.out("Storage: a shared physical archive is the transfer hub. Every breeder transposer must reach that same inventory, or its own registered storage inventory.")
-    local kind=self:ask("Storage type: chest or ae2",self.c.storage.kind):lower()
-    assert(kind=="chest" or kind=="ae2","choose chest or ae2")
-    local s=self.c.storage; s.kind=kind
-    if #s.endpoints==0 or self:yes("Reconfigure the primary archive connection?",false) then
-      s.endpoints[1]=self:endpoint("Archive chest",s.endpoints[1]); self.save()
-    end
-    if kind=="ae2" then
-      self:heading("ME network access")
-      self.out("The archive chest needs an ME STORAGE BUS on your dedicated bee subnet.")
-      self.out("Next choose the ME interface/controller adapter used to read network stock.")
-      s.address=self:address("ME interface/controller address",{"getItemsInNetwork","store"},s.address)
-      self.out("Next choose the OC database used to remember exact bee item types.")
-      self.out("Its entries are temporary scratch space; use a dedicated database.")
-      s.database=self:address("Database component address",{"clear","get"},s.database)
-      s.databaseSlots=self:number("Dedicated database capacity (number of entries shown in its GUI)",1,4096,s.databaseSlots or 9)
-      self:exportControl()
-      self:heading("Export bus and receiving chest")
-      self.out("Choose the adapter exposing the ME export bus that sends bees to a buffer chest.")
-      self.out("This buffer is separate from the archive: no storage/import bus on it.")
-      local methods={"setExportConfiguration"}
-      if s.exportMode=="redstone" then
-        methods[#methods+1]="getExportConfiguration"; methods[#methods+1]="getExportSlotSize"
-      else methods[#methods+1]="exportIntoSlot" end
-      s.exportAddress=self:address("ME export bus component address",methods,s.exportAddress)
-      s.exportSide=self:exportDirection(s.exportSide)
-      s.buffer=self:endpoint("Isolated export buffer",s.buffer)
-      if s.exportMode=="redstone" then
-        self.out("Set the ME bus to ACTIVE WITH SIGNAL. An OC Redstone Card must be the sole signal source. Remove the manual lever. Connect the chosen computer output face to the bus through verified redstone wiring. Signal stays ON until an exact physical receipt arrives; bus speed is not assumed.")
-        local g=s.exportGate or {}; s.exportGate=g
-        g.address=self:address("OC redstone component address",{"getOutput","setOutput"},g.address)
-        self.out("OC Redstone Card sides follow the computer's local orientation, not the transposer's world-direction map. Verify the actual powered face before saving this side; use require('sides') aliases where helpful.")
-        g.side=self:number("Verified LOCAL computer/redstone output side (different from export-bus side)",0,5,g.side)
-        g.off=0; g.on=15
-        self.components:proxy(g.address).setOutput(g.side,g.off)
-        s.exportTimeout=self:number("Maximum wait for an export receipt, seconds",1,600,s.exportTimeout or 60)
-        s.exportPollSeconds=1
-        g.verified=self:yes("Have you tested OC signal ON exporting exact stock, and signal OFF stopping it?",false)
-      else self.out("The imperative exportIntoSlot callback is broken on the tested Beta 3 server (config=null). Only select callback mode on an installation where a real export has passed.") end
-      self.out("Remove fuzzy/crafting upgrades. Clear every export filter. Keep the isolated buffer empty; attach no other automation to it. With redstone mode, only the configured OC output may enable the bus.")
-      s.exportIsolated=self:yes("Have you verified those export safety conditions?",false)
-      s.storageBusVerified=self:yes("Is the archive exposed by a storage bus on the dedicated subnet?",false)
+    self.out("ME: one Interface beside each alveary transposer, all on the same AE network. Bees live in ME cells; one shared station handles scanning.")
+    local kind
+    repeat
+      kind=self:ask("Storage: me or chest",self.c.storage.kind=="chest" and "chest" or "me"):lower()
+      if kind=="me" or kind=="interface" then kind="me_interface" end
+    until kind=="me_interface" or kind=="chest"
+    local changed=kind~=self.c.storage.kind
+    if changed then
+      self.c.storage={kind=kind,endpoints={}}
+      self.c.scanner={enabled=false}; self.c.templates={enabled=false}
+      self.c.storageRemap={}
+      for _,a in ipairs(self.c.alvearies) do self.c.storageRemap[a.id]=true end
       self.save()
     end
-  end
-  function w:exportDirection(default)
-    local names={"down","up","north","south","west","east"}
-    self:heading("Which way does the export bus send bees?")
-    self.out("Start at the ME cable block that carries the export bus.")
-    self.out("Follow the bus outward towards the buffer chest receiving the bees:")
-    self.out("ME cable block -> export bus -> buffer chest")
-    self.out("Example: chest SOUTH of the cable block means south (3).")
-    self.out("This is a world direction, not a side of the OC adapter or transposer.")
-    self.out("0 down | 1 up | 2 north | 3 south | 4 west | 5 east")
-    repeat
-      local answer=self:ask("Export direction (name or number)",default~=nil and names[default+1] or nil):lower():match("^%s*(.-)%s*$")
-      for i,name in ipairs(names) do if answer==name then return i-1 end end
-      local n=tonumber(answer)
-      if n and n%1==0 and n>=0 and n<=5 then return n end
-      self.out("Enter down, up, north, south, west, east, or a number from 0 to 5.")
-    until false
-  end
-  function w:exportControl()
-    self:heading("How should Beeomatic start and stop ME exports?")
-    self.out("redstone (recommended for your tested GTNH Beta 3 setup):")
-    self.out("  Beeomatic enables the export bus using an OC redstone output.")
-    self.out("  It waits for bees in the buffer, then switches the signal off.")
-    self.out("  Needs an OC Redstone Card wired to a bus set to ACTIVE WITH SIGNAL.")
-    self.out("callback (only for an installation where this command has been tested):")
-    self.out("  Asks the ME adapter to export directly using exportIntoSlot.")
-    self.out("  This failed with config=null on your tested server. Use redstone here.")
-    self.out("Press Enter to keep the option shown in brackets.")
-    repeat
-      local mode=self:ask("Export control: redstone or callback",self.c.storage.exportMode or "redstone"):lower()
-      if mode=="redstone" or mode=="callback" then self.c.storage.exportMode=mode; return end
-      self.out("Enter redstone or callback, or press Enter to keep the default.")
-    until false
+    local s=self.c.storage
+    if kind=="me_interface" then
+      s.address=self:address("ME network reader (Interface/controller)",{"getItemsInNetwork","store"},s.address)
+      s.database=self:address("Dedicated database",{"clear","get"},s.database)
+      s.databaseSlots=self:number("Database entry capacity",1,4096,s.databaseSlots or 9)
+      s.timeout=self:number("Maximum wait for ME stock/returns, seconds",1,600,s.timeout or 60)
+      s.verified=self:yes("All ports belong to this ME network, with no storage buses, fuzzy/crafting upgrades or other filter controllers?",s.verified)
+      self.out("Each port uses slot 1 for princesses, 2 for drones and 9 for returns. Keep other filters clear. Run doctor --interface PORT_ID to test a port.")
+    elseif #s.endpoints==0 or self:yes("Change the primary archive connection?",false) then
+      s.endpoints[1]=self:endpoint("Archive chest",s.endpoints[1])
+    end
+    if self.c.storageRemap then
+      for _,a in ipairs(self.c.alvearies) do if self.c.storageRemap[a.id] then
+        a.storage=kind=="me_interface" and self:port("ME Interface for "..a.name,{id="port_"..a.id},a.transposer) or
+          self:endpoint("Archive for "..a.name,s.endpoints[1],a.transposer)
+        self:registerEndpoint(a.storage); self.c.storageRemap[a.id]=nil; self.save()
+      end end
+      self.c.storageRemap=nil
+    end
+    self.save()
   end
   function w:addAlveary()
-    local a={id=self:ask("Unique alveary ID (letters/numbers/underscore)"),enabled=true,priority=#self.c.alvearies+1}
-    assert(a.id:match("^[%w_%-]+$"),"invalid alveary ID")
-    for _,old in ipairs(self.c.alvearies) do assert(old.id~=a.id,"ID already registered") end
-    a.name=self:ask("Friendly alveary name",a.id)
-    self.out("Place one adapter against an assembled alveary block; connect it to the OC cable network. Place a transposer directly beside the alveary inventory face and the archive chest. Do not register two blocks of the same multiblock as separate machines.")
-    a.address=self:address("Housing component address",{"getQueen","getDrone","getBeeParents","canBreed"})
-    a.backend=self:ask("Inventory backend: alveary (direct access) or routed (external gated pipes)","alveary"):lower()
-    assert(a.backend=="alveary" or a.backend=="routed","choose alveary or routed")
-    local ep=self:endpoint(a.backend=="routed" and "Input staging chest for "..a.name or "Alveary inventory for "..a.name)
-    a.transposer=ep.transposer; a.side=ep.side
-    a.storage=self:endpoint("Archive chest as viewed by THIS transposer",self.c.storage.endpoints[1])
-    assert(a.storage.transposer==a.transposer and a.storage.side~=a.side,"breeder and archive need separate sides on the same transposer")
-    local known=false
-    for _,x in ipairs(self.c.storage.endpoints) do if x.id==a.storage.id and x.transposer==a.storage.transposer then known=true end end
-    if not known then self.c.storage.endpoints[#self.c.storage.endpoints+1]=a.storage end
-    local size=self.inv:size(ep)
-    if a.backend=="routed" then
-      self.out("The inventory just registered is your INPUT STAGING CHEST, not the alveary. Isolate this machine's caste routes and outputs. Both input routes must remain completely stopped while the gate is OFF; do not install return-to-breeder loops.")
-      a.routing={output=self:endpoint("Dedicated routing output chest")}
-      a.routing.outputInventorySize=self.inv:size(a.routing.output)
-      self.out("Redstone output sides follow the controller's local orientation. Verify the physical powered face; do not reuse the transposer's world side numbers.")
-      a.routing.gate={address=self:address("Dedicated routing redstone component address",{"setOutput"}),
-        side=self:number("Verified LOCAL redstone gate output side",0,5),off=0,on=15}
-      self.components:proxy(a.routing.gate.address).setOutput(a.routing.gate.side,0)
-      a.routing.verified=self:yes("Have you tested both caste paths, gate isolation, correct housing association and complete output return?",false)
+    local draft=self.c.alvearyDraft or {stage=1,machine={enabled=true,priority=#self.c.alvearies+1}}
+    self.c.alvearyDraft=draft; local a=draft.machine; self.save()
+    self.out("Alveary registration saves each stage. Type back to revisit the previous stage.")
+    while draft.stage<=4 do
+      local success,err=pcall(function()
+        if draft.stage==1 then
+          a.id=self:ask("Unique alveary ID (letters/numbers/underscore)",a.id)
+          assert(a.id:match("^[%w_%-]+$"),"invalid alveary ID")
+          for _,old in ipairs(self.c.alvearies) do assert(old.id~=a.id,"ID already registered") end
+          a.name=self:ask("Friendly alveary name",a.name or a.id)
+        elseif draft.stage==2 then
+          self.out("Connect the housing adapter and a transposer touching the housing inventory and its storage port. Register each multiblock only once.")
+          a.address=self:address("Housing component address",{"getQueen","getDrone","getBeeParents","canBreed"},a.address)
+          a.backend=self:ask("Inventory backend: alveary (direct access) or routed (external gated pipes)",a.backend or "alveary"):lower()
+          assert(a.backend=="alveary" or a.backend=="routed","choose alveary or routed")
+          if a.backend=="alveary" then a.routing=nil end
+          local ep=self:endpoint(a.backend=="routed" and "Input staging chest for "..a.name or "Alveary inventory for "..a.name,{id=a.id,transposer=a.transposer,side=a.side})
+          a.transposer=ep.transposer; a.side=ep.side
+          a.storage=self.c.storage.kind=="me_interface" and
+            self:port("ME Interface for "..a.name,a.storage or {id="port_"..a.id},a.transposer) or
+            self:endpoint("Archive for "..a.name,a.storage or self.c.storage.endpoints[1],a.transposer)
+          assert(a.storage.side~=a.side,"breeder and storage need separate sides")
+          if a.backend=="routed" then
+            self.out("The inventory just registered is your INPUT STAGING CHEST, not the alveary. Isolate this machine's caste routes and outputs. Both input routes must remain completely stopped while the gate is OFF; do not install return-to-breeder loops.")
+            a.routing={output=self:endpoint("Dedicated routing output chest")}
+            a.routing.outputInventorySize=self.inv:size(a.routing.output)
+            self.out("Redstone output sides follow the controller's local orientation. Verify the physical powered face; do not reuse the transposer's world side numbers.")
+            a.routing.gate={address=self:address("Dedicated routing redstone component address",{"setOutput"}),
+              side=self:number("Verified LOCAL redstone gate output side",0,5),off=0,on=15}
+            self.components:proxy(a.routing.gate.address).setOutput(a.routing.gate.side,0)
+            a.routing.verified=self:yes("Have you tested both caste paths, gate isolation, correct housing association and complete output return?",false)
+          end
+        elseif draft.stage==3 then
+          local ep={id=a.id,transposer=a.transposer,side=a.side}
+          local size=self.inv:size(ep)
+          local slots={inventorySize=size,outputs={}}
+          slots.princess=self:number("Princess/queen slot observed through probe (no default)",1,size)
+          slots.drone=self:number("Drone input slot observed through probe (no default)",1,size)
+          local text=self:ask("Observed product/offspring output slots, comma separated")
+          for n in text:gmatch("%d+") do slots.outputs[#slots.outputs+1]=U.assertNumber(n,1,a.routing and a.routing.outputInventorySize or size) end
+          assert(#slots.outputs>0,"output slots required")
+          self.out("Role check: use expendable analyzed test stock. With drone input EMPTY, manually put a princess in the configured princess slot. This read-only check does not insert or consume bees.")
+          self:ask("Press Enter when the princess is present","")
+          local p=self.inv:get(ep,slots.princess); assert(B.kind(p)=="princess" and B.scanned(p),"princess slot witness failed")
+          local h=self.components:proxy(a.address); local q=h.getQueen()
+          if not a.routing then assert(q and U.equal(q.active,p.individual.active),"adapter does not observe that princess; wrong housing address") end
+          self.out("Remove princess through GUI. Put one analyzed drone in the drone input, with princess input EMPTY.")
+          self:ask("Press Enter to inspect drone","")
+          assert(not self.inv:get(ep,slots.princess),"remove test princess first")
+          local d=self.inv:get(ep,slots.drone); local hd=h.getDrone()
+          assert(B.kind(d)=="drone" and B.scanned(d),"drone slot witness failed")
+          if not a.routing then assert(hd and U.equal(hd.active,d.individual.active),"drone adapter association failed") end
+          self.out("Remove test drone manually. Observe one complete expendable breeding cycle in this machine. Verify every configured output slot belongs to offspring/products, never upgrades or frames. Return all test stock to storage afterwards.")
+          slots.verified=self:yes("Have you witnessed and verified the output map?",false)
+          a.slots=slots
+        else
+          self.out("This housing API has no live climate/environment methods. Read its working climate in-game, including heaters/fans, and enter the actual categories.")
+          a.environment={temperature=self:ask("Temperature: ICY COLD NORMAL WARM HOT HELLISH"):upper(),
+            humidity=self:ask("Humidity: ARID NORMAL DAMP"):upper(),biome=self:ask("Biome"),dimension=self:ask("Dimension")}
+          local e=a.environment; e.flowers={}
+          local flowers=self:ask("Verified flower-provider IDs, comma separated (e.g. flowers)")
+          for f in flowers:gmatch("[^, ]+") do e.flowers[f]=true end
+          e.daylightManaged=self:yes("Does this installation support the required day/night schedule?",false)
+          e.rainProtected=self:yes("Is operation protected from rain?",false)
+          e.skyAccess=self:yes("Does the bee housing have valid sky access?",false)
+          e.verified=self:yes("Have you verified this operating environment in-game?",false)
+          e.provenance="manual in-game attestation"; a.confirmed={}
+        end
+      end)
+      if success then draft.stage=draft.stage+1
+      elseif type(err)=="table" and err.setupBack then
+        if draft.stage==1 then self.save(); error(err,0) end
+        draft.stage=draft.stage-1
+      else self.save(); error(err,0) end
+      self.save()
     end
-    local slots={inventorySize=size,outputs={}}
-    slots.princess=self:number("Princess/queen slot observed through probe (no default)",1,size)
-    slots.drone=self:number("Drone input slot observed through probe (no default)",1,size)
-    local text=self:ask("Observed product/offspring output slots, comma separated")
-    for n in text:gmatch("%d+") do slots.outputs[#slots.outputs+1]=U.assertNumber(n,1,a.routing and a.routing.outputInventorySize or size) end
-    assert(#slots.outputs>0,"output slots required")
-    self.out("Role check: use expendable analyzed test stock. With drone input EMPTY, manually put a princess in the configured princess slot. This read-only check does not insert or consume bees.")
-    self:ask("Press Enter when the princess is present","")
-    local p=self.inv:get(ep,slots.princess); assert(B.kind(p)=="princess" and B.scanned(p),"princess slot witness failed")
-    local h=self.components:proxy(a.address); local q=h.getQueen()
-    if not a.routing then assert(q and U.equal(q.active,p.individual.active),"adapter does not observe that princess; wrong housing address") end
-    self.out("Remove princess through GUI. Put one analyzed drone in the drone input, with princess input EMPTY.")
-    self:ask("Press Enter to inspect drone","")
-    assert(not self.inv:get(ep,slots.princess),"remove test princess first")
-    local d=self.inv:get(ep,slots.drone); local hd=h.getDrone()
-    assert(B.kind(d)=="drone" and B.scanned(d),"drone slot witness failed")
-    if not a.routing then assert(hd and U.equal(hd.active,d.individual.active),"drone adapter association failed") end
-    self.out("Remove test drone manually. Observe one complete expendable breeding cycle in this machine. Verify every configured output slot belongs to offspring/products, never upgrades or frames. Return all stock to the archive after testing.")
-    slots.verified=self:yes("Have you witnessed and verified the output map?",false)
-    a.slots=slots
-    self.out("This housing API has no live climate/environment methods. Read its working climate in-game, including heaters/fans, and enter the actual categories.")
-    a.environment={temperature=self:ask("Temperature: ICY COLD NORMAL WARM HOT HELLISH"):upper(),
-      humidity=self:ask("Humidity: ARID NORMAL DAMP"):upper(),biome=self:ask("Biome"),dimension=self:ask("Dimension")}
-    local e=a.environment; e.flowers={}
-    local flowers=self:ask("Verified flower-provider IDs, comma separated (e.g. flowers)")
-    for f in flowers:gmatch("[^, ]+") do e.flowers[f]=true end
-    e.daylightManaged=self:yes("Does this installation support the required day/night schedule?",false)
-    e.rainProtected=self:yes("Is operation protected from rain?",false)
-    e.skyAccess=self:yes("Does the bee housing have valid sky access?",false)
-    e.verified=self:yes("Have you verified this operating environment in-game?",false)
-    e.provenance="manual in-game attestation"; a.confirmed={}
-    self.c.alvearies[#self.c.alvearies+1]=a; self.save()
-    self.out("Saved "..a.id.." physical layout (sides relative to "..a.transposer.."):")
-    self.out("[Archive "..a.storage.id..", side "..a.storage.side.."] -- [Transposer] -- ["..(a.routing and "Input staging" or "Alveary")..", side "..a.side.."]")
-    if a.routing then self.out("  Input staging -- gated caste pipes --> housing "..a.address.." -- output pipes --> "..a.routing.output.id.." (side "..a.routing.output.side..")") end
-    self.out("[OC computer] -- OC cable -- [Adapter at housing "..a.address.."]")
+    self:registerEndpoint(a.storage)
+    self.c.alvearies[#self.c.alvearies+1]=a; self.c.alvearyDraft=nil; self.save()
+    self.out("Saved "..a.id..": [Storage "..a.storage.id..", side "..a.storage.side.."] -- [Transposer "..a.transposer.."] -- ["..a.name..", side "..a.side.."]")
+    self.out("Housing adapter: "..a.address)
   end
   function w:scanner()
     local s=self.c.scanner
-    s.enabled=self:yes("Configure automated scanner? (Otherwise analyze bees manually)",s.enabled)
+    if self.c.storage.kind=="me_interface" then
+      s.enabled=true
+      self.out("Register the shared analyser station. Unknown ME bees are inspected here; all initial drones must be analysed before breeding starts.")
+    else s.enabled=self:yes("Configure automated scanner? (Otherwise analyze bees manually)",s.enabled) end
     if s.enabled then
       self.out("Use dedicated input/output inventories and external pipes routing through a Forestry analyzer or supported scanner. Supply its required consumables/power. No other items may enter this path. One reserved stack is processed at a time; this program calls no imaginary analyze method.")
-      s.storage=self:endpoint("Scanner's view of archive chest",self.c.storage.endpoints[1])
-      s.input=self:endpoint("Scanner input staging chest",s.input)
-      s.output=self:endpoint("Scanner output staging chest",s.output)
+      s.storage=self.c.storage.kind=="me_interface" and self:port("Shared scanner ME Interface",s.storage or {id="scanner_port"}) or
+        self:endpoint("Scanner's view of archive chest",s.storage or self.c.storage.endpoints[1])
+      s.input=self:endpoint("Analyser input (or isolated input staging)",s.input,s.storage.transposer)
+      s.output=self:endpoint("Analyser output (or isolated output staging)",s.output,s.storage.transposer)
       assert(s.storage.transposer==s.input.transposer and s.output.transposer==s.input.transposer,"scanner staging needs a common transposer")
       s.inputSlot=self:number("Input staging slot",1,self.inv:size(s.input),1)
+      if self.c.storage.kind=="me_interface" then
+        s.outputSlots={}
+        local text=self:ask("Analyser output slots only, comma separated (exclude honey/consumables)",s.input.side==s.output.side and nil or "1")
+        for n in text:gmatch("%d+") do s.outputSlots[#s.outputSlots+1]=U.assertNumber(n,1,self.inv:size(s.output)) end
+        assert(#s.outputSlots>0,"scanner output slots required")
+        for _,slot in ipairs(s.outputSlots) do
+          assert(s.input.side~=s.output.side or slot~=s.inputSlot,"scanner input and output slots overlap")
+          assert(not self.inv:get(s.output,slot),"empty scanner output slots first")
+        end
+        assert(not self.inv:get(s.input,s.inputSlot),"empty scanner input slot first")
+        assert(s.storage.side~=s.input.side and s.storage.side~=s.output.side,"scanner cannot use Interface slots as analyser input/output")
+        self:registerEndpoint(s.storage)
+      end
       s.timeout=self:number("Scanner timeout in seconds",30,7200,600)
-      assert(#self.inv:scan(s.input)==0 and #self.inv:scan(s.output)==0,"empty scanner staging inventories first")
+      if self.c.storage.kind~="me_interface" then assert(#self.inv:scan(s.input)==0 and #self.inv:scan(s.output)==0,"empty scanner staging inventories first") end
       s.isolatedVerified=self:yes("Have you tested one input stack producing one analyzed output stack with equal count?",false)
     end
     self.save()
@@ -291,8 +300,17 @@ function M.new(config,components,inv,save,read,out)
     local t=self.c.templates
     t.enabled=self:yes("Enable selective genetic imprinting from reference drones?",t.enabled)
     if t.enabled then
-      t.endpointId=self:ask("Template archive inventory ID",self.c.storage.endpoints[1].id)
-      t.slot=self:number("Reserved reference drone slot",1,100000,t.slot)
+      if self.c.storage.kind=="me_interface" then
+        local ep=self:endpoint("Temporary reference drone witness inventory")
+        local slot=self:number("Analysed reference drone witness slot",1,self.inv:size(ep))
+        local s=self.inv:get(ep,slot)
+        assert(B.kind(s)=="drone" and B.scanned(s) and type(s.tag)=="string","reference must be an analysed drone with exact NBT")
+        t.identity=B.identity(s); t.endpointId=nil; t.slot=nil
+        self.out("Reference genotype recorded. Return the drone to ME; its reserve is protected by exact identity.")
+      else
+        t.endpointId=self:ask("Template archive inventory ID",self.c.storage.endpoints[1].id)
+        t.slot=self:number("Reserved reference drone slot",1,100000,t.slot)
+      end
       t.reserve=self:number("Minimum reference drones to retain",1,64,t.reserve or 1)
     end
     local r=self.c.robot
@@ -304,21 +322,28 @@ function M.new(config,components,inv,save,read,out)
       r.port=self:number("Robot command port",1,65535,r.port)
       r.replyPort=self:number("Reply port",1,65535,r.replyPort)
     end
-    self.out("Offspring, unused bees and products are archived. Add storage space or dedicated reachable archive endpoints as needed. Back up the data directory with the computer stopped. Frames and upgrades are never touched.")
+    self.out("Offspring and products are retained. Back up data with the worker stopped. Frames and upgrades are never touched.")
     self.save()
   end
   function w:run(reconfigure)
     if reconfigure then self.c.setupStep=1; self.save() end
-    self.out("Beeomatic setup. Completed sections and component names are saved.")
+    self.out("Beeomatic setup. Progress is saved; type back to revisit the previous section.")
     self.out("For detailed hardware diagnostics, use Beeomatic doctor --probe.")
-    local step=self.c.setupStep or 1
-    if step<=1 then self:storage(); self.c.setupStep=2; self.save() end
-    if step<=2 then
-      while #self.c.alvearies==0 or self:yes("Register another alveary?",false) do self:addAlveary() end
-      self.c.setupStep=3; self.save()
+    while (self.c.setupStep or 1)<=4 do
+      local step=self.c.setupStep or 1
+      local success,err=pcall(function()
+        if step==1 then self:storage()
+        elseif step==2 then
+          while self.c.alvearyDraft or #self.c.alvearies==0 or self:yes("Register another alveary?",false) do self:addAlveary() end
+        elseif step==3 then self:scanner()
+        else self:optional() end
+      end)
+      if success then self.c.setupStep=step+1
+      elseif type(err)=="table" and err.setupBack then self.c.setupStep=math.max(1,step-1)
+      else error(err,0) end
+      self.save()
     end
-    if step<=3 then self:scanner(); self.c.setupStep=4; self.save() end
-    if step<=4 then self:optional(); self.c.setupStep=5; self.save() end
+    C.prunePorts(self.c); self.save()
     C.validate(self.c); self.out("Configuration saved. Run Beeomatic doctor for hardware validation before breeding.")
   end
   return w

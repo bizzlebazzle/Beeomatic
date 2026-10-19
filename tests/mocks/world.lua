@@ -23,6 +23,7 @@ function M.environment(temp,hum)
 end
 function M.new()
   local w={inventories={},proxies={},time=0,saves=0,moves=0,state={jobs={},reservations={},transactions={}},c=Config.defaults()}
+  w.c.storage={kind="chest",endpoints={}}
   function w:inventory(id,size)
     local t={size=size}; self.inventories[id]=t; return t
   end

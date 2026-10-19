@@ -2,7 +2,7 @@ local U=require("lib.util"); local Config=require("lib.config"); local P=require
 local B=require("lib.bees"); local Jobs=require("lib.jobs")
 local M={}
 local help=[[Beeomatic setup [--reconfigure]
-Beeomatic doctor [--probe | --adopt JOB | --retry JOB | --confirm ALVEARY | --robot ALVEARY]
+Beeomatic doctor [--probe | --interface PORT | --adopt JOB | --retry JOB | --confirm ALVEARY | --robot ALVEARY]
 Beeomatic plan SPECIES
 Beeomatic breed SPECIES [--noFinalImprint | --onlyFinalImprint]
 Beeomatic convert SPECIES | populate SPECIES COUNT | imprint SPECIES
@@ -76,9 +76,11 @@ function M.main(root,args)
         if state.pendingRequest and not state.paused then
           local items=storage:scan()
           do
-            local ready,why=scheduler:prepareStock(items)
-            if not ready then status="SCANNING"; state.error=why; save()
+            local success,ready,why=pcall(scheduler.prepareStock,scheduler,items)
+            if not success then status="BLOCKED"; state.error=tostring(ready); save()
+            elseif not ready then status="SCANNING"; state.error=why; save()
             else
+              state.error=nil
               items=storage:scan()
               local req=state.pendingRequest; local m=mutations(items)
               local plan,e=Planner.plan(req.target,m,items,c); assert(plan,e)
@@ -121,7 +123,15 @@ function M.main(root,args)
     run(); return
   end
   if cmd=="setup" or (cmd=="alveary" and sub=="add") then
-    unlocked(); local w=require("lib.setup").new(c,components,inv,function() cp:save(c) end)
+    unlocked()
+    if cmd=="setup" and f.reconfigure then
+      assert(not state.pending and not state.pendingExternal and not state.scan and not next(state.meRequests or {}) and not next(state.meBatches or {}),
+        "reconcile outstanding movements/scanning before reconfiguring storage")
+      for _,j in ipairs(state.jobs) do
+        assert(j.state=="DONE" or (state.stopped and not j.machine),"finish/drain saved jobs before reconfiguring storage")
+      end
+    end
+    local w=require("lib.setup").new(c,components,inv,function() cp:save(c) end)
     if cmd=="setup" then w:run(f.reconfigure) else w:addAlveary() end; return
   end
   if cmd=="alveary" then
@@ -130,10 +140,17 @@ function M.main(root,args)
       for _,j in ipairs(state.jobs) do assert(j.machine~=a[3],"machine has saved work") end
       local found=false
       for n,x in ipairs(c.alvearies) do if x.id==a[3] then table.remove(c.alvearies,n); found=true; break end end
-      assert(found,"unknown alveary ID"); cp:save(c)
+      assert(found,"unknown alveary ID"); Config.prunePorts(c); cp:save(c)
     else error("Use alveary list, add, or remove ID") end; return
   end
   if cmd=="doctor" then
+    if f.interface then
+      unlocked(); assert(storage.interface,"Interface probe requires ME Interface storage mode")
+      local port
+      for _,ep in ipairs(c.storage.endpoints) do if ep.id==a[2] then port=ep end end
+      assert(port,"Use doctor --interface PORT_ID from your configuration")
+      storage:probe(port); print("PASS Interface exact-stock, partial extraction and return: "..port.id)
+    end
     if f.probe then Diagnostics.probe(components) end
     if f.confirm then
       unlocked(); local id=a[2]; local machine

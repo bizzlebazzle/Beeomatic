@@ -46,7 +46,8 @@ function M:move(item,dest,slot,count,owner,receipt)
   assert(count>0 and count<=src.size,"invalid transfer amount")
   local tx={source=U.copy(item.endpoint),slot=item.slot,dest=U.copy(dest),destSlot=slot,
     identity=B.identity(src),before=src.size,destBefore=dst and dst.size or 0,count=count,owner=owner,phase="INTENT",
-    stack=U.copy(src),batchId=item.batchId,scanning=item.scanning,transform=U.copy(item.transform)}
+    stack=(item.endpoint.managed or dest.managed) and U.copy(src) or nil,
+    batchId=item.batchId,scanning=item.scanning,transform=U.copy(item.transform)}
   self.state.transferSequence=(self.state.transferSequence or 0)+1; tx.id=self.state.transferSequence
   self.state.pending=tx; self.save()
   local ok,n=pcall(self:proxy(item.endpoint).transferItem,item.endpoint.side,dest.side,count,item.slot,slot)
@@ -86,7 +87,7 @@ function M:reconcile()
     local sourceProof=(not src and tx.before==tx.count) or
       (src and src.size==tx.before-tx.count and B.identity(src)==tx.identity)
     local destProof=dst and dst.size==(tx.destBefore or 0)+tx.count and B.identity(dst)==tx.identity
-    if (tx.returned==tx.count and ((tx.dest.managed and sourceProof) or (tx.source.managed and (destProof or tx.scanning)))) or
+    if (tx.returned==tx.count and ((tx.dest.managed and sourceProof) or (tx.source.managed and (destProof or tx.scanning or tx.dest.managed)))) or
       (tx.source.managed and destProof) or (tx.dest.managed and sourceProof and destProof) then
       tx.phase="COMMITTED_RECOVERED"; Receipts.commit(self.state,tx)
       self.state.transactions[#self.state.transactions+1]=tx; self.state.pending=nil

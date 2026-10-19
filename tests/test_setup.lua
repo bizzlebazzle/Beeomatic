@@ -46,38 +46,6 @@ test("setup headings remain readable on monochrome and unavailable terminals",fu
   assert(success,err)
 end)
 
-test("export control explains the recommendation before prompting and defaults to redstone",function()
-  local w=W.new(); w:build()
-  local wizard,out=picker(w,{"invalid",""})
-  wizard:exportControl(); eq(w.c.storage.exportMode,"redstone")
-  local text=table.concat(out,"\n")
-  local _,explanation=text:find("This failed with config=null",1,true)
-  local prompt=text:find("Export control: redstone or callback",1,true)
-  ok(explanation<prompt); ok(text:find("Enter redstone or callback",1,true))
-end)
-
-test("export direction accepts world direction names and numbers without changing side mapping",function()
-  local w=W.new(); w:build()
-  local wizard=picker(w,{"down","UP"," north ","south","west","east","0","5"})
-  for side=0,5 do eq(wizard:exportDirection(),side) end
-  eq(wizard:exportDirection(),0); eq(wizard:exportDirection(),5); eq(w.moves,0)
-end)
-
-test("export direction retains the saved side and retries invalid input",function()
-  local w=W.new(); w:build()
-  local wizard,out=picker(w,{"6","-1","2.5","front",""})
-  eq(wizard:exportDirection(3),3)
-  local text=table.concat(out,"\n")
-  ok(text:find("Export direction (name or number) [south]",1,true))
-  ok(text:find("ME cable block -> export bus -> buffer chest",1,true))
-end)
-
-test("export control preserves an existing explicit callback selection",function()
-  local w=W.new(); w:build(); w.c.storage.exportMode="callback"
-  local wizard=picker(w,{""}); wizard:exportControl()
-  eq(w.c.storage.exportMode,"callback")
-end)
-
 test("component picker filters capabilities and persists friendly names across reloads",function()
   local w=W.new(); w:addMachine("a"); w:addMachine("b"); w:build()
   local wizard,out,saved=picker(w,{"2","Second transposer"})
@@ -145,12 +113,12 @@ test("endpoint skips a lone named transposer and advances through distinct inven
   w.c.componentNames.tp1={name="Bee hub",kind="transposer"}
   local wizard,out=picker(w,{"1","archive","2","buffer"})
   local archive=wizard:endpoint("Archive chest")
-  local buffer=wizard:endpoint("Isolated export buffer")
+  local buffer=wizard:endpoint("Second inventory")
   eq(archive,{id="archive",transposer="tp1",side=0})
   eq(buffer,{id="buffer",transposer="tp1",side=3})
   local text=table.concat(out,"\n")
   ok(text:find("Selected Archive chest:",1,true))
-  ok(text:find("Inventory number for Isolated export buffer",1,true))
+  ok(text:find("Inventory number for Second inventory",1,true))
   ok(not text:find("Component number",1,true))
   ok(not text:find("distinctive item",1,true)); eq(w.moves,0)
 end)
@@ -212,4 +180,50 @@ end)
 test("component validation still rejects absent methods",function()
   local w=W.new(); w:addMachine("a"); w:build()
   raises(function() w.components:proxy("tp1",{"notAnInventoryMethod"}) end,"missing method notAnInventoryMethod")
+end)
+test("fresh setup defaults to ME Interfaces without export-bus prompts",function()
+  local w=W.new(); w:build(); local wizard,out=picker(w,{"me","9","60","yes"})
+  wizard.address=function(_,label) return label:find("database",1,true) and "db" or "me" end
+  wizard:storage(); eq(w.c.storage.kind,"me_interface"); eq(w.c.storage.database,"db")
+  eq(#w.c.storage.endpoints,0); eq(w.c.storage.exportAddress,nil)
+  local text=table.concat(out,"\n"):lower(); ok(not text:find("export bus",1,true)); ok(not text:find("redstone",1,true))
+  eq(require("lib.config").defaults().storage.kind,"me_interface")
+end)
+test("setup binds a local Interface to the known transposer without asking again",function()
+  local w=require("tests.mocks.me").new(); local wizard=picker(w,{})
+  local ep=w.c.alvearies[1].storage
+  wizard.endpoint=function(_,_,default,fixed) eq(fixed,"tp1"); return U.copy(ep) end
+  wizard.address=function(_,_,methods) eq(methods,{"getInterfaceConfiguration","setInterfaceConfiguration"}); return "if1" end
+  local selected=wizard:port("Local Interface",ep,"tp1"); eq(selected.managed,true); eq(selected.returnSlot,9)
+end)
+test("scanner setup supports direct analyser slots while leaving consumables alone",function()
+  local w=require("tests.mocks.me").new(); local wizard,out=picker(w,{"1","2","60","yes"})
+  local s=w.c.scanner; w.inventories.analyser[3]={name="honey",size=64}
+  wizard.port=function() return s.storage end
+  wizard.endpoint=function(_,label,default,fixed) eq(fixed,"tp-scan"); return default end
+  wizard:scanner(); eq(s.outputSlots,{2}); eq(s.inputSlot,1); ok(s.isolatedVerified)
+  eq(w.inventories.analyser[3].size,64); eq(#w.c.storage.endpoints,3)
+end)
+test("setup back returns to the previous section and preserves checkpoints",function()
+  local w=W.new(); w:addMachine("a"); w:build(); w.c.setupStep=3
+  local wizard=picker(w,{"back","no"}); local visits={}
+  wizard.scanner=function(self)
+    visits[#visits+1]="scanner"
+    if #visits==1 then self:ask("Go back") end
+  end
+  wizard.optional=function() visits[#visits+1]="optional" end
+  wizard:run(false); eq(visits,{"scanner","scanner","optional"}); eq(w.c.setupStep,5)
+end)
+test("interrupted alveary registration resumes at saved environment stage",function()
+  local w=W.new(); local machine=w:addMachine("a"); table.remove(w.c.alvearies)
+  w.c.alvearyDraft={stage=4,machine=machine}; w:build()
+  local wizard=picker(w,{"NORMAL","NORMAL","Plains","0","flowers","yes","yes","yes","yes"})
+  wizard.address=function() error("must not repeat hardware selection") end
+  wizard:addAlveary(); eq(#w.c.alvearies,1); eq(w.c.alvearyDraft,nil); ok(machine.environment.verified)
+end)
+test("pruning removed alvearies retains the shared scanner port",function()
+  local w=require("tests.mocks.me").new(); table.remove(w.c.alvearies,1)
+  require("lib.config").prunePorts(w.c); eq(#w.c.storage.endpoints,2)
+  eq(w.c.storage.endpoints[1].id,"port2"); eq(w.c.storage.endpoints[2].id,"scan-port")
+  require("lib.config").validate(w.c)
 end)

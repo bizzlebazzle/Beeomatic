@@ -15,7 +15,7 @@ function M.kind(s)
 end
 function M.scanned(s)
   local i=s and s.individual
-  return i and i.active and i.inactive and i.active.species and i.inactive.species and true or false
+  return i and i.isAnalyzed~=false and i.active and i.inactive and i.active.species and i.inactive.species and true or false
 end
 function M.identity(s)
   if not s then return nil end

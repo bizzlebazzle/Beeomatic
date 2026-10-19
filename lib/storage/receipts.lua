@@ -3,11 +3,13 @@ local B=require("lib.bees"); local U=require("lib.util")
 local M={}
 function M.commit(state,tx)
   if tx.meApplied then return end
+  if not tx.source.managed and not tx.dest.managed then return end
   state.meBatches=state.meBatches or {}; state.meRequests=state.meRequests or {}; state.aeCatalog=state.aeCatalog or {}
   if tx.source.managed then
     local request=state.meRequests[U.location(tx.source,tx.slot)]
     assert(request and request.owner==tx.owner and request.identity==tx.identity,"missing managed source request")
     request.consumed=true
+    if tx.scanning and state.scan then state.scan.inserted=true end
     if tx.batchId and not tx.scanning then
       local batch=assert(state.meBatches[tx.batchId],"selected batch disappeared")
       batch.count=batch.count-tx.count; assert(batch.count>=0,"batch overspent")

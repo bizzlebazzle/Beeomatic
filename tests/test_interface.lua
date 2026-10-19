@@ -149,3 +149,27 @@ test("startup collects and scans initial drones left in an idle alveary",functio
   w.scheduler:prepareStock(w.storage:scan()); ok(w.scheduler:prepareStock(w.storage:scan()))
   eq(B.count(w.storage:scan(),"Spirit","drone",true),3)
 end)
+test("Interface doctor probe verifies partial extraction and returns all test stock",function()
+  local w=ME.new(); w.immediate=true; local s=ME.bee("Spirit","drone",8); w:addStock(s)
+  ok(w.storage:probe(w.c.alvearies[1].storage)); eq(w.cells[B.identity(s)].size,8)
+  eq(next(w.state.meRequests),nil); eq(next(w.state.meBatches),nil)
+  eq(w.state.interfaceProbes.port1.extracted,1); eq(w.state.interfaceProbes.port1.requested,2)
+end)
+test("scanner restart immediately after input receipt does not insert twice",function()
+  local w=ME.new(); w:addStock(ME.bee("Spirit","drone",8,true))
+  local save=w.inv.save; local cut=false
+  w.inv.save=function()
+    save()
+    if w.state.scan and w.state.scan.phase=="INSERTING" and w.state.scan.inserted and not cut then
+      cut=true; error("input power cut")
+    end
+  end
+  raises(function() w.scanner:step(w.storage:scan()) end,"input power cut")
+  eq(w.state.scan.phase,"INSERTING"); w.inv.save=save; local moves=w.moves
+  w.scheduler:recover(); w.scanner:step(w.storage:scan()); eq(w.moves,moves); eq(w.state.scan.phase,"PROCESSING")
+  w:finishScan(); w.scanner:step(w.storage:scan()); eq(w.state.scan,nil)
+end)
+test("startup detects an untracked specimen outside configured analyser input slot",function()
+  local w=ME.new(); w.inventories.analyser[4]=ME.bee("Spirit","drone",1,true)
+  local _,status=w.scheduler:step(); eq(status,"BLOCKED"); ok(w.state.error:find("untracked shared scanner",1,true))
+end)

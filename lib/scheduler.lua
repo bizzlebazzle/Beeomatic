@@ -375,7 +375,7 @@ function M:prepareStock(items)
         if not ready then break end
       end
       if ready and self.c.scanner.enabled then
-        assert(not self.inv:get(self.c.scanner.input,self.c.scanner.inputSlot) and #self.scanner:outputs()==0,
+        assert(self.scanner:empty(),
           "untracked shared scanner contents; audit before starting")
       end
     end
@@ -426,7 +426,12 @@ function M:step()
   end
   complete=complete and scanned; self.state.finished=complete
   local reserved=false; for _,m in pairs(self.state.machines) do if m.job then reserved=true end end
-  if self.state.stopping and not active and not reserved then self.state.stopped=true end
+  if self.state.stopping and not active and not reserved and not self.state.scan then
+    self.state.stopped=true
+    if self.storage.releaseBatches then for _,j in ipairs(self.state.jobs) do
+      self.storage:releaseBatches(j.id); j.lineage=nil; self.inv:release(j.id)
+    end end
+  end
   self.save()
   return active,complete and "DONE" or self.state.stopped and "STOPPED" or active and "RUNNING" or
     (scanOk and not scanned and "SCANNING") or (progress()~=before and "PROGRESS") or "BLOCKED"

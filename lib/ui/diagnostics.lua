@@ -26,7 +26,8 @@ function M.check(c,components,inv,storage)
   for _,a in ipairs(c.alvearies) do check(a.id,function() Backend.new(a,inv,components):validate() end) end
   if c.scanner.enabled then check("scanner",function()
     assert(c.scanner.isolatedVerified,"scanner provenance unverified")
-    inv:size(c.scanner.input); inv:size(c.scanner.output); inv:size(c.scanner.storage)
+    if storage.interface then require("lib.scanner_me").new(c.scanner,inv,inv.state,inv.save,function() return 0 end,storage):validate()
+    else inv:size(c.scanner.input); inv:size(c.scanner.output); inv:size(c.scanner.storage) end
   end) end
   return results
 end

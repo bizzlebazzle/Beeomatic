@@ -50,8 +50,13 @@ function M.with(world,fn,quotas)
     if data then local state=assert(load(data,"=teststate","t",{}))()
       for _,j in ipairs(state.jobs or {}) do if j.state=="RUNNING" then
         local species=j.species:sub(1,1):upper()..j.species:sub(2)
-        world:finish(j.machine,require("tests.mocks.world").bee(species,"princess"),require("tests.mocks.world").bee(species,"drone",4))
+        local factory=world.cells and require("tests.mocks.me") or require("tests.mocks.world")
+        world:finish(j.machine,factory.bee(species,"princess"),factory.bee(species,"drone",4,world.cells and true or nil))
       end end
+    end
+    if world.cells then
+      if world.inventories.analyser[1] then world:finishScan() end
+      world:tick()
     end
     world.time=world.time+5; return nil
   end}
