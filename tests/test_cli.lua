@@ -1,4 +1,80 @@
 local W=require("tests.mocks.world"); local O=require("tests.mocks.openos"); local U=require("lib.util")
+local function withAnswer(answer,fn)
+  local read=io.read; io.read=function() return answer end
+  local success,err=xpcall(fn,debug.traceback); io.read=read
+  assert(success,err)
+end
+test("plan reports unavailable stock without throwing a traceback or moving bees",function()
+  local w=W.new(); w:addMachine("a"); w:build()
+  w.recipes={spirit={W.route("Unusual","Aware"),W.route("Unusual","Mystical")}}
+  O.with(w,function(files,out)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    local result,err=require("lib.cli").main("/project",{"plan","spirit"})
+    eq(result,nil); eq(err,"Not enough verified parent stock to reach spirit.")
+    local text=table.concat(out,"\n"); ok(not text:find("stack traceback",1,true))
+    ok(not text:find("species: unusual",1,true)); eq(w.moves,0)
+    eq(files["/project/data/worker.lock"],nil)
+  end)
+end)
+
+test("plan prompts for raw bees even when verified target stock is sufficient and decline moves nothing",function()
+  local w=W.new(); w:addMachine("a"); w:build()
+  w.inventories.hub[1]=W.bee("Spirit","princess")
+  w.inventories.hub[2]=W.bee("Spirit","drone",8)
+  local raw=W.bee("Forest","drone",16); raw.individual=nil; w.inventories.hub[3]=raw
+  O.with(w,function(files,out)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    withAnswer("n",function() require("lib.cli").main("/project",{"plan","spirit"}) end)
+    local text=table.concat(out,"\n")
+    ok(text:find("scan all unscanned bees now? [y/N]",1,true)); ok(text:find("[stock present]",1,true))
+    eq(w.moves,0); eq(files["/project/data/state.lua"],nil)
+  end)
+end)
+
+test("plan scans all raw castes then plans from refreshed ME stock without creating jobs",function()
+  local ME=require("tests.mocks.me"); local w=ME.new()
+  w:addStock(ME.bee("Spirit","princess",1,true)); w:addStock(ME.bee("Spirit","drone",8,true))
+  w:addStock(ME.bee("Forest","queen",1,true))
+  O.with(w,function(files,out)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    withAnswer("yes",function() require("lib.cli").main("/project",{"plan","spirit"}) end)
+    local text=table.concat(out,"\n")
+    ok(text:find("Scanning complete.",1,true),text); ok(text:find("[stock present]",1,true),text)
+    local state=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
+    eq(#state.jobs,0); eq(state.pendingRequest,nil); eq(state.scan,nil); eq(files["/project/data/worker.lock"],nil)
+    for _,s in pairs(w.cells) do ok(require("lib.bees").scanned(s)) end
+  end)
+end)
+
+test("plan scan failure preserves progress and can continue on a later plan",function()
+  local ME=require("tests.mocks.me"); local w=ME.new(); w.c.scanner.timeout=1
+  w:addStock(ME.bee("Spirit","princess",1,true)); w:addStock(ME.bee("Spirit","drone",8,true))
+  local finish=w.finishScan; w.finishScan=function() end
+  O.with(w,function(files,out)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    withAnswer("y",function() require("lib.cli").main("/project",{"plan","spirit"}) end)
+    ok(table.concat(out,"\n"):find("Scanning paused:",1,true))
+    local state=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
+    ok(state.scan); eq(files["/project/data/worker.lock"],nil); eq(#state.jobs,0)
+    w.finishScan=finish; w:finishScan()
+    withAnswer("y",function() require("lib.cli").main("/project",{"plan","spirit"}) end)
+    local text=table.concat(out,"\n"); ok(text:find("Scanning complete.",1,true),text)
+    ok(text:find("[stock present]",1,true),text)
+  end)
+end)
+
+test("plan cannot scan while another worker holds the lock",function()
+  local w=W.new(); w:addMachine("a"); w:build()
+  local raw=W.bee("Forest","drone",16); raw.individual=nil; w.inventories.hub[1]=raw
+  O.with(w,function(files,out)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    files["/project/data/worker.lock"]="other-worker"
+    withAnswer("y",function() require("lib.cli").main("/project",{"plan","spirit"}) end)
+    ok(table.concat(out,"\n"):find("A worker is running",1,true)); eq(w.moves,0)
+    eq(files["/project/data/worker.lock"],"other-worker")
+  end)
+end)
+
 test("status reads each housing's live flower requirements without rewriting worker state",function()
   local w=W.new(); w:addMachine("a"); w:addMachine("b"); w:build()
   w.inventories.a[4]=W.bee("Forest","queen",1,nil,{flowerProvider="flowers"})

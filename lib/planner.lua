@@ -3,26 +3,38 @@ local M={}
 function M.plan(target,mutations,items,c)
   target=mutations:resolve(target)
   local expanded=0
+  -- Keep leaf failures structured: concatenating every failed subtree repeats
+  -- the same missing founders exponentially on large mutation graphs.
+  local function failure(message) return {messages={message},seen={[message]=true}} end
+  local function merge(into,other)
+    for _,message in ipairs(other.messages) do
+      if not into.seen[message] then
+        into.seen[message]=true
+        if #into.messages<6 then into.messages[#into.messages+1]=message else into.omitted=true end
+      end
+    end
+    into.omitted=into.omitted or other.omitted
+  end
   local function count(name,kind) return B.count(items,name,kind,true) end
   local function visit(name,path)
     expanded=expanded+1
-    if expanded>(c.maxPlanExpansion or 20000) then return nil,"mutation search budget exceeded; narrow preferred routes or provide prerequisite stock" end
+    if expanded>(c.maxPlanExpansion or 20000) then return nil,failure("mutation search budget exceeded; provide prerequisite stock") end
     if count(name,"princess")>0 and count(name,"drone")>0 then
       return {species=name,available=true,cost=0,children={}}
     end
-    if path[name] then return nil,"dependency cycle at "..name end
+    if path[name] then return nil,failure("dependency cycle at "..name) end
     local nextPath=U.copy(path); nextPath[name]=true
     local routes=mutations:parents(name)
     if #routes==0 then
       if count(name,"drone")>c.reserveDrones then return {species=name,conversion=true,cost=5,children={}} end
-      return nil,"missing hive stock or unknown/unobtainable species: "..name
+      return nil,failure("missing hive stock or unknown/unobtainable species: "..name)
     end
-    local best,failures=nil,{}
+    local best,failures=nil,{messages={},seen={}}
     for _,route in ipairs(routes) do
       local children,cost,valid={},100/math.max(0.01,route.chance),true
       for _,parent in ipairs(route.parents) do
         local child,err=visit(parent,nextPath)
-        if not child then failures[#failures+1]=err; valid=false; break end
+        if not child then merge(failures,err); valid=false; break end
         children[#children+1]=child; cost=cost+child.cost
       end
       if valid then
@@ -57,10 +69,21 @@ function M.plan(target,mutations,items,c)
         if not best or cost<best.cost then best=candidate end
       end
     end
-    return best,best and nil or table.concat(failures,"; ")
+    return best,best and nil or failures
   end
   local root,err=visit(target,{})
-  if not root then return nil,err end
+  if not root then
+    local lines={"Cannot plan "..target.." from verified stock."}
+    for _,message in ipairs(err.messages) do lines[#lines+1]="- "..message end
+    if err.omitted then lines[#lines+1]="- Additional route failures omitted." end
+    local unknown=0
+    for _,item in ipairs(items) do local s=item.stack or item
+      if B.kind(s) and not B.scanned(s) then unknown=unknown+(s.size or 1) end
+    end
+    if unknown>0 then lines[#lines+1]=tostring(unknown).." bees lack verified genes; analyse/inspect them before planning." end
+    lines[#lines+1]="Check Beeomatic bees list for recognised stock; hive founders need a pure princess and drones."
+    return nil,table.concat(lines,"\n")
+  end
   local order,seen={},{}
   local function flatten(n)
     if seen[n.species] then return end

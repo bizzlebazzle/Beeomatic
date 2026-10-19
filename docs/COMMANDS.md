@@ -33,9 +33,17 @@ Beeomatic logs
 Beeomatic help
 ```
 
-`plan` reads runtime routes and actual storage without moving items. Missing hive
-stock, unknown species and dependency cycles produce diagnostics. Unanalyzed
-network stock can remain unresolved in a read-only plan; every breeding worker
+`plan` reads runtime routes and actual storage. If bees lack verified genes, it asks
+`Would you like to scan all unscanned bees now? [y/N]`. Answer `y` or `yes` to
+inspect/analyse all those bees using the configured scanner, then plan from the
+refreshed stock. Declining (or pressing Enter) plans with existing verified stock
+without moving bees. Scanning does not start breeding. Scanner interruptions or
+failures preserve progress; repair the scanner and rerun `plan TARGET` to continue.
+Scanning requires no running worker or unfinished breeding work; use `resume`
+for saved breeding work instead.
+
+If no route is achievable, `plan` prints `Not enough verified parent stock to
+reach TARGET.` and returns to the shell without a traceback. Every breeding worker
 start/resume verifies all initial drones before dispatch. `PREPARING_STOCK`
 inspects unknown variants and completes required analysis at the shared station. A mutation preference is a tie-breaking
 preference among runtime-confirmed routes, not a recipe assertion. Spirit's

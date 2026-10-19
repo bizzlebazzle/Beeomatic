@@ -27,6 +27,31 @@ end)
 test("unknown or missing hive stock is diagnosed",function()
   local p,e=run({}); eq(p,nil); ok(e:find("unknown/unobtainable",1,true))
 end)
+
+test("shared missing founders are reported once across nested routes",function()
+  local recipes={spirit={},middle={}}
+  for i=1,20 do
+    recipes.spirit[i]=W.route("Middle","Other",i)
+    recipes.middle[i]=W.route("magicbees.speciesunusual","Other",i)
+  end
+  local p,e=run(recipes)
+  eq(p,nil)
+  local _,count=e:gsub("magicbees.speciesunusual","")
+  eq(count,1); ok(#e<500,e)
+end)
+
+test("many distinct failures have a bounded summary",function()
+  local recipes={spirit={}}
+  for i=1,50 do recipes.spirit[i]=W.route("Missing"..i,"Other") end
+  local p,e=run(recipes)
+  eq(p,nil); ok(e:find("Additional route failures omitted",1,true)); ok(#e<1000,e)
+end)
+
+test("plan failure explains bees without verified genes",function()
+  local s=W.bee("Forest","drone",16); s.individual=nil
+  local p,e=run({}, {s})
+  eq(p,nil); ok(e:find("16 bees lack verified genes",1,true))
+end)
 test("route with confirmed conditions wins",function()
   local c=Config.defaults(); c.alvearies={{id="a",enabled=true,confirmed={},environment=W.environment()}}
   local stock=pair("Forest"); for _,s in ipairs(pair("Meadows")) do stock[#stock+1]=s end

@@ -210,8 +210,58 @@ function M.main(root,args)
     end; return
   end
   if cmd=="plan" then
-    assert(a[2],"Specify a species"); local items=storage:scan(); local m=mutations(items)
-    local plan,err=Planner.plan(a[2],m,items,c); assert(plan,err); print(Planner.render(plan)); return
+    assert(a[2],"Specify a species"); local items=storage:scan()
+    local unscanned=0
+    for _,i in ipairs(items) do if B.kind(i.stack) and not B.scanned(i.stack) then unscanned=unscanned+(i.stack.size or 1) end end
+    if unscanned>0 or state.scan then
+      print(tostring(unscanned).." bees in storage lack verified genes.")
+      print("Would you like to scan all unscanned bees now? [y/N]")
+      local answer=U.lower(io.read() or "")
+      if answer=="y" or answer=="yes" then
+        local function blocked(message) print(message); return nil,message end
+        if fs.exists(lock) then return blocked("A worker is running. Stop it before scanning from plan.") end
+        if state.pendingRequest then return blocked("Saved breeding work exists. Use Beeomatic resume to scan and continue it.") end
+        for _,j in ipairs(state.jobs) do
+          if j.state~="DONE" and not (state.stopped and not j.machine) then
+            return blocked("Saved breeding work exists. Use Beeomatic resume to scan and continue it.")
+          end
+        end
+        local ok,why=pcall(function()
+          storage:validate()
+          local ready,reason=inv:reconcile(); assert(ready,reason)
+          if storage.reconcile then local yes,e=storage:reconcile(); assert(yes,e) end
+        end)
+        if not ok then return blocked("Cannot scan: "..tostring(why)) end
+        local lf,reason=io.open(lock,"w")
+        if not lf then return blocked("Cannot start scanner: "..tostring(reason)) end
+        lf:write(tostring(computer.address())); lf:close()
+        ok,why=pcall(function()
+          local lastMessage
+          while true do
+            items=storage:scan()
+            local ready,message
+            if storage.prepare and not storage:prepare(items) then message="Inspecting ME stock"
+            else ready,message=scanner:step(items) end
+            if ready then break end
+            if message and message~=lastMessage then print(message); lastMessage=message end
+            local name,_,char=event.pull(c.pollSeconds)
+            if name=="interrupted" or (name=="key_down" and char==113) then
+              error("Scanning stopped; progress saved. Run Beeomatic plan "..a[2].." again to continue.",0)
+            end
+          end
+          items=storage:scan(); print("Scanning complete.")
+        end)
+        fs.remove(lock)
+        if not ok then return blocked("Scanning paused: "..tostring(why).."\nProgress preserved; repair the scanner and rerun Beeomatic plan "..a[2]..".") end
+      end
+    end
+    local m=mutations(items)
+    local plan=Planner.plan(a[2],m,items,c)
+    if not plan then
+      local message="Not enough verified parent stock to reach "..a[2].."."
+      print(message); return nil,message
+    end
+    print(Planner.render(plan)); return
   end
   if cmd=="breed" or cmd=="convert" or cmd=="populate" or cmd=="imprint" then
     unlocked(); assert(a[2],"Specify a species")

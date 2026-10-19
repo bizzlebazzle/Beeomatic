@@ -6,6 +6,7 @@ changing configuration or moving stock involved in a pending transfer.
 
 | Report | Action |
 |---|---|
+| `plan spirit` fills the screen with repeated `missing hive stock or unknown/unobtainable species` errors | The corrected `plan` prints `Not enough verified parent stock to reach spirit.` without a traceback. It offers to scan bees lacking verified genes before planning; answer `y` to scan and retry with refreshed stock. Check `Beeomatic bees list`: required hive founders need a pure princess and drones. `breed`/`resume` runs the configured scanner preparation before planning. |
 | Startup reports `module 'lib.cli' not found` | Check `/home/Beeomatic/lib/cli.lua` exists (adjust for a custom destination). As a workaround, `cd /home/Beeomatic` and rerun `Beeomatic setup`. Upgrade using the corrected installer to regenerate `/usr/bin/Beeomatic` with the explicit installation root. Existing `data/` is preserved. |
 | Missing housing/transposer/inventory | Check loaded chunks, power, OC cables, adapter face and the full configured address. Restore the original machine configuration, then `doctor` and `resume`. |
 | Inventory size or slot witness changed | Stop, inspect `doctor --probe`, and reverify this specific machine. Do not reuse another alveary's map. |
