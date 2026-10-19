@@ -25,16 +25,20 @@ function M:backend(id)
   end end
   error("Registered machine missing: "..tostring(id)..". Restore its configuration; bees may still be inside.")
 end
-function M:items(owner)
-  local all=self.storage:scan(); local items={}
+function M:items(owner,snapshot)
+  local all=snapshot or self.storage:scan(); local items={}
+  local lineages={}
+  for _,j in ipairs(self.state.jobs) do local loc=j.lineage
+    if j.id~=owner and j.state~="DONE" and loc and loc.identity then
+      local bySlot=lineages[loc.endpoint.id] or {}; lineages[loc.endpoint.id]=bySlot
+      local identities=bySlot[loc.slot] or {}; bySlot[loc.slot]=identities; identities[loc.identity]=true
+    end
+  end
   for _,i in ipairs(all) do
     local held=self.state.reservations[U.location(i.endpoint,i.slot)]
     if self.storage.interface and i.owner and i.owner~=owner then held=true end
-    for _,j in ipairs(self.state.jobs) do
-      local loc=j.lineage
-      if j.id~=owner and j.state~="DONE" and loc and loc.endpoint.id==i.endpoint.id and loc.slot==i.slot and
-        loc.identity==B.identity(i.stack) then held=true end
-    end
+    local bySlot=lineages[i.endpoint.id]; local identities=bySlot and bySlot[i.slot]
+    if identities and identities[B.identity(i.stack)] then held=true end
     if not held then items[#items+1]=i end
   end
   return items
@@ -318,7 +322,10 @@ function M:advance(j)
     local all=self.storage:scan(); local scanned,why=self.scanner:step(all)
     if not scanned then j.error=why; return end
     self.inv:release(j.id)
-    local items=self:items(j.id); local template=self:template(j,items)
+    -- In Interface mode a true scanner result means no batch or movement was
+    -- needed. The snapshot just checked is still current; releasing a lease
+    -- changes selection permissions, not physical stock.
+    local items=self:items(j.id,self.storage.interface and all or nil); local template=self:template(j,items)
     local own={}
     for _,i in ipairs(items) do for _,loc in ipairs(j.resultLocations or {}) do
       if (loc.root and i.root==loc.root) or (loc.endpoint and i.endpoint.id==loc.endpoint.id and i.slot==loc.slot) then own[#own+1]=i; break end

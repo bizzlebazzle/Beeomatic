@@ -91,7 +91,10 @@ function M.main(root,args)
         applyControl()
         local active,status
         if state.pendingRequest and not state.paused then
-          local items=storage:scan()
+          -- The saved batch carries its own exact source and return baseline.
+          -- Its scanner phase checks returns directly; refresh global stock
+          -- only when selecting a new batch, as in the standalone plan scanner.
+          local items=state.scan and {} or storage:scan()
           do
             local success,ready,why=pcall(scheduler.prepareStock,scheduler,items)
             if not success then status="BLOCKED"; state.error=tostring(ready); save()

@@ -16,6 +16,9 @@ mocks; they are not measurements of elapsed time on an OpenComputer.
 | Genetic comparisons | Serializing both operands just to compare them | Recursive field/value comparison, including extra fields and false values |
 | Parent selection | Recounting all exact-genotype drones for every candidate | One temporary count map per selection snapshot; exact reserves and ownership filtering |
 | Dispatch | Two standalone logical ME lease saves | Save both leases with PREPARING before the first materialization |
+| Startup scanning | Repeated global stock scans while a batch already has a saved source/baseline | Scanner still verifies its exact physical returns; global stock is refreshed before the next batch and planning |
+| Offspring assessment | Rescanning Interface stock immediately after the scanner declared the snapshot ready | Reuse only that freshly verified snapshot; independent dispatches still scan again |
+| Lineage protection | Walking every active job for every inventory item | Build a temporary location/genotype index per selection; owner and DONE rules remain unchanged |
 
 Regression checks demonstrate 20 accesses to one unchanged component use one
 method-discovery call; three grouped slot reads use one size check; a normal

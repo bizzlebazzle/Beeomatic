@@ -153,3 +153,30 @@ test("unchanged running polls write no checkpoints but changed obstruction diagn
   saved=w.saves; w.scheduler:step(); eq(w.saves,saved)
   w.obstructed=false; w.scheduler:step(); ok(w.saves>saved); eq(job.error,nil)
 end)
+
+test("indexed lineage protection respects genotype, slot type, owner and completed jobs",function()
+  local w=W.new(); w:build()
+  local p=W.bee("Spirit","princess"); local other=W.bee("Forest","princess")
+  local snapshot={{endpoint={id="hub"},slot=1,stack=p},{endpoint={id="hub"},slot="1",stack=other}}
+  w.state.jobs={{id="first",state="WAITING",lineage={endpoint={id="hub"},slot=1,identity=B.identity(p)}},
+    {id="done",state="DONE",lineage={endpoint={id="hub"},slot="1",identity=B.identity(other)}}}
+  local available=w.scheduler:items("second",snapshot); eq(#available,1); eq(available[1].slot,"1")
+  eq(#w.scheduler:items("first",snapshot),2)
+  snapshot[1].stack=other; eq(#w.scheduler:items("second",snapshot),2)
+end)
+
+test("Interface assessment reuses its verified stock snapshot without another scan",function()
+  local w=ME.new(); w.hideGenomes=false; w.c.minDrones=2
+  w:addStock(ME.bee("Spirit","princess")); w:addStock(ME.bee("Spirit","drone",8))
+  local job=W.job(w,"job","Spirit","populate"); job.count=32
+  w.scheduler:dispatch(job); local machine=job.machine
+  w:finish(machine,ME.bee("Spirit","princess"),ME.bee("Spirit","drone",4))
+  -- Collect first, but leave assessment pending without changing scanner logic.
+  local step=w.scanner.step; w.scanner.step=function() return false,"waiting" end
+  w.scheduler:advance(job); eq(job.state,"ASSESSING")
+  w.scanner.step=step
+  local scan=w.storage.scan; local scans=0
+  w.storage.scan=function(self) scans=scans+1; return scan(self) end
+  w.scheduler:advance(job)
+  eq(job.state,"WAITING"); eq(scans,1); ok(job.lineage)
+end)

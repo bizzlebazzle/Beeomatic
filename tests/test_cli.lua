@@ -470,3 +470,22 @@ test("saved five-second configurations run the foreground worker at half-second 
     ok(state.finished)
   end)
 end)
+
+test("pending-request scanner polls do not rescan global ME stock for an existing batch",function()
+  local ME=require("tests.mocks.me"); local w=ME.new(); w.c.confirmCycles=1; w.c.minDrones=2
+  w:addStock(ME.bee("Spirit","princess")); w:addStock(ME.bee("Spirit","drone",8,true))
+  local Storage=require("lib.storage.me_interface"); local scan=Storage.scan; local pendingScans=0
+  Storage.scan=function(self)
+    if self.state.pendingRequest and self.state.scan then pendingScans=pendingScans+1 end
+    return scan(self)
+  end
+  local success,why=pcall(function()
+    O.with(w,function(files)
+      files["/project/data/config.lua"]="return "..U.encode(w.c)
+      local _,err=require("lib.cli").main("/project",{"populate","spirit","2"}); eq(err,nil,err)
+      local state=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
+      ok(state.finished); eq(pendingScans,0)
+    end)
+  end)
+  Storage.scan=scan; assert(success,why)
+end)
