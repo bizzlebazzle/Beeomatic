@@ -18,7 +18,9 @@ function M.with(world,fn)
     local f={}
     function f:write(s) files[path]=(files[path] or "")..s; return self end
     function f:read() return files[path] end
-    function f:close() return true end
+    function f:flush() return self end
+    -- OpenOS filesystem close can succeed without returning any values.
+    function f:close() end
     return f
   end
   print=function(...) local args={...}; for i,v in ipairs(args) do args[i]=tostring(v) end; output[#output+1]=table.concat(args,"\t") end

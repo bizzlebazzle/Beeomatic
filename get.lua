@@ -56,7 +56,7 @@ for i,path in ipairs(files) do
   end
   local target=stage.."/"..path
   fs.makeDirectory(fs.path(target))
-  local f=assert(io.open(target,"wb")); assert(f:write(data)); assert(f:close())
+  local f=assert(io.open(target,"wb")); assert(f:write(data)); assert(f:flush()); f:close()
   local check=assert(io.open(target,"rb")); assert(check:read("*a")==data); check:close()
 end
 -- Only now touch the installation; install.lua retains its data and backup rules.

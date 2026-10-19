@@ -26,6 +26,7 @@
   "runtimeObservations": {
     "openos": "1.8.9",
     "lua": "5.3",
+    "successfulFileCloseCanReturnNoValues": true,
     "networkItemNbtType": "string",
     "networkItemActiveGenomeExposed": false,
     "transposerChest": {

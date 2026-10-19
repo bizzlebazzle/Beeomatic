@@ -36,3 +36,37 @@ test("installer refuses to overwrite a running installation",function()
     eq(files["/home/Test/Beeomatic.lua"],nil)
   end)
 end)
+
+local function failFlush()
+  local previous=io.open
+  io.open=function(path,mode)
+    local f,err=previous(path,mode)
+    if f and path:sub(-4)==".tmp" then
+      f.flush=function() return nil,"disk full" end
+    end
+    return f,err
+  end
+end
+
+test("installer preserves the previous program when flushing fails",function()
+  local w=W.new(); w:addMachine("a"); w:build()
+  O.with(w,function(files)
+    files["/home/Test/Beeomatic"]="previous program"
+    failFlush()
+    raises(function() assert(loadfile("install.lua"))("/home/Test") end,"disk full")
+    eq(files["/home/Test/Beeomatic"],"previous program")
+    eq(files["/home/Test/Beeomatic.previous"],nil)
+  end)
+end)
+
+test("state saver preserves the previous generation when flushing fails",function()
+  local w=W.new(); w:addMachine("a"); w:build()
+  O.with(w,function(files,out,fs)
+    local path="/home/Test/data/state.lua"
+    files[path]='return {marker="previous"}'
+    failFlush()
+    raises(function() require("lib.persistence").new(path,fs):save({marker="next"}) end,"disk full")
+    eq(files[path],'return {marker="previous"}')
+    eq(files[path..".bak"],nil)
+  end)
+end)

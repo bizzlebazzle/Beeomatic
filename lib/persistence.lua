@@ -21,7 +21,7 @@ function M:load(default)
 end
 function M:save(value)
   local tmp=self.path..".tmp"
-  local f=assert(io.open(tmp,"w")); assert(f:write("return "..U.encode(value).."\n")); assert(f:close())
+  local f=assert(io.open(tmp,"w")); assert(f:write("return "..U.encode(value).."\n")); assert(f:flush()); f:close()
   assert(self:readFile(tmp),"state verification failed")
   if self.fs.exists(self.path) then
     if self.fs.exists(self.path..".bak") then assert(self.fs.remove(self.path..".bak")) end

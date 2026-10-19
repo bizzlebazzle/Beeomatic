@@ -8,7 +8,7 @@ assert(not fs.exists(dest.."/data/worker.lock"),"stop Beeomatic before upgrading
 local files=assert(loadfile(src.."manifest.lua"))()
 local function writeAtomic(path,text)
   fs.makeDirectory(fs.path(path))
-  local f=assert(io.open(path..".tmp","wb")); assert(f:write(text)); assert(f:close())
+  local f=assert(io.open(path..".tmp","wb")); assert(f:write(text)); assert(f:flush()); f:close()
   local check=assert(io.open(path..".tmp","rb")); assert(check:read("*a")==text); check:close()
   if fs.exists(path) then
     if fs.exists(path..".previous") then assert(fs.remove(path..".previous")) end

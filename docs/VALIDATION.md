@@ -24,11 +24,14 @@ extraction subsequently reported 9 combs, 2 drones and 1 princess moved from slo
 3-5 to archive slots 10-12. A complete application-controlled breeding cycle
 remains unverified.
 
-Current automated result: **80 tests passed, zero failures, on each of Lua 5.2 and Lua 5.3**. This
+Current automated result: **82 tests passed, zero failures, on each of Lua 5.2 and Lua 5.3**. This
 includes the public command path, persistent foreground events, installer copy and
 upgrade preservation, and exact selection of a non-first same-label ME variant.
 Download tests cover consistent revision selection, saved-data preservation,
 missing release files, invalid Lua and manifest path traversal.
+OpenOS file mocks return no values from successful `close()`, matching the observed
+bootstrap failure. Writes explicitly check `flush()` before closing; installer and
+state-save tests also verify that a flush error preserves the previous generation.
 
 Run automated tests on a development machine with Lua 5.2:
 
