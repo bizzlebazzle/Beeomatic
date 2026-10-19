@@ -114,11 +114,13 @@ has a separate Interface and transposer on the same ME network.
 After upgrading program files, reboot the OpenComputer before testing to clear
 OpenOS's cached application modules.
 
-Register each Interface port, housing and transposer view,
-actual slot roles and operating environment. The wizard performs read-only input
-witness checks using test stock that you place manually. It never inserts test
-bees automatically. Output mapping, climate, route isolation and environmental
-facts require explicit in-game verification and are marked unverified until then.
+Register each Interface port, housing, transposer view and operating environment.
+Direct Forestry alveary slots are fixed automatically: princess/queen 1, drone 2,
+outputs 3-9. No native slot-number or output-map questions are asked. Read-only
+placement checks use one manually placed bee at a time to associate the inventory
+with its housing adapter; analysis is not required for these checks. Failed reads
+explain what was found and retry without exiting setup. Custom routed staging
+slots, climate and route isolation still require explicit configuration/verification.
 
 Setup saves completed sections and each alveary registration stage. Type `back`
 to revisit the previous stage/section. If interrupted, run `setup` again; an

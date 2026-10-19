@@ -227,3 +227,36 @@ test("pruning removed alvearies retains the shared scanner port",function()
   eq(w.c.storage.endpoints[1].id,"port2"); eq(w.c.storage.endpoints[2].id,"scan-port")
   require("lib.config").validate(w.c)
 end)
+test("native registration fixes all slots and retries an empty witness without requiring analysis",function()
+  local w=W.new(); local a=w:addMachine("a"); table.remove(w.c.alvearies)
+  w.inventories.a.size=9
+  w.proxies.housing1.getQueen=function() local s=w.inventories.a[1]; return s and U.copy(s.individual) end
+  w.proxies.housing1.getDrone=function() local s=w.inventories.a[2]; return s and U.copy(s.individual) end
+  w.c.alvearyDraft={stage=3,machine=a}; w:build()
+  local function raw(kind)
+    local s=W.bee("Spirit",kind); s.individual.active=nil; s.individual.inactive=nil; s.individual.isAnalyzed=false; return s
+  end
+  local wizard,out=picker(w,{"",function() w.inventories.a[1]=raw("princess"); return "" end,
+    function() w.inventories.a[1]=nil; w.inventories.a[2]=raw("drone"); return "" end,
+    "NORMAL","NORMAL","Plains","0","flowers","yes","yes","yes","yes"})
+  wizard:addAlveary()
+  eq(a.slots,{inventorySize=9,princess=1,drone=2,outputs={3,4,5,6,7,8,9},verified=true})
+  local text=table.concat(out,"\n")
+  ok(text:find("Slot 1 is empty through transposer tp1, side 3",1,true))
+  ok(text:find("Analysis is not required",1,true)); ok(not text:find("Product/offspring output staging slots",1,true))
+  eq(w.moves,0); eq(w.c.alvearyDraft,nil)
+end)
+test("bee placement check distinguishes a queen from a princess and retries",function()
+  local w=W.new(); w:addMachine("a"); w:build(); w.inventories.a[1]=W.bee("Spirit","queen")
+  local ep={id="a",transposer="tp1",side=3}
+  local wizard,out=picker(w,{"",function() w.inventories.a[1]=W.bee("Spirit","princess"); return "" end})
+  wizard:beeWitness(ep,1,"princess",2)
+  ok(table.concat(out,"\n"):find("Use a princess for this check",1,true)); eq(w.moves,0)
+end)
+test("bee placement check explains a mismatched housing adapter",function()
+  local w=W.new(); w:addMachine("a"); w:build(); w.inventories.a[1]=W.bee("Spirit","princess")
+  local h={getQueen=function() return nil end,getDrone=function() return nil end}
+  local wizard,out=picker(w,{"",function() h.getQueen=function() return w.inventories.a[1].individual end; return "" end})
+  wizard:beeWitness({id="a",transposer="tp1",side=3},1,"princess",2,h)
+  ok(table.concat(out,"\n"):find("transposer sees the princess, but the housing adapter does not",1,true))
+end)

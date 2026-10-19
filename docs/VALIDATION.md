@@ -8,7 +8,7 @@ flow still requires in-game acceptance.**
 
 ## Automated checks
 
-Current result: **134 tests, zero failures on each of Lua 5.2 and Lua 5.3**.
+Current result: **137 tests, zero failures on each of Lua 5.2 and Lua 5.3**.
 Run `python tests/run.py` in the development workspace. It syntax-checks every
 project Lua file, then runs the suite on both engines using local Lupa runtimes.
 Alternatively run `lua tests/run.lua` with a compatible runtime. These dependencies
@@ -31,6 +31,9 @@ Interface coverage includes:
   drone preparation, breeding, offspring scanning and completion.
 - Fresh Interface-first setup, bound transposers, direct analyser output slots
   with consumables untouched, `back`, resumed registration and port pruning.
+- Automatic native alveary input/output maps and retryable placement checks:
+  empty slots, wrong caste and mismatched housing adapters. Unanalysed test bees
+  are accepted for placement without weakening the runtime analysis gate.
 - The Interface doctor probe and refusal to migrate unresolved saved work.
 
 Existing checks also cover route planning, purity/templates, climate/tolerances,

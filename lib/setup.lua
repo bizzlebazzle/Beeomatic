@@ -144,6 +144,35 @@ function M.new(config,components,inv,save,read,out)
     end
     self.c.storage.endpoints[#self.c.storage.endpoints+1]=ep
   end
+  function w:beeWitness(ep,slot,kind,otherSlot,housing)
+    local role=kind=="princess" and "princess" or "drone"
+    while true do
+      self.out("In "..ep.id..", put a "..role.." in alveary slot "..slot..". Leave slot "..otherSlot.." empty. Analysis is not required for this placement check.")
+      self:ask("Press Enter to check, or type back to change the inventory connection","")
+      local stack=self.inv:get(ep,slot); local other=self.inv:get(ep,otherSlot)
+      local problem
+      if other then problem="Slot "..otherSlot.." is occupied. Remove that bee first so mating cannot start."
+      elseif not stack then
+        problem="Slot "..slot.." is empty through transposer "..ep.transposer..", side "..ep.side..". If the bee is visible in the GUI, type back and check which alveary inventory you selected."
+      elseif B.kind(stack)~=kind then
+        problem="Slot "..slot.." contains "..tostring(stack.label or stack.name).." ("..tostring(B.kind(stack) or stack.name).."). Use a "..role.." for this check."
+      elseif housing then
+        local observed
+        if kind=="princess" then observed=housing.getQueen() else observed=housing.getDrone() end
+        if kind=="drone" and housing.getQueen() then
+          problem="The housing adapter still sees a princess/queen after its removal. Check that this adapter belongs to the selected alveary."
+        elseif not observed then
+          problem="The transposer sees the "..role..", but the housing adapter does not. Type back and select the adapter touching this alveary."
+        elseif B.scanned(stack) and (not U.equal(observed.active,stack.individual.active) or not U.equal(observed.inactive,stack.individual.inactive)) then
+          problem="The housing adapter sees different genetics. Type back and check the housing adapter/selected alveary."
+        elseif stack.individual and stack.individual.ident and observed.ident and stack.individual.ident~=observed.ident then
+          problem="The housing adapter sees a different bee species. Type back and check the selected housing."
+        end
+      end
+      if not problem then self.out("Confirmed "..role.." in slot "..slot.."."); return stack end
+      self.out(problem)
+    end
+  end
   function w:storage()
     self:heading("Storage setup")
     self.out("ME: one Interface beside each alveary transposer, all on the same AE network. Bees live in ME cells; one shared station handles scanning.")
@@ -218,24 +247,26 @@ function M.new(config,components,inv,save,read,out)
           local ep={id=a.id,transposer=a.transposer,side=a.side}
           local size=self.inv:size(ep)
           local slots={inventorySize=size,outputs={}}
-          slots.princess=self:number("Princess/queen slot observed through probe (no default)",1,size)
-          slots.drone=self:number("Drone input slot observed through probe (no default)",1,size)
-          local text=self:ask("Observed product/offspring output slots, comma separated")
-          for n in text:gmatch("%d+") do slots.outputs[#slots.outputs+1]=U.assertNumber(n,1,a.routing and a.routing.outputInventorySize or size) end
-          assert(#slots.outputs>0,"output slots required")
-          self.out("Role check: use expendable analyzed test stock. With drone input EMPTY, manually put a princess in the configured princess slot. This read-only check does not insert or consume bees.")
-          self:ask("Press Enter when the princess is present","")
-          local p=self.inv:get(ep,slots.princess); assert(B.kind(p)=="princess" and B.scanned(p),"princess slot witness failed")
-          local h=self.components:proxy(a.address); local q=h.getQueen()
-          if not a.routing then assert(q and U.equal(q.active,p.individual.active),"adapter does not observe that princess; wrong housing address") end
-          self.out("Remove princess through GUI. Put one analyzed drone in the drone input, with princess input EMPTY.")
-          self:ask("Press Enter to inspect drone","")
-          assert(not self.inv:get(ep,slots.princess),"remove test princess first")
-          local d=self.inv:get(ep,slots.drone); local hd=h.getDrone()
-          assert(B.kind(d)=="drone" and B.scanned(d),"drone slot witness failed")
-          if not a.routing then assert(hd and U.equal(hd.active,d.individual.active),"drone adapter association failed") end
-          self.out("Remove test drone manually. Observe one complete expendable breeding cycle in this machine. Verify every configured output slot belongs to offspring/products, never upgrades or frames. Return all test stock to storage afterwards.")
-          slots.verified=self:yes("Have you witnessed and verified the output map?",false)
+          if not a.routing then
+            assert(size==9,"Expected the nine-slot Forestry alveary inventory. Type back and check the selected inventory connection.")
+            slots.princess=1; slots.drone=2
+            slots.outputs={3,4,5,6,7,8,9}
+            self.out("Forestry alveary slots: 1 princess/queen, 2 drone, 3-9 products/offspring. These are assigned automatically.")
+          else
+            slots.princess=self:number("Princess input staging slot",1,size,a.slots and a.slots.princess)
+            slots.drone=self:number("Drone input staging slot",1,size,a.slots and a.slots.drone)
+            local text=self:ask("Product/offspring output staging slots, comma separated")
+            for n in text:gmatch("%d+") do slots.outputs[#slots.outputs+1]=U.assertNumber(n,1,a.routing.outputInventorySize) end
+            assert(#slots.outputs>0,"output slots required")
+          end
+          self.out("Connection check: test one bee at a time. This check only reads inventories and does not move bees.")
+          local h=not a.routing and self.components:proxy(a.address) or nil
+          self:beeWitness(ep,slots.princess,"princess",slots.drone,h)
+          self.out("Remove the princess through the GUI before testing the drone.")
+          self:beeWitness(ep,slots.drone,"drone",slots.princess,h)
+          self.out("Remove the test drone. Before breeding, verify this alveary can complete a normal cycle and return the test stock to storage.")
+          if a.routing then slots.verified=self:yes("Have you tested the isolated output staging route and slot map?",false)
+          else slots.verified=true end
           a.slots=slots
         else
           self.out("This housing API has no live climate/environment methods. Read its working climate in-game, including heaters/fans, and enter the actual categories.")

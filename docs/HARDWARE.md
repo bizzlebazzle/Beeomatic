@@ -38,8 +38,12 @@ AE channels, power and cell capacity for each port.
 
 Side numbers are world directions relative to the transposer: **0 down, 1 up,
 2 north, 3 south, 4 west, 5 east**. Slots are one-based. Adapter addresses identify
-components; they do not transfer items. Each housing's actual input/output map
-must be witnessed. Register an assembled alveary once, even if multiple adapters
+components; they do not transfer items. Direct Forestry alveary slots are assigned
+automatically: **1 princess/queen, 2 drone, 3-9 products/offspring**. Setup checks
+the selected inventory/housing association with one bee at a time; these placement
+checks accept unanalysed bees. Empty/wrong-caste/mismatched-adapter readings explain
+the problem and let you retry or type `back`. Routed staging maps remain configurable.
+Register an assembled alveary once, even if multiple adapters
 can observe blocks of the same multiblock.
 
 ## One shared scanner
