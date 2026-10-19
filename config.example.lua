@@ -21,5 +21,10 @@ for n,v in ipairs(environments) do
 end
 -- For optional AE2 also configure storage.address, database, databaseSlots,
 -- exportAddress, exportSide, exportIsolated, storageBusVerified and buffer endpoint.
+-- Beta 3 workaround (fill addresses/sides and verify the circuit in-game):
+-- c.storage.exportMode = "redstone"
+-- c.storage.exportGate = {address="REPLACE-OC-REDSTONE",side=3,on=15,off=0,verified=false}
+-- c.storage.exportTimeout = 60 -- maximum wait; signal stays on until receipt
+-- c.storage.exportPollSeconds = 1
 -- See docs/HARDWARE.md. Do not change kind without completing that configuration.
 return c

@@ -10,7 +10,7 @@ storage and persistence so the same logic runs under Lua 5.2 mocks.
 | `bees`, `genetics` | Caste/genome normalization, purity, desired traits, exact identity, separate full equivalence |
 | `mutations`, `planner` | Runtime routes, aliases, cycle-bounded dependency expansion, inventory/climate/requirements/probability costs |
 | `inventory`, `persistence` | Source leases, write-ahead movement intent, verified receipts, two-generation state replacement |
-| `storage/chest`, `storage/ae2` | Reachable physical inventories, exact NBT database selection, isolated export, network reconciliation |
+| `storage/chest`, `storage/ae2`, `storage/ae2_export` | Reachable inventories, exact database selection, callback or redstone receipt control, network reconciliation |
 | `breeders/alveary`, `breeders/routed`, `breeders/factory` | Native or gated-staging hardware lifecycle behind one interface |
 | `jobs`, `scheduler` | Dependencies, fair dispatch, exclusive machine allocation, replenishment/conversion, bounded cycles, lineage protection |
 | `scanner`, `templates`, `robot` | Isolated scanning provenance, reference-drone crossing, addressed condition-specific requests |
@@ -75,6 +75,17 @@ is read back, the old primary is renamed to `.bak`, and the temporary generation
 is renamed into place. A readable backup is used if the primary is damaged. This
 does not claim filesystem-level `fsync`, which OpenOS does not expose here. Preserve
 both generations when investigating a power-loss recovery.
+
+Redstone ME export persists intent before changing a filter or enabling a signal.
+The signal remains on until an isolated receipt arrives or the maximum observation
+window expires; slow normal bus ticks are supported. The worker stops the signal
+and clears the filter before reading final receipts or archiving. Multiple exact
+stacks are preserved. Recovery uses saved bus/gate/bridge addresses, source counts,
+buffer contents and committed archive movements rather than replaying an export.
+An empty buffer with proven unchanged source counts can resolve a no-movement
+timeout. Unknown stock or mismatched counts remain blocked. This bounded wait
+yields through OpenOS events and handles Ctrl+C/pause/stop; ordinary scheduler
+observation and mailbox handling resume after the export wait finishes.
 
 Config and hardware-dependent facts remain separate from job state. The inspected
 GTNH APIs do not expose live operating climate/flowers/biome or comprehensive

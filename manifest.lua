@@ -34,6 +34,7 @@ return {
   "lib/scheduler.lua",
   "lib/setup.lua",
   "lib/storage/ae2.lua",
+  "lib/storage/ae2_export.lua",
   "lib/storage/base.lua",
   "lib/storage/chest.lua",
   "lib/templates.lua",

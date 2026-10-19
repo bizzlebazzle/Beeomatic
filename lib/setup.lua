@@ -38,10 +38,27 @@ function M.new(config,components,inv,save,read,out)
       s.address=self:address("ME interface/controller address",{"getItemsInNetwork","store"},s.address)
       s.database=self:address("Database component address",{"clear","get"},s.database)
       s.databaseSlots=self:number("Dedicated database capacity (number of entries shown in its GUI)",1,4096,s.databaseSlots or 9)
-      s.exportAddress=self:address("ME export bus component address",{"setExportConfiguration","exportIntoSlot"},s.exportAddress)
+      s.exportMode=self:ask("Export control: redstone (Beta 3 workaround) or callback",s.exportMode or "redstone"):lower()
+      assert(s.exportMode=="redstone" or s.exportMode=="callback","choose redstone or callback")
+      local methods={"setExportConfiguration"}
+      if s.exportMode=="redstone" then
+        methods[#methods+1]="getExportConfiguration"; methods[#methods+1]="getExportSlotSize"
+      else methods[#methods+1]="exportIntoSlot" end
+      s.exportAddress=self:address("ME export bus component address",methods,s.exportAddress)
       s.exportSide=self:number("Direction the export bus faces (relative to its host block)",0,5,s.exportSide)
       s.buffer=self:endpoint("Isolated export buffer",s.buffer)
-      self.out("Remove fuzzy/crafting upgrades. Clear all export filter slots. Inhibit normal export with a redstone card. Verify a manually requested export still works using doctor probes on your GTNH version.")
+      if s.exportMode=="redstone" then
+        self.out("Set the ME bus to ACTIVE WITH SIGNAL. An OC Redstone Card must be the sole signal source. Remove the manual lever. Connect the chosen computer output face to the bus through verified redstone wiring. Signal stays ON until an exact physical receipt arrives; bus speed is not assumed.")
+        local g=s.exportGate or {}; s.exportGate=g
+        g.address=self:address("OC redstone component address",{"getOutput","setOutput"},g.address)
+        g.side=self:number("Computer/redstone output side (different from export-bus side)",0,5,g.side)
+        g.off=0; g.on=15
+        self.components:proxy(g.address).setOutput(g.side,g.off)
+        s.exportTimeout=self:number("Maximum wait for an export receipt, seconds",1,600,s.exportTimeout or 60)
+        s.exportPollSeconds=1
+        g.verified=self:yes("Have you tested OC signal ON exporting exact stock, and signal OFF stopping it?",false)
+      else self.out("The imperative exportIntoSlot callback is broken on the tested Beta 3 server (config=null). Only select callback mode on an installation where a real export has passed.") end
+      self.out("Remove fuzzy/crafting upgrades. Clear every export filter. Keep the isolated buffer empty; attach no other automation to it. With redstone mode, only the configured OC output may enable the bus.")
       s.exportIsolated=self:yes("Have you verified those export safety conditions?",false)
       s.storageBusVerified=self:yes("Is the archive exposed by a storage bus on the dedicated subnet?",false)
       self.save()

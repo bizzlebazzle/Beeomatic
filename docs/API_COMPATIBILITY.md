@@ -56,9 +56,10 @@ matters. Active traits determine current operation; both species alleles determi
 purity. Every selected princess is rechecked before another cycle.
 
 AE2 export requires a dedicated subnet, database, exact NBT, no fuzzy export
-upgrade, an empty isolated export buffer and an export bus inhibited from ordinary
-autonomous operation. The imperative export callback must be verified to work
-under that redstone setup on the installed release. No `database.set()` is used to
+upgrade, an empty isolated export buffer and an export bus inhibited except under
+explicit OC redstone control. Callback mode additionally requires the imperative
+method to pass an actual export test; it fails on the tested Beta 3 server. The
+implemented redstone mode uses normal bus operation instead. No `database.set()` is used to
 reconstruct bee NBT. A physical archive chest with a storage bus provides verified
 import receipts without racing an asynchronous import bus.
 
@@ -103,8 +104,24 @@ already use the new API, explaining why configuration succeeds while export fail
 
 The current Lua backend reports this incompatibility, preserves callback error
 details and the pending journal, and attempts filter cleanup. It cannot repair a
-Java callback from Lua. Ordinary redstone-controlled bus operation is a candidate
-workaround requiring an in-game test; no automatic fallback is claimed yet.
-Until a workaround is validated/implemented or the underlying integration is
-fixed, direct autonomous ME extraction is blocked on this installation. Physical
-chest inspection and NBT copying have passed; breeding and exact exports have not.
+Java callback from Lua. Ordinary redstone-controlled bus operation was investigated
+next, as recorded below. There is no automatic switch after an uncertain export.
+The direct callback remains blocked on this installation. Physical chest
+inspection and NBT copying have passed; full application breeding has not.
+
+## Validated normal-export path and implemented workaround
+
+The user confirmed the database-derived Wintry Drone filter in both the GUI
+and `getExportConfiguration(3,1)`. Holding redstone enabled long enough for ordinary
+bus ticks exported one Wintry Drone to the isolated chest, and its compressed NBT
+matched the original exactly. A very brief pulse had produced no receipt; no
+fixed warm-up duration or acceleration-card behavior is inferred from that test.
+
+The Lua backend now implements explicit `exportMode="redstone"`, configured by
+setup with a verified OC `redstone` output (`getOutput`/`setOutput`, checked in
+the pinned `RedstoneVanilla.scala`). It waits for receipts with a timeout, shuts
+down on errors/interruption, and reconciles buffer/archive contents after restart.
+Legacy configuration without an export mode retains callback mode; reconfigure
+AE2 storage to opt into the workaround and register its physical signal circuit.
+Manual normal export is verified; automated OC signal wiring and full breeding
+still require in-game acceptance. Both paths retain exact-NBT database selection.

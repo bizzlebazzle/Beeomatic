@@ -19,7 +19,32 @@
     "EnumTemperature.java": "b25a02f3d6036d4f8cd4a8a38b7a049a3c27f6cc779cf258289329cc9951e7fa",
     "InventoryBeeHousing.java": "8ba91f548ea4e4e84756e6a9f35e442e907acac6e2b9338404c3c1634bd59116",
     "NetworkControl.scala": "c368184f55ecb1aad207b659cc13349ec2b7d8057f3aec6fbf7f2d7b2f3e44e3",
-    "TileAlveary.java": "a1c563f402bbadefac9ed1aa282619dc1d5d2d6acfa590e827fb46de3f27bf54"
+    "TileAlveary.java": "a1c563f402bbadefac9ed1aa282619dc1d5d2d6acfa590e827fb46de3f27bf54",
+    "RedstoneVanilla.scala": "aab5a6bee57470665831b1ec37ad7a3fe2a2a44fd69d96ac24054d28b7dd595a"
   },
-  "hardwareTested": false
+  "hardwareTested": false,
+  "runtimeObservations": {
+    "openos": "1.8.9",
+    "lua": "5.3",
+    "networkItemNbtType": "string",
+    "networkItemActiveGenomeExposed": false,
+    "transposerChest": {
+      "side": 5,
+      "slots": 27,
+      "analyzed": true,
+      "activeSpecies": "Wintry",
+      "inactiveSpecies": "Wintry"
+    },
+    "databaseCopyExactNbt": true,
+    "imperativeExportResult": "nil; config is null",
+    "normalExport": {
+      "exportBusSide": 3,
+      "manualRedstoneHeldUntilReceipt": true,
+      "received": "Wintry Drone",
+      "count": 1,
+      "exactNbtMatch": true
+    },
+    "automatedOcRedstoneValidated": false,
+    "applicationBreedingValidated": false
+  }
 }

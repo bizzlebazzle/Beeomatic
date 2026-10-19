@@ -99,3 +99,123 @@ test("AE2 preserves secondary return errors from non-throwing callbacks",functio
   raises(function() w.ae:materialize({network=true,endpoint={id="ME"},slot="x",stack=raw},w.c.storage.endpoints[1],"j") end,"no inventory")
   eq(w.state.pendingExternal.lastError,"no inventory"); eq(w.state.pendingExternal.compatibilityIssue,nil)
 end)
+local function redstoneWorld(options)
+  options=options or {}
+  local w,raw=aeWorld(false); local sample=W.bee("Spirit","drone",8); sample.tag=raw.tag
+  local cfg=w.ae.config; cfg.exportMode="redstone"; cfg.exportTimeout=options.timeout or 60; cfg.exportPollSeconds=1
+  cfg.exportGate={address="redstone",side=2,on=15,off=0,verified=true}
+  local signal,configured=0,nil; w.polls=0; w.callbackCalls=0
+  local current=W.bee("Spirit","drone",8); current.tag=raw.tag; current.individual=nil
+  local entry
+  w.proxies.me.store=function() entry=U.copy(current); return true end
+  w.proxies.db.get=function() return U.copy(entry) end
+  w.proxies.me.getItemsInNetwork=function()
+    local result={}
+    if current.size>0 then result[#result+1]=U.copy(current) end
+    -- The archive is exposed by the configured ME storage bus.
+    for _,s in pairs(w.inventories.hub) do if type(s)=="table" and s.tag==raw.tag then result[#result+1]=U.copy(s) end end
+    return result
+  end
+  w.proxies.bus.setExportConfiguration=function(_,_,db)
+    if not db and options.cleanupFails then return nil,"filter clear failed" end
+    configured=db and U.copy(entry) or nil; return true
+  end
+  w.proxies.bus.getExportConfiguration=function() return U.copy(configured) end
+  w.proxies.bus.getExportSlotSize=function() return 1 end
+  w.proxies.bus.exportIntoSlot=function() w.callbackCalls=w.callbackCalls+1; error("callback must not be used") end
+  w.proxies.redstone={getOutput=function() return signal end,setOutput=function(_,n)
+    local old=signal; signal=n
+    if n==15 then ok(w.state.pendingExternal,"journal intent must precede gate enable") end
+    return old
+  end}
+  local wait=function(seconds)
+    w.polls=w.polls+1; w.time=w.time+seconds
+    if options.interruptAt and w.polls==options.interruptAt then error("interrupted") end
+    if signal==15 and configured and w.polls>=(options.delay or 5) and not options.noReceipt and current.size>0 then
+      local stack=U.copy(sample); stack.size=options.multiple and 4 or 8
+      if options.wrongNBT then stack.tag="wrong-genotype" end
+      w.inventories.buffer[options.receiptSlot or 1]=stack
+      if options.multiple then w.inventories.buffer[2]=U.copy(stack) end
+      current.size=0
+    end
+  end
+  w.ae=require("lib.storage.ae2").new(cfg,w.inv,w.components,{now=function() return w.time end,wait=wait})
+  function w:signal() return signal end
+  function w:configured() return configured end
+  function w:restoreReceipt(slot) w.inventories.buffer[slot or 1]=U.copy(sample); current.size=0 end
+  return w,raw
+end
+local function materialize(w,raw)
+  return w.ae:materialize({network=true,endpoint={id="ME"},slot=B.identity(raw),stack=raw},w.c.storage.endpoints[1],"j")
+end
+test("redstone export waits through slow bus startup and verifies the receipt",function()
+  local w,raw=redstoneWorld({delay=15}); local got=materialize(w,raw)
+  eq(w.polls,15); eq(got.stack.tag,raw.tag); eq(w:signal(),0); eq(w:configured(),nil)
+  eq(w.callbackCalls,0); eq(w.state.pendingExternal,nil); eq(w.state.lastExternalExport.phase,"ARCHIVED")
+end)
+test("redstone export inspects all buffer slots instead of assuming slot one",function()
+  local w,raw=redstoneWorld({receiptSlot=7}); local got=materialize(w,raw)
+  eq(got.stack.tag,raw.tag); eq(#w.inv:scan(w.ae.config.buffer),0)
+end)
+test("redstone export archives every exact receipt when the bus sends multiple stacks",function()
+  local w,raw=redstoneWorld({multiple=true}); materialize(w,raw)
+  eq(B.count(w.storage:scan(),"spirit","drone",true),8); eq(w.state.lastExternalExport.archivedCount,8)
+  eq(#w.inv:scan(w.ae.config.buffer),0)
+end)
+test("redstone export timeout disables signal and clears the filter",function()
+  local w,raw=redstoneWorld({noReceipt=true,timeout=3})
+  raises(function() materialize(w,raw) end,"timeout waiting for receipt")
+  eq(w.time,3); eq(w:signal(),0); eq(w:configured(),nil); ok(w.state.pendingExternal)
+  ok(w.ae:reconcile()); eq(w.state.pendingExternal,nil); eq(w.state.lastExternalExport.phase,"NO_MOVEMENT_CONFIRMED")
+end)
+test("redstone export interruption shuts down before propagating the error",function()
+  local w,raw=redstoneWorld({interruptAt=2})
+  raises(function() materialize(w,raw) end,"interrupted")
+  eq(w:signal(),0); eq(w:configured(),nil); ok(w.state.pendingExternal)
+end)
+test("redstone export rejects a wrong-NBT receipt and preserves it for audit",function()
+  local w,raw=redstoneWorld({wrongNBT=true})
+  raises(function() materialize(w,raw) end,"wrong-NBT")
+  eq(w:signal(),0); eq(w:configured(),nil); eq(w.inventories.buffer[1].tag,"wrong-genotype")
+  ok(w.state.pendingExternal)
+end)
+test("redstone recovery archives a late receipt without issuing another export",function()
+  local w,raw=redstoneWorld({noReceipt=true,timeout=2})
+  raises(function() materialize(w,raw) end,"timeout")
+  w:restoreReceipt(); local polls=w.polls
+  ok(w.ae:reconcile()); eq(w.polls,polls); eq(w.callbackCalls,0); eq(w:signal(),0)
+  eq(#w.inv:scan(w.ae.config.buffer),0); eq(B.count(w.storage:scan(),"spirit","drone",true),8)
+end)
+test("redstone export requires an entirely empty isolated buffer",function()
+  local w,raw=redstoneWorld(); w.inventories.buffer[5]=W.bee("Forest","drone")
+  raises(function() materialize(w,raw) end,"completely empty")
+  eq(w.polls,0); eq(w:signal(),0)
+end)
+test("redstone filter cleanup failure leaves recoverable export state",function()
+  local w,raw=redstoneWorld({cleanupFails=true})
+  raises(function() materialize(w,raw) end,"filter clear failed")
+  eq(w:signal(),0); ok(w.state.pendingExternal); ok(w.inventories.buffer[1])
+end)
+test("redstone restart after archive movement reconciles without a second withdrawal",function()
+  local w,raw=redstoneWorld(); w.throwAfterMove=true
+  raises(function() materialize(w,raw) end,"transfer uncertain")
+  eq(w:signal(),0); ok(w.state.pendingExternal); ok(w.state.pending)
+  local moves=w.moves; ok(w.inv:reconcile()); w.throwAfterMove=false
+  ok(w.ae:reconcile()); eq(w.moves,moves); eq(w.state.pendingExternal,nil)
+  eq(w.state.lastExternalExport.phase,"ARCHIVED_RECOVERED")
+  eq(w.state.lastExternalExport.archivedCount,8)
+  eq(B.count(w.storage:scan(),"spirit","drone",true),8)
+end)
+test("redstone source-count mismatch retains buffer stock for reconciliation",function()
+  local w,raw=redstoneWorld()
+  w.proxies.me.getItemsInNetwork=function() return {U.copy(raw)} end
+  raises(function() materialize(w,raw) end,"source delta disagrees")
+  eq(w:signal(),0); eq(w:configured(),nil); ok(w.state.pendingExternal)
+  eq(w.inventories.buffer[1].size,8); eq(B.count(w.storage:scan(),"spirit","drone",true),0)
+end)
+test("redstone export rejects another configured filter before enabling",function()
+  local w,raw=redstoneWorld(); w.proxies.bus.getExportSlotSize=function() return 5 end
+  w.proxies.bus.getExportConfiguration=function(_,slot) if slot==2 then return W.bee("Forest","drone") end end
+  raises(function() materialize(w,raw) end,"clear all existing export filters")
+  eq(w.polls,0); eq(w:signal(),0); eq(w.callbackCalls,0)
+end)

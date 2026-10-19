@@ -54,6 +54,9 @@ stock even when it could make progress by risking the last reserve.
 For AE2, follow [HARDWARE.md](HARDWARE.md) before selecting that backend. Your server
 must expose exact compressed item NBT (`allowItemStackNBTTags=true`) for autonomous
 network export. Chest-only operation does not require AE2 or that server setting.
+The tested Beta 3 imperative export callback is broken; setup's default redstone
+mode uses ordinary AE2 export with a verified OC Redstone Card circuit and a
+receipt-based wait. Configure a longer timeout if an unaccelerated bus needs it.
 
 After installation, complete the release-specific in-game acceptance procedure in
 [VALIDATION.md](VALIDATION.md). Automated tests validate program behavior against

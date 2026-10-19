@@ -78,7 +78,7 @@ Beeomatic/
     bees.lua, genetics.lua, mutations.lua, planner.lua, environment.lua
     inventory.lua, persistence.lua, jobs.lua, scheduler.lua
     scanner.lua, templates.lua, robot.lua
-    storage/  base.lua, chest.lua, ae2.lua
+    storage/  base.lua, chest.lua, ae2.lua, ae2_export.lua
     breeders/ base.lua, factory.lua, alveary.lua, routed.lua
     ui/       status.lua, diagnostics.lua
   tools/probe.lua
@@ -95,13 +95,17 @@ Beeomatic/
 ```
 
 Development check in this workspace: `python tests/run.py` runs Lua 5.2 and Lua 5.3.
-Current validation: **64 tests passed on each engine**, including the public CLI Spirit workflow,
+Current validation: **76 tests passed on each engine**, including the public CLI Spirit workflow,
 installer upgrades, exact selection of a second same-label AE2 genetic variant,
 concurrent machines, protected reserves and interrupted transfer recovery.
 Local `.tools/` and downloaded `research/` are ignored and not installed. No external
 Lua library is needed on the Minecraft computer.
 
 Multiplayer testing found the GTNH 2.9 Beta 3 `exportIntoSlot` **config=null**
-integration bug. NBT listing/database copies and physical genetic inspection work;
-autonomous direct ME export is currently blocked on that installation. See the
-compatibility guide for evidence and the pending redstone workaround investigation.
+integration bug. Normal redstone-controlled export was then verified manually with
+an exact-NBT receipt. Setup now defaults to `exportMode="redstone"` for AE2: a
+dedicated OC redstone output stays enabled until real receipts arrive or a timeout
+expires. It shuts down and clears the exact filter before archiving all receipts.
+The automated OC signal path still needs in-game wiring validation. Callback mode
+remains available for installations with a working integration; it is not an
+automatic fallback after an uncertain export.

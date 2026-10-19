@@ -69,6 +69,8 @@ chest. Transit and machine activity share the bounded cycle timeout.
 Required: powered dedicated ME subnet and storage, ME storage bus on the physical
 archive, interface or controller exposed through an adapter, a **dedicated OC
 database**, and a separately exposed ME export bus feeding an isolated buffer.
+For Beta 3 redstone export mode, add an OC Redstone Card/output and a dedicated
+redstone connection to the export bus.
 
 ```text
 ME storage / subnet -- storage bus -- archive <---> breeder transposers
@@ -80,11 +82,33 @@ ME storage / subnet -- storage bus -- archive <---> breeder transposers
                                  dedicated database on OC network
 ```
 
-The buffer must not be exposed to ME by another storage/import bus. Inhibit the
-export bus's normal automatic operation using a redstone card, remove fuzzy and
-crafting upgrades, clear every filter slot, and verify the imperative
-`exportIntoSlot` callback still works in this arrangement. Beeomatic temporarily
-uses filter slot 1 and clears it after each request. Database capacity is entered
+The buffer must not be exposed to ME by another storage/import bus. Set the bus's
+AE2 Redstone Card to **active with signal**, remove fuzzy/crafting upgrades and
+clear all filters. The dedicated OC output must be the ONLY source of enabling
+signal; remove the testing lever before automatic control. Register the OC
+redstone component address and output face independently from the export-bus face.
+Output zero must disable the bus; output 15 must enable it. Verify the entire
+physical circuit before attesting `exportGate.verified` in setup.
+
+Beta 3 setup defaults to **redstone mode**, avoiding the broken imperative
+`exportIntoSlot` callback. Beeomatic reads back the exact database-derived filter
+before enabling the signal. It polls every second, holding the signal until a real
+receipt appears; it does not assume a short pulse or require acceleration cards.
+The configurable maximum wait defaults to 60 seconds. On receipt, error, Ctrl+C,
+pause/stop key or timeout it attempts signal OFF and filter cleanup. It rechecks
+all buffer slots, verifies exact NBT/source counts, and archives every matching
+stack, including excess exported during a polling interval. The whole buffer must
+start empty and have no other automation. Following a power interruption, recovery
+first disables the saved output/filter and reconciles actual buffer/archive stock
+before any new export. Ensure the physical circuit does not introduce delayed
+exports or route items from elsewhere after the bus has been disabled.
+
+Callback mode remains for installations where the imperative method has actually
+passed an export test. Never switch mechanisms automatically after a missing
+receipt: an uncertain first export must be reconciled first.
+
+Beeomatic temporarily uses filter slot 1 and clears it after each request.
+Database capacity is entered
 explicitly; the database must not be used by another script. Same-label genetic
 variants need enough database entries to copy the candidate group before choosing
 the exact NBT match. A capacity mismatch pauses rather than selecting loosely.

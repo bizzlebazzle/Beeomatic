@@ -1,7 +1,9 @@
 local Chest=require("lib.storage.chest"); local B=require("lib.bees"); local U=require("lib.util")
+local Export=require("lib.storage.ae2_export")
 local M={}; M.__index=M
-function M.new(config,inv,components)
-  return setmetatable({config=config,inv=inv,components=components,chest=Chest.new(config,inv)},M)
+function M.new(config,inv,components,runtime)
+  return setmetatable({config=config,inv=inv,components=components,chest=Chest.new(config,inv),
+    exporter=Export.new(components,inv,runtime)},M)
 end
 function M:network()
   return self.components:proxy(self.config.address,{"getItemsInNetwork","store"})
@@ -34,17 +36,45 @@ function M:prepare(items)
   return true
 end
 function M:validate()
+  -- Stop a saved/current redstone export before network or inventory checks can fail.
+  self:stopExport()
   self.chest:validate(); self:network()
   assert(self.config.storageBusVerified,"verify archive chest storage bus and dedicated subnet")
-  self.components:proxy(self.config.exportAddress,{"setExportConfiguration","exportIntoSlot"})
+  self.exporter:validate(self.config)
   self.components:proxy(self.config.database,{"clear","get"})
   assert(self.config.exportIsolated,"disable autonomous export with redstone card; remove fuzzy cards")
   return true
 end
+function M:stopExport()
+  local x=self.inv.state.pendingExternal
+  if x and x.exportAddress then
+    local ok,err=self.exporter:shutdown(x); assert(ok,err)
+  elseif self.config.exportMode=="redstone" then
+    self.exporter:off({mode="redstone",gate=self.config.exportGate})
+  end
+end
+function M:networkCount(x)
+  local n=0
+  for _,s in pairs(assert(self:network().getItemsInNetwork(x.filter),"ME unavailable while reconciling export")) do
+    if B.identity(s)==x.identity then n=n+(s.size or 0) end
+  end
+  return n
+end
+function M:archiveExport(x)
+  local items=self.exporter:receipts(x); local first
+  assert(x.bridge,"restore a reachable archive bridge before recovering export")
+  for _,item in ipairs(items) do
+    local physical=self.inv:move(item,x.bridge,self.inv:destination(x.bridge,item.stack),item.stack.size,x.owner)
+    first=first or physical
+    x.archivedCount=(x.archivedCount or 0)+item.stack.size; self.inv.save()
+  end
+  x.phase="ARCHIVED"; self.inv.state.lastExternalExport=U.copy(x)
+  self.inv.state.pendingExternal=nil; self.inv.save(); return first
+end
 function M:materialize(item,endpoint,owner)
   if not item.network and item.endpoint.id==endpoint.id then return self.chest:materialize(item,endpoint) end
   self:validate()
-  assert(not self.inv.state.pending,"unresolved movement")
+  assert(not self.inv.state.pending and not self.inv.state.pendingExternal,"unresolved movement; reconcile before another export")
   assert(type(item.stack.tag)=="string","Exact AE2 export requires compressed NBT tags. Enable server OC allowItemStackNBTTags and probe first")
   local cfg=self.config; local buffer=assert(cfg.buffer,"register ME export buffer")
   local bridge
@@ -53,7 +83,11 @@ function M:materialize(item,endpoint,owner)
   end
   assert(bridge,"ME export buffer needs a transposer view of the selected physical archive")
   assert(buffer.id~=bridge.id and buffer.side~=bridge.side,"ME export buffer must be isolated from archive")
-  local dstSlot=self.inv:empty(buffer)
+  local x={kind="ME_EXPORT",mode=cfg.exportMode or "callback",owner=owner,dest=U.copy(buffer),bridge=U.copy(bridge),
+    slot=self.inv:empty(buffer),identity=B.identity(item.stack),exportAddress=cfg.exportAddress,exportSide=cfg.exportSide,
+    gate=U.copy(cfg.exportGate),timeout=cfg.exportTimeout or 60,pollSeconds=cfg.exportPollSeconds or 1,
+    transferAfter=self.inv.state.transferSequence or 0,phase="INTENT"}
+  self.exporter:preflight(x)
   -- Legacy GTNH compares byte-array filters by Java object string, so do not
   -- depend on tag filtering. Copy the finite candidate group into a dedicated
   -- database and select the exact compressed-NBT entry after verifying it.
@@ -65,6 +99,7 @@ function M:materialize(item,endpoint,owner)
     if B.identity(s)==B.identity(item.stack) then total=total+s.size end
   end
   assert(total>0,"reserved ME item disappeared")
+  x.before=total; x.filter=filter
   local db=self.components:proxy(cfg.database,{"clear","get"})
   local capacity=cfg.databaseSlots or 1
   assert(variants<=capacity,"Too many same-label genetic variants for configured database capacity; enlarge dedicated database or move some stock to archive")
@@ -75,28 +110,12 @@ function M:materialize(item,endpoint,owner)
     if entry and B.identity(entry)==B.identity(item.stack) then selected=slot; break end
   end
   assert(selected,"database changed bee NBT; export blocked")
-  local bus=self.components:proxy(cfg.exportAddress,{"setExportConfiguration","exportIntoSlot"})
-  assert(bus.setExportConfiguration(cfg.exportSide,1,cfg.database,selected),"cannot configure export bus")
-  -- The bus may export a whole stack; keep the exact excess in the local hub.
-  self.inv.state.pendingExternal={kind="ME_EXPORT",owner=owner,dest=buffer,slot=dstSlot,identity=B.identity(item.stack)}
+  -- Intent is durable BEFORE setting the filter or enabling any physical export.
+  self.inv.state.pendingExternal=x
   self.inv.save()
-  local ok,result,detail=pcall(bus.exportIntoSlot,cfg.exportSide,dstSlot)
-  local clearOK,clearResult,clearDetail=pcall(bus.setExportConfiguration,cfg.exportSide,1)
-  local got=self.inv:get(buffer,dstSlot)
-  if not (ok and result and got and B.identity(got)==B.identity(item.stack) and clearOK and clearResult) then
-    local reason=not ok and tostring(result) or tostring(detail or result or "no export receipt")
-    if not clearOK or not clearResult then reason=reason.."; filter cleanup failed: "..tostring(clearDetail or clearResult) end
-    local x=self.inv.state.pendingExternal; x.lastError=reason
-    if reason:find("config",1,true) and reason:find("null",1,true) then
-      x.compatibilityIssue="https://github.com/GTNewHorizons/GT-New-Horizons-Modpack/issues/25284"
-      reason=reason.."; known GTNH exportIntoSlot config=null incompatibility. Do not repeat this callback; validate a redstone-controlled export path."
-    end
-    self.inv.save()
-    error("AE2 export failed/uncertain; inspect buffer and run doctor. "..reason)
-  end
-  self.inv.state.pendingExternal=nil; self.inv.save()
-  local physical={endpoint=buffer,slot=dstSlot,stack=got}
-  local deposited=self.inv:move(physical,bridge,self.inv:destination(bridge,got),got.size,owner)
+  local _,count=self.exporter:run(x,cfg.database,selected)
+  if x.mode=="redstone" then assert(self:networkCount(x)==x.before-count,"ME source delta disagrees with physical export receipts") end
+  local deposited=assert(self:archiveExport(x))
   return {endpoint=endpoint,slot=deposited.slot,stack=self.inv:get(endpoint,deposited.slot)}
 end
 function M:deposit(item,endpoint,owner)
@@ -105,12 +124,32 @@ function M:deposit(item,endpoint,owner)
 end
 function M:reconcile()
   local x=self.inv.state.pendingExternal
-  if not x then return true end
-  local b=self.components:proxy(self.config.exportAddress,{"setExportConfiguration"})
-  b.setExportConfiguration(self.config.exportSide,1)
-  local got=self.inv:get(x.dest,x.slot)
-  if got and B.identity(got)==x.identity then
-    self.inv.state.pendingExternal=nil; self.inv.save(); return true
+  if not x then self:stopExport(); return true end
+  -- Older journals did not snapshot bridge/bus metadata. Never start a new export.
+  x.exportAddress=x.exportAddress or self.config.exportAddress
+  x.exportSide=x.exportSide or self.config.exportSide
+  x.mode=x.mode or "callback"
+  if not x.bridge then for _,ep in ipairs(self.config.endpoints) do
+    if ep.transposer==x.dest.transposer then x.bridge=U.copy(ep); break end
+  end end
+  local stopped,err=self.exporter:shutdown(x); if not stopped then return false,err end
+  local items,count=self.exporter:receipts(x)
+  if x.mode=="redstone" and x.before then
+    assert(self:networkCount(x)==x.before-count,"ME counts do not reconcile with isolated export buffer; audit actual stock")
+  end
+  local committed=0
+  for _,tx in ipairs(self.inv.state.transactions or {}) do
+    if x.transferAfter and tx.id and tx.id>x.transferAfter and tx.owner==x.owner and
+      tx.source.id==x.dest.id and tx.identity==x.identity and x.bridge and tx.dest.id==x.bridge.id then
+      committed=committed+tx.count
+    end
+  end
+  local archived=math.max(x.archivedCount or 0,committed); x.archivedCount=archived
+  if x.receivedCount then assert(count+archived==x.receivedCount,"export receipts disagree with saved archive movements; audit actual stock") end
+  if #items>0 then self:archiveExport(x); return true end
+  if archived>0 or x.mode=="redstone" then
+    x.phase=archived>0 and "ARCHIVED_RECOVERED" or "NO_MOVEMENT_CONFIRMED"
+    self.inv.state.lastExternalExport=U.copy(x); self.inv.state.pendingExternal=nil; self.inv.save(); return true
   end
   return false,"AE2 export receipt ambiguous; inspect isolated buffer, preserve stock"
 end

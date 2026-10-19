@@ -3,9 +3,11 @@
 Development target: GTNH **2.9.0 Beta 3**; OpenComputers **1.12.61-GTNH**,
 Forestry **4.11.37**, AE2 **rv3-beta-1050-GTNH**, Gendustry **1.9.13-GTNH**.
 These versions are verified from the release manifest and OC/Forestry tagged source.
-There has been **no in-game execution** in this workspace.
+The full application has not yet run in-game. Manual component tests on the user's
+server confirmed physical genetic inspection, exact database NBT copy, the broken
+imperative callback, and normal redstone export with an exact-NBT receipt.
 
-Current automated result: **64 tests passed, zero failures, on each of Lua 5.2 and Lua 5.3**. This
+Current automated result: **76 tests passed, zero failures, on each of Lua 5.2 and Lua 5.3**. This
 includes the public command path, persistent foreground events, installer copy and
 upgrade preservation, and exact selection of a non-first same-label ME variant.
 
@@ -69,8 +71,9 @@ drone 2, outputs 6/8/10**, so apiary input/output assumptions would fail tests.
    fuzzy export upgrades. Store two same-label drones with different inactive
    alleles. Verify the requested genotype is copied to the database and exported,
    including when the matching entry is not first. Confirm automatic export is
-   inhibited, the isolated buffer is not exposed back to ME, and archive/storage-bus
-   counts are deduplicated. Test network outage, export failure and space exhaustion.
+   controlled only by the configured OC output, the isolated buffer is not exposed
+   back to ME, and archive/storage-bus counts are deduplicated. Test network outage,
+   export failure and space exhaustion.
 9. If using `routed`, test gate OFF holding both caste stacks, gate ON delivering
    only to its configured breeder, complete isolated output return, stalled pipe
    timeout and restart while items are in transit. Do not enable without proof of
