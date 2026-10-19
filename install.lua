@@ -31,7 +31,7 @@ for _,relative in ipairs(files) do
   end
 end
 -- Retire only known obsolete program files; retain one recoverable generation.
-for _,relative in ipairs({"lib/storage/base.lua","lib/breeders/base.lua","tools/probe.lua"}) do
+for _,relative in ipairs({"lib/storage/base.lua","lib/breeders/base.lua","tools/probe.lua","lib/robot.lua","robot-helper.lua"}) do
   local path=dest.."/"..relative
   if fs.exists(path) then
     if fs.exists(path..".previous") then assert(fs.remove(path..".previous")) end

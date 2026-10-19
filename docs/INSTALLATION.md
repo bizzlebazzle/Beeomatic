@@ -32,7 +32,7 @@ The downloader does not use `/tmp`, which can be a much smaller filesystem than
 the hard drive.
 
 The release installs only the runtime paths in `manifest.lua`. Documentation,
-tests, research, example configuration and robot helpers stay on the development
+tests, research and example configuration stay on the development
 PC. Download staging, one previous installed generation and runtime data need
 additional disk space. The downloader avoids the smaller `/tmp` filesystem.
 

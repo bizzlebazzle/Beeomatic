@@ -32,7 +32,7 @@ Interface coverage includes:
 - Fresh Interface-first setup, bound transposers, direct analyser output slots
   with consumables untouched, `back`, resumed registration and port pruning.
 - Automatic IDs surviving setup interruption, shared Interface/analyser ID reuse,
-  mismatched Interface connection rejection, and robot selection by friendly name.
+  mismatched Interface connection rejection, and optional setup without robot configuration.
   Climate entries require no separate environment confirmation.
 - An incorrect scanner Interface inventory reports its actual size/transposer/side
   and allows reselection before asking for the Interface adapter.

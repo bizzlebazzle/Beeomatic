@@ -68,4 +68,4 @@ risk double allocation. Keep the journal while investigating.
 Mutation conditions are saved by exact text and alveary ID. If a special foundation
 is installed, use `doctor --confirm ID` and explicitly confirm it. Day/time/weather
 or equipment-dependent descriptions may become false later: revoke their saved
-confirmation after changes. A robot acknowledgement never confirms all conditions.
+confirmation after changes.

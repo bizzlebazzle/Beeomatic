@@ -89,9 +89,6 @@ inventories, input slot, timeout and isolation confirmation.
      analysed reference drone witness slot, minimum reference drones to retain.
    - If yes in chest mode: reference drone archive number, reserved reference drone
      slot, minimum reference drones to retain.
-2. Register an optional wireless foundation helper?
-   - If yes: local wireless modem component, robot wireless modem address,
-     alveary served by the robot (numbered friendly-name list), command port and reply port.
 
 Component selection adds a friendly name only when the component is unnamed.
 

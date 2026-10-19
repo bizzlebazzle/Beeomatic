@@ -2,7 +2,7 @@ local U=require("lib.util"); local Config=require("lib.config"); local P=require
 local B=require("lib.bees"); local Jobs=require("lib.jobs")
 local M={}
 local help=[[Beeomatic setup [--reconfigure]
-Beeomatic doctor [--probe | --interface PORT | --adopt JOB | --retry JOB | --confirm ALVEARY | --robot ALVEARY]
+Beeomatic doctor [--probe | --interface PORT | --adopt JOB | --retry JOB | --confirm ALVEARY]
 Beeomatic plan SPECIES [--verbose] [--no-pager]
 Beeomatic breed SPECIES [--noFinalImprint | --onlyFinalImprint]
 Beeomatic convert SPECIES | populate SPECIES COUNT | imprint SPECIES
@@ -231,22 +231,6 @@ function M.main(root,args)
     if f.retry then
       unlocked(); local ok,err=inv:reconcile(); assert(ok,err)
       scheduler:retryInsertion(assert(Jobs.find(state,a[2]),"Use doctor --retry JOB_ID"))
-    end
-    if f.robot then
-      unlocked(); local machine
-      for _,x in ipairs(c.alvearies) do if x.id==a[2] then machine=x end end
-      assert(machine,"Use doctor --robot ALVEARY_ID")
-      assert(c.robot.alvearyId==machine.id,"Robot is registered to a different alveary foundation position")
-      local requests={}
-      for _,j in ipairs(state.jobs) do for _,req in ipairs(j.route and j.route.specialConditions or {}) do
-        if req:lower():find("foundation",1,true) then requests[req]=true end
-      end end
-      for _,req in ipairs(U.keys(requests)) do
-        local nonce=computer.address()..":"..computer.uptime()..":"..req
-        local yes,message=require("lib.robot").request(c.robot,components,req,nonce,event)
-        print(message)
-        if yes then print("Inspect "..machine.id.." and use doctor --confirm "..machine.id.." to attest that exact condition") end
-      end
     end
     if not fs.exists(lock) then
       local ok,why=inv:reconcile(); print(ok and "Transfer journal reconciled" or why)

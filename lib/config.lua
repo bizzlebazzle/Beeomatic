@@ -7,7 +7,7 @@ function M.defaults()
     weights={species=1000,fertility=13,temperatureTolerance=4,humidityTolerance=4,
       lifespan=1,nocturnal=2,tolerantFlyer=2,caveDwelling=2},desired={},
     storage={kind="me_interface",endpoints={},databaseSlots=9,timeout=60},scanner={enabled=false},templates={enabled=false},
-    robot={enabled=false,port=3000,replyPort=3001,timeout=10}}
+    }
 end
 function M.validate(c)
   assert(c.version==1,"unsupported configuration version")

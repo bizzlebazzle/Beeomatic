@@ -28,5 +28,5 @@ species/caste, losing genetic distinctions. Reserve searches can terminate after
 empty gaps. Failed transfers, scanner waits and mutation restarts can be unbounded.
 The replacement verifies receipts, scans full inventories, bounds cycles/timeouts,
 and reconciles persisted intent before retry. Genetic comparison uses structural
-values rather than a floating-point score equality test. A robot reply is scoped
-to sender, request and exact condition, and never validates unrelated requirements.
+values rather than a floating-point score equality test. Mutation conditions require
+explicit operator confirmation for the exact requirement.

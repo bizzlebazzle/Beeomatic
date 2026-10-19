@@ -384,15 +384,6 @@ function M.new(config,components,inv,save,read,out)
       end
       t.reserve=self:number("Minimum reference drones to retain",1,64,t.reserve or 1)
     end
-    local r=self.c.robot
-    r.enabled=self:yes("Register an optional wireless foundation helper?",r.enabled)
-    if r.enabled then
-      r.modem=self:address("Local wireless modem address",{"send","open","isWireless"},r.modem)
-      r.address=self:ask("Robot wireless modem address",r.address)
-      r.alvearyId=self:selectId("Alveary number served by this stationary robot",self.c.alvearies,r.alvearyId)
-      r.port=self:number("Robot command port",1,65535,r.port)
-      r.replyPort=self:number("Reply port",1,65535,r.replyPort)
-    end
     self.out("Offspring and products are retained. Back up data with the worker stopped. Frames and upgrades are never touched.")
     self.save()
   end

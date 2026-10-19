@@ -127,13 +127,11 @@ To attest special requirements reported by runtime mutations:
 
 ```sh
 Beeomatic doctor --confirm hot_dry_1
-Beeomatic doctor --robot temperate_1
 ```
 
 Confirmation asks about each exact requirement string and saves only explicit
 `confirmed` replies. Revoke a confirmation in the configuration if the relevant
-block, biome, dimension, equipment or world condition changes. No inference from a
-generic robot reply is sufficient. Structured route `environment` constraints
+block, biome, dimension, equipment or world condition changes. Structured route `environment` constraints
 are supported by the planner/backend if supplied by an extension/configuration.
 
 To discard a pending request before its plan has been created, exit the worker

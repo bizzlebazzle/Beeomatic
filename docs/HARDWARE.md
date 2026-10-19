@@ -135,6 +135,4 @@ contains no export-bus or redstone-export prompts.
 
 Templates use an analysed reference drone. In Interface mode, setup records its
 exact NBT identity from a temporary witness inventory; return the drone to ME.
-The reserve is protected by genotype/count, not a permanent ME slot. The optional
-foundation robot remains a separately registered, addressed helper; it never digs
-or automatically attests arbitrary mutation conditions.
+The reserve is protected by genotype/count, not a permanent ME slot.

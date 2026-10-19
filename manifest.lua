@@ -17,7 +17,6 @@ return {
   "lib/persistence.lua",
   "lib/state_codec.lua",
   "lib/planner.lua",
-  "lib/robot.lua",
   "lib/scanner.lua",
   "lib/scanner_me.lua",
   "lib/scheduler.lua",
