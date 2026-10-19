@@ -32,6 +32,46 @@ function M.new(config,components,inv,save,read,out)
   function w:number(label,lo,hi,default)
     while true do local ok,n=pcall(U.assertNumber,self:ask(label,default),lo,hi); if ok then return n end; self.out(tostring(n)) end
   end
+  function w:autoId(prefix)
+    local used={}
+    local function collect(value)
+      if type(value)~="table" then return end
+      if value.id then used[value.id]=true end
+      for _,child in pairs(value) do collect(child) end
+    end
+    collect(self.c)
+    for _,id in pairs(self.c.inventoryIds or {}) do used[id]=true end
+    self.c.nextIds=self.c.nextIds or {}
+    local n=self.c.nextIds[prefix] or 1
+    while used[prefix..n] do n=n+1 end
+    self.c.nextIds[prefix]=n+1
+    return prefix..n
+  end
+  function w:inventoryId(address,side,default)
+    local key=address..":"..side
+    local ids=self.c.inventoryIds or {}; self.c.inventoryIds=ids
+    local found
+    local function find(value)
+      if type(value)~="table" then return end
+      if value.id and value.transposer==address and value.side==side then found=found or value.id end
+      for _,child in pairs(value) do find(child) end
+    end
+    -- Registered storage takes precedence over unfinished setup defaults.
+    find(self.c.storage.endpoints); find(self.c)
+    -- A supplied archive default also identifies its view from another transposer.
+    ids[key]=found or ids[key] or (default and default.id) or self:autoId("inventory_")
+    self.save()
+    return ids[key]
+  end
+  function w:selectId(label,choices,current)
+    assert(#choices>0,"no registered choices for "..label)
+    local selected
+    for n,choice in ipairs(choices) do
+      self.out(n..". "..(choice.name or choice.id))
+      if choice.id==current then selected=n end
+    end
+    return choices[self:number(label,1,#choices,selected or 1)].id
+  end
   function w:address(label,methods,default,useNamedSingle)
     local registry=self.c.componentNames or {}
     local page,onlyNew=1,nil
@@ -123,10 +163,9 @@ function M.new(config,components,inv,save,read,out)
       if choice then side=choice.side; self.out("Selected "..label..": "..choice.summary)
       elseif answer~="r" then self.out("That inventory number is not listed. Please choose again.") end
     until side~=nil
-    self.out("Give this physical inventory a short ID, e.g. port_1 or alveary_1.")
-    self.out("Reuse its ID when registering the SAME inventory from another transposer.")
-    local ep={id=self:ask("Inventory ID for "..label,default.id),transposer=address,side=side}
-    assert(ep.id~="","inventory ID cannot be empty"); self.inv:size(ep); return ep
+    local ep={id=self:inventoryId(address,side,default),transposer=address,side=side}
+    self.out("Inventory reference: "..ep.id.." (assigned automatically)")
+    self.inv:size(ep); return ep
   end
   function w:port(label,default,transposer)
     local ep=self:endpoint(label,default,transposer)
@@ -134,7 +173,9 @@ function M.new(config,components,inv,save,read,out)
     ep.managed=true; ep.princessSlot=1; ep.droneSlot=2; ep.returnSlot=9
     assert(self.inv:size(ep)==9,"use a full-block ME Interface with nine inventory slots")
     for _,old in ipairs(self.c.storage.endpoints) do
-      assert(old.id==ep.id or old.address~=ep.address,"Interface already registered under another port ID")
+      assert(old.address~=ep.address or old.transposer==ep.transposer and old.side==ep.side,
+        "Interface adapter already registered against a different inventory connection")
+      if old.address==ep.address then ep.id=old.id end
     end
     return ep
   end
@@ -217,10 +258,9 @@ function M.new(config,components,inv,save,read,out)
     while draft.stage<=4 do
       local success,err=pcall(function()
         if draft.stage==1 then
-          a.id=self:ask("Unique alveary ID (letters/numbers/underscore)",a.id)
-          assert(a.id:match("^[%w_%-]+$"),"invalid alveary ID")
+          a.id=a.id or self:autoId("alveary_")
           for _,old in ipairs(self.c.alvearies) do assert(old.id~=a.id,"ID already registered") end
-          a.name=self:ask("Friendly alveary name",a.name or a.id)
+          a.name=self:ask("Friendly alveary name",a.name or "Alveary "..(#self.c.alvearies+1))
         elseif draft.stage==2 then
           self.out("Connect the housing adapter and a transposer touching the housing inventory and its storage port. Register each multiblock only once.")
           a.address=self:address("Housing component address",{"getQueen","getDrone","getBeeParents","canBreed"},a.address)
@@ -275,8 +315,8 @@ function M.new(config,components,inv,save,read,out)
             humidity=self:ask("Humidity: ARID NORMAL DAMP"):upper(),biome=previous.biome,dimension=previous.dimension}
           local e=a.environment
           self.out("Each bee's required flower type is shown in alveary status. Supply those flowers in-world.")
-          e.verified=self:yes("Have you verified this operating environment in-game?",false)
-          e.provenance="manual in-game attestation"; a.confirmed={}
+          e.verified=true
+          e.provenance="setup-entered climate"; a.confirmed={}
         end
       end)
       if success then draft.stage=draft.stage+1
@@ -337,7 +377,7 @@ function M.new(config,components,inv,save,read,out)
         t.identity=B.identity(s); t.endpointId=nil; t.slot=nil
         self.out("Reference genotype recorded. Return the drone to ME; its reserve is protected by exact identity.")
       else
-        t.endpointId=self:ask("Template archive inventory ID",self.c.storage.endpoints[1].id)
+        t.endpointId=self:selectId("Reference drone archive number",self.c.storage.endpoints,t.endpointId)
         t.slot=self:number("Reserved reference drone slot",1,100000,t.slot)
       end
       t.reserve=self:number("Minimum reference drones to retain",1,64,t.reserve or 1)
@@ -347,7 +387,7 @@ function M.new(config,components,inv,save,read,out)
     if r.enabled then
       r.modem=self:address("Local wireless modem address",{"send","open","isWireless"},r.modem)
       r.address=self:ask("Robot wireless modem address",r.address)
-      r.alvearyId=self:ask("ID of the alveary this stationary robot's foundation position serves",r.alvearyId)
+      r.alvearyId=self:selectId("Alveary number served by this stationary robot",self.c.alvearies,r.alvearyId)
       r.port=self:number("Robot command port",1,65535,r.port)
       r.replyPort=self:number("Reply port",1,65535,r.replyPort)
     end

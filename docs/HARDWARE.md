@@ -21,7 +21,11 @@ MAIN ME NETWORK -- [Scanner Interface] -- [Scanner transposer] -- [Analyser]
 ```
 
 OC cable connects all adapters, transposers and the database to the controller.
-AE cable connects the Interfaces to ME. Every port has a unique ID/address; two
+AE cable connects the Interfaces to ME. Setup assigns inventory and alveary IDs
+automatically; you enter a friendly alveary name. Two alvearies may share one
+transposer and Interface when each housing occupies a different adjacent side.
+Select the same Interface inventory and adapter for both; setup reuses its port ID.
+Each alveary still needs its own housing adapter. Every port has a unique ID/address; two
 ports are separate inventories, not two views of a shared chest. No shared archive,
 storage bus, export bus, export buffer or export redstone circuit is required.
 Do not put a storage bus on these Interfaces or working alvearies. Keep this
