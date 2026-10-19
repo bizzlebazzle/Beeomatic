@@ -101,7 +101,8 @@ function M:reconcile()
       self.state.transactions[#self.state.transactions+1]=tx; self.state.pending=nil
       self.state.reservations[U.location(tx.source,tx.slot)]=nil; self.save(); return true
     end
-    if not tx.returned and not tx.source.managed and src and src.size==tx.before and B.identity(src)==tx.identity and oldDest then
+    if (tx.returned==0 or (not tx.returned and not tx.source.managed)) and
+      src and src.size==tx.before and B.identity(src)==tx.identity and oldDest then
       self.state.pending=nil; self.state.reservations[U.location(tx.source,tx.slot)]=nil; self.save(); return true
     end
     return false,"Ambiguous Interface movement owned by "..tx.owner.."; audit before replay"

@@ -129,6 +129,15 @@ function M:materialize(item,ep,owner,count)
     assert(x.owner==owner and x.identity==B.identity(item.stack) and x.count==count and x.batchId==item.batchId,
       "Interface slot has an unresolved request")
     assert(not x.consumed,"request already consumed; reconcile before reuse")
+    local filter,err=p.getInterfaceConfiguration(slot); assert(not err,tostring(err))
+    if x.phase=="INTENT" and not filter and not self.inv:get(ep,slot) then
+      -- No physical extraction is possible before READY. An unset request with
+      -- an empty local slot can be retried without repeating an item movement.
+      local entry=self:selectEntry(item)
+      local yes,why=p.setInterfaceConfiguration(slot,self.config.database,entry,count)
+      assert(yes,"Interface configuration failed: "..tostring(why))
+      x.phase="CONFIGURED"; self.inv.save()
+    end
   else
     local filter,err=p.getInterfaceConfiguration(slot); assert(not err,tostring(err))
     assert(not filter and not self.inv:get(ep,slot),"Interface stock slot is occupied/configured")

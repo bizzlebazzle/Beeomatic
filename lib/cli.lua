@@ -62,6 +62,7 @@ function M.main(root,args)
   end
   local function run()
     Config.validate(c); storage:validate()
+    if storage.interface then scanner:validate() end
     if fs.exists(lock) then
       assert(f.recover,"Worker lock exists. Use resume --recover only after stopping the old process.")
       assert(fs.remove(lock))

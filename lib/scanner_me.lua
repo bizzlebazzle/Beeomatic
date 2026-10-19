@@ -27,6 +27,14 @@ function M:validate()
   assert(c.isolatedVerified,"verify isolated shared scanner input/output and equal-count analysis")
   self.storage:port(c.storage); local size=self.inv:size(c.input); self.inv:size(c.output)
   U.assertNumber(c.inputSlot,1,size)
+  assert(c.storage.side~=c.input.side and c.storage.side~=c.output.side,"scanner input/output cannot use its Interface inventory")
+  if c.outputSlots then
+    assert(#c.outputSlots>0,"scanner output slots required")
+    local seen={}
+    for _,slot in ipairs(c.outputSlots) do
+      U.assertNumber(slot,1,self.inv:size(c.output)); assert(not seen[slot],"duplicate scanner output slot"); seen[slot]=true
+    end
+  end
   if c.input.transposer==c.output.transposer and c.input.side==c.output.side then
     assert(c.outputSlots and #c.outputSlots>0,"direct analyser access needs explicit output slots")
     local seen={}

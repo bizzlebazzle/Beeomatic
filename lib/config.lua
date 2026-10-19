@@ -18,6 +18,7 @@ function M.validate(c)
   if c.storage.kind=="me_interface" then
     assert(c.storage.address and c.storage.database,"configure ME reader and database")
     assert(c.scanner.enabled and c.scanner.storage and c.scanner.storage.managed,"register the shared scanner Interface")
+    assert(c.scanner.input and c.scanner.output and c.scanner.inputSlot,"configure shared scanner input/output slots")
     local ports,addresses,views={},{},{}
     for _,ep in ipairs(c.storage.endpoints) do
       assert(ep.managed and ep.address and ep.id and ep.transposer,"incomplete Interface port")

@@ -209,3 +209,17 @@ test("partial scanner acceptance resumes the accepted batch and later scans the 
   end
   eq(w.state.stockPhase,"READY"); eq(B.count(w.storage:scan(),"Spirit","drone",true),8)
 end)
+test("rejected Interface movement reconciles zero accepted units without spending stock",function()
+  local w=ME.new(); local s=ME.bee("Spirit","drone",8); w:addStock(s)
+  local p=w.storage:materialize(select(w,s),w.c.alvearies[1].storage,"job",1); w.failTransfer=true
+  raises(function() w.inv:move(p,{id="destination",transposer="tp1",side=3},10,1,"job") end,"uncertain")
+  ok(w.inv:reconcile()); eq(w.state.pending,nil); eq(w.state.meRequests["port1:2"].consumed,nil)
+  eq(w.inventories.port1[2].size,1); eq(w.inventories.a[10],nil)
+end)
+test("an unset failed stock intent can retry configuration without replaying a transfer",function()
+  local w=ME.new(); local s=ME.bee("Spirit","drone",8); w:addStock(s); w.failConfig=true
+  raises(function() w.storage:materialize(select(w,s),w.c.alvearies[1].storage,"job",1) end,"configuration failed")
+  eq(w.state.meRequests["port1:2"].phase,"INTENT"); eq(w.moves,0)
+  w.failConfig=false; local p=w.storage:materialize(select(w,s),w.c.alvearies[1].storage,"job",1)
+  eq(p.stack.size,1); eq(w.moves,0); eq(w.cells[B.identity(s)].size,7)
+end)
