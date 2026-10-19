@@ -21,3 +21,31 @@ test("already scanned bees bypass scanner",function()
   local w=scanWorld(); w.inventories.hub[7]=W.bee("Spirit","princess")
   ok(w.scanner:step(w.storage:scan())); eq(w.moves,0)
 end)
+
+test("doctor accepts external ME scanner without legacy provenance flag and checks hardware",function()
+  local w=require("tests.mocks.me").new(); local c=w.c.scanner
+  c.mode="external"; c.output=nil; c.outputSlots=nil; c.inputSlot=nil; c.isolatedVerified=nil
+  local function scannerResult()
+    for _,r in ipairs(require("lib.ui.diagnostics").check(w.c,w.components,w.inv,w.storage)) do
+      if r.name=="scanner" then return r end
+    end
+    error("scanner result missing")
+  end
+  local r=scannerResult(); ok(r.ok,r.error); eq(w.moves,0)
+  c.input.side=c.storage.side
+  r=scannerResult(); ok(not r.ok); ok(r.error:find("separate sides",1,true)); eq(w.moves,0)
+end)
+
+test("doctor retains provenance checks for chest and legacy ME scanners",function()
+  local worlds={scanWorld(),require("tests.mocks.me").new()}
+  for _,w in ipairs(worlds) do
+    w.c.scanner.isolatedVerified=nil
+    local found=false
+    for _,r in ipairs(require("lib.ui.diagnostics").check(w.c,w.components,w.inv,w.storage)) do
+      if r.name=="scanner" then
+        found=true; ok(not r.ok); ok(r.error:find("verif",1,true))
+      end
+    end
+    ok(found); eq(w.moves,0)
+  end
+end)
