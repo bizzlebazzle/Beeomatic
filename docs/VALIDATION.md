@@ -6,6 +6,11 @@ These versions are verified from the release manifest and OC/Forestry tagged sou
 The full application has not yet run in-game. Manual component tests on the user's
 server confirmed physical genetic inspection, exact database NBT copy, the broken
 imperative callback, and normal redstone export with an exact-NBT receipt.
+The computer's local left output (side 5) also activated the north-side wire with
+the computer facing east. A transposer transfer moved one exact-NBT drone from
+buffer side 5 to archive side 3, emptied the buffer, and exposed that same drone
+to ME after adding the archive storage bus. The complete OC-controlled export
+cycle and application breeding remain unverified.
 
 Current automated result: **76 tests passed, zero failures, on each of Lua 5.2 and Lua 5.3**. This
 includes the public command path, persistent foreground events, installer copy and

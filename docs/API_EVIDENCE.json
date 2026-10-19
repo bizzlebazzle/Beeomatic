@@ -44,6 +44,23 @@
       "count": 1,
       "exactNbtMatch": true
     },
+    "ocRedstoneOutput": {
+      "computerFront": "east",
+      "wireWorldDirection": "north",
+      "localSide": 5,
+      "localSideName": "left",
+      "wireActivationConfirmed": true
+    },
+    "archiveTransfer": {
+      "bufferTransposerSide": 5,
+      "archiveTransposerSide": 3,
+      "archiveSlots": 27,
+      "moved": 1,
+      "exactNbtMatch": true,
+      "bufferEmptyAfterTransfer": true,
+      "storageBusNetworkCount": 1,
+      "networkExactNbtMatch": true
+    },
     "automatedOcRedstoneValidated": false,
     "applicationBreedingValidated": false
   }
