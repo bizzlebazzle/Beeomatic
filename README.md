@@ -21,8 +21,10 @@ New raw bees added to ME during breeding queue for the shared scanner. Unknown
 return variants are physically inspected so raw additions cannot be mistaken for
 analysed returns. Running alvearies continue to be monitored and their finished
 offspring collected while scanning proceeds; new cycles and offspring assessment
-wait until scanning completes. Avoid inserting analysed bees during an external
-scanner batch: their stock increases can be indistinguishable from its returns.
+wait until scanning completes. Analysed bees of a different physically verified
+species are excluded from return detection when the source species is known.
+Avoid inserting analysed bees of the expected species during an external scanner
+batch: their stock increases can be indistinguishable from its returns.
 
 The implementation passes mocked Lua 5.2 and 5.3 tests. **The new Interface flow
 still requires in-game acceptance**; source verification and mocks cannot certify

@@ -97,7 +97,13 @@ function M:externalResult(q)
         q.returnProbe={item={network=true,endpoint={id="ME"},slot=key,stack=U.copy(s)}}; self.save()
         self:inspectReturn(q)
       end
-      if q.returnChecks[key] then
+      -- Analysis preserves species identity. A different physically inspected
+      -- species cannot be this batch's return, even if it was added analysed.
+      -- Use the existing catalogue so interrupted batches with boolean checks
+      -- from earlier versions recover without resetting their saved baseline.
+      local genome=self.state.aeCatalog[key]
+      local wrongSpecies=q.ident and genome and genome.ident and genome.ident~=q.ident
+      if q.returnChecks[key] and not wrongSpecies then
         assert(not result,"multiple possible scanner returns; preserve stock and audit the external path")
         assert(delta<=q.count,"scanner return count exceeds the reserved batch; audit external insertions")
         result={network=true,endpoint={id="ME"},slot=key,stack=U.copy(s)}

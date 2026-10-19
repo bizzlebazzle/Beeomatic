@@ -106,17 +106,52 @@ test("external scanner waits for all units of a split return and preserves timeo
   w.scanner:step(w.storage:scan()); eq(w.state.scan,nil); eq(w.moves,1)
 end)
 
-test("external scanner rejects a wrong-species return without granting readiness",function()
+test("external scanner ignores a wrong-species return without granting readiness",function()
   local w=externalScanner(); w:addStock(ME.bee("Spirit","drone",8,true))
   w.scanner:step(w.storage:scan()); w:returnExternal(nil,"Forest")
-  raises(function() w.scanner:step(w.storage:scan()) end,"species identity")
-  eq(w.state.scan.phase,"VERIFYING"); eq(w.state.stockReady,nil)
+  eq(w.scanner:step(w.storage:scan()),false)
+  eq(w.state.scan.phase,"PROCESSING"); eq(w.state.stockReady,nil)
+  w.time=601
+  raises(function() w.scanner:step(w.storage:scan()) end,"batch preserved")
 end)
 
 test("external scanner refuses ambiguous return variants",function()
   local w=externalScanner(); w:addStock(ME.bee("Spirit","drone",8,true))
   w.scanner:step(w.storage:scan()); w:returnExternal()
-  w:addStock(ME.bee("Forest","drone",1))
+  w:addStock(ME.bee("Spirit","drone",1,nil,{fertility=4}))
+  raises(function() w.scanner:step(w.storage:scan()) end,"multiple possible scanner returns")
+  eq(w.state.scan.phase,"PROCESSING")
+end)
+
+test("analysed unrelated species cannot compete with the expected scanner return",function()
+  local w=externalScanner(); w:addStock(ME.bee("Common","drone",1,true))
+  w.scanner:step(w.storage:scan()); w:returnExternal()
+  local unrelated=ME.bee("Ocean","drone",32); w:addStock(unrelated)
+  w.scanner:step(w.storage:scan()); eq(w.state.scan,nil)
+  eq(B.count(w.storage:scan(),"Common","drone",true),1)
+  eq(w.cells[B.identity(unrelated)].size,32); eq(next(w.state.meRequests),nil)
+end)
+
+test("saved boolean return checks recover owned Common batch despite an Ocean candidate",function()
+  local w=externalScanner(); local raw=ME.bee("Common","drone",1,true)
+  w.inventories.a[8]=raw
+  local receipt=w.storage:deposit({endpoint={id="a",transposer="tp1",side=3},slot=8,stack=raw},
+    w.c.alvearies[1].storage,"job1")
+  w.scanner:step(w.storage:scan()); w:returnExternal()
+  local common=ME.bee("Common","drone",1); local ocean=ME.bee("Ocean","drone",1)
+  w:addStock(ocean); w.storage:catalogue(common); w.storage:catalogue(ocean)
+  w.state.scan.returnChecks={[B.identity(common)]=true,[B.identity(ocean)]=true}
+  w.scheduler:recover(); local moves=w.moves
+  w.scanner:step(w.storage:scan()); eq(w.state.scan,nil); eq(w.moves,moves)
+  local batch=w.state.meBatches[receipt.batchId]
+  eq(batch.owner,"job1"); eq(batch.count,1); eq(batch.identity,B.identity(common))
+  eq(w.cells[B.identity(ocean)].size,1); eq(next(w.state.meRequests),nil)
+end)
+
+test("unknown source species still requires an audit between different analysed returns",function()
+  local w=externalScanner(); w:addStock(ME.bee("Common","drone",1,true))
+  w.scanner:step(w.storage:scan()); w:returnExternal(); w.state.scan.ident=nil
+  w:addStock(ME.bee("Ocean","drone",1))
   raises(function() w.scanner:step(w.storage:scan()) end,"multiple possible scanner returns")
   eq(w.state.scan.phase,"PROCESSING")
 end)
