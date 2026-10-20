@@ -46,6 +46,9 @@ function M.upgradeIdentity(value)
   end)
   if not yes or type(stack)~="table" or type(stack.name)~="string" or type(stack.tag)~="string" then return value end
   for key in pairs(stack) do if key~="name" and key~="damage" and key~="tag" then return value end end
+  -- Only gzip tags changed identity format. Re-encoding opaque tags creates
+  -- another large string per receipt and needlessly fills the migration cache.
+  if stack.tag:sub(1,2)~="\31\139" then return value end
   return M.identity(stack)
 end
 function M.migrateIdentities(state)

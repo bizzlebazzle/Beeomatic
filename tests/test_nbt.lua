@@ -24,6 +24,15 @@ test("migration rejects conflicting equivalent saved identities without persisti
   local function key(tag) return U.encode({name="Forestry:beeQueenGE",damage=0,tag=tag}) end
   raises(function() B.migrateIdentities({aeCatalog={[key(F.a)]={ident="one"},[key(F.b)]={ident="two"}}}) end,"conflicting saved NBT identities")
 end)
+
+test("migration leaves opaque tag identities untouched without re-encoding large receipt strings",function()
+  local U=require("lib.util"); local B=require("lib.bees")
+  local identity=U.encode({name="Forestry:beeDroneGE",damage=0,tag=string.rep("opaque",2000)})
+  local state={transactions={{identity=identity}},aeCatalog={[identity]={ident="forest"}}}
+  local encode=U.encode; U.encode=function() error("opaque identities must not be re-encoded") end
+  local success,why=pcall(B.migrateIdentities,state); U.encode=encode
+  ok(success,why); eq(state.transactions[1].identity,identity); eq(state.aeCatalog[identity].ident,"forest")
+end)
 test("NBT identity ignores compound order and gzip metadata while preserving every typed value",function()
   eq(N.canonical(F.a),N.canonical(F.b))
   ok(N.canonical(F.a)~=N.canonical(F.changed))
