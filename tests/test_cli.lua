@@ -5,6 +5,21 @@ local function withAnswer(answer,fn)
   assert(success,err)
 end
 
+test("doctor NBT check reports a blocked selection without running recovery or moving stock",function()
+  local ME=require("tests.mocks.me"); local w=ME.new(); local s=ME.bee("Spirit","drone",8); w:addStock(s)
+  w.state.scan={phase="REQUESTING",item={stack=s}}
+  O.with(w,function(files,out)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    files["/project/data/state.lua"]="return "..U.encode(w.state)
+    local before=files["/project/data/state.lua"]
+    require("lib.cli").main("/project",{"doctor","--nbt"})
+    ok(table.concat(out,"\n"):find("NBT=true identity=true",1,true))
+    eq(files["/project/data/state.lua"],before); eq(w.moves,0)
+    files["/project/data/worker.lock"]="busy"
+    raises(function() require("lib.cli").main("/project",{"doctor","--nbt"}) end,"worker")
+  end)
+end)
+
 test("cancel clears a stranded request and allows a new breeding request",function()
   local w=W.new(); w:addMachine("a"); w:build(); w.c.confirmCycles=1; w.c.minDrones=2
   W.job(w,"old-plan","Forest","populate")

@@ -3,6 +3,30 @@ local function select(w,s)
   return {network=true,endpoint={id="ME"},slot=B.identity(s),stack=U.copy(s)}
 end
 
+test("NBT diagnostic inspects the blocked scanner selection without moving bees or saving",function()
+  local w=ME.new(); local s=ME.bee("Spirit","drone",8); w:addStock(s)
+  w.state.scan={phase="REQUESTING",item=select(w,s)}
+  local before=U.copy(w.state); w.inv.save=function() error("must not save") end
+  local store=w.proxies.me.store
+  w.proxies.me.store=function(...) local result=store(...); w.database[1].tag="different"; return result end
+  local lines={}
+  require("lib.ui.diagnostics").nbt(w.storage,function(line) lines[#lines+1]=line end)
+  local report=table.concat(lines,"\n")
+  ok(report:find("exact matches=1",1,true)); ok(report:find("NBT=false",1,true))
+  ok(report:find("first NBT difference=",1,true)); eq(w.state,before); eq(w.moves,0)
+  eq(next(w.filters["scan-port"]),nil); eq(w.cells[B.identity(s)].size,8)
+end)
+
+test("NBT diagnostic distinguishes empty copies and refuses unresolved transfers",function()
+  local w=ME.new(); w:addStock(ME.bee("Spirit","drone",8))
+  w.proxies.me.store=function() return true end
+  local lines={}; local diagnostic=require("lib.ui.diagnostics").nbt
+  diagnostic(w.storage,function(line) lines[#lines+1]=line end)
+  ok(table.concat(lines,"\n"):find("Entry 1: EMPTY",1,true))
+  w.state.pending={phase="INTENT"}
+  raises(function() diagnostic(w.storage,function() end) end,"unresolved movement")
+end)
+
 test("Interface automatically rebuilds a mismatched database before stocking",function()
   local w=ME.new(); local s=ME.bee("Spirit","drone",8); w:addStock(s)
   local store=w.proxies.me.store; local copies=0

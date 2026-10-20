@@ -101,6 +101,14 @@ Components without that method retain individual reads with one size check per
 scan. Transfers still read their actual source/destination before committing. Grouped slot reads
 share one inventory-availability check. Component capability discovery is reused
 while the component proxy is unchanged; actual item contents are read fresh.
+`Beeomatic doctor --nbt` diagnoses a persistent database identity failure without
+moving bees or rewriting saved progress. Stop the worker first. It checks the
+saved scanner selection (or a network bee when no scanner selection exists),
+rebuilds only its scratch database entries, and reports missing entries, field
+types, NBT lengths, byte differences and repeated-read stability. Share that
+output before changing hardware or disabling identity checks. It does not run
+the usual doctor's transfer reconciliation.
+
 ME requests clear only the database slots needed for their matching variants.
 A single previous database entry can be reused after reading and verifying its
 exact NBT again. Transfers save the reservation with the movement intent, retaining

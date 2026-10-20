@@ -2,7 +2,7 @@ local U=require("lib.util"); local Config=require("lib.config"); local P=require
 local B=require("lib.bees"); local Jobs=require("lib.jobs")
 local M={}
 local help=[[Beeomatic setup [--reconfigure]
-Beeomatic doctor [--probe | --interface PORT | --adopt JOB | --retry JOB | --confirm ALVEARY]
+Beeomatic doctor [--nbt | --probe | --interface PORT | --adopt JOB | --retry JOB | --confirm ALVEARY]
 Beeomatic plan SPECIES [--verbose] [--no-pager]
 Beeomatic breed SPECIES [--noFinalImprint | --onlyFinalImprint]
 Beeomatic convert SPECIES | populate SPECIES COUNT | imprint SPECIES
@@ -288,6 +288,9 @@ function M.main(root,args)
     else error("Use alveary list, add, remove ID, configure ID, or rename ID NAME") end; return
   end
   if cmd=="doctor" then
+    if f.nbt then
+      unlocked(); require("lib.ui.diagnostics").nbt(storage); return
+    end
     if f.interface then
       unlocked(); assert(storage.interface,"Interface probe requires ME Interface storage mode")
       local port
