@@ -264,16 +264,82 @@ test("native registration fixes all slots and retries an empty witness without r
   local function raw(kind)
     local s=W.bee("Spirit",kind); s.individual.active=nil; s.individual.inactive=nil; s.individual.isAnalyzed=false; return s
   end
-  local wizard,out=picker(w,{"",function() w.inventories.a[1]=raw("princess"); return "" end,
-    function() w.inventories.a[1]=nil; w.inventories.a[2]=raw("drone"); return "" end,
+  local wizard,out=picker(w,{"",function() w.inventories.a[2]=raw("drone"); return "" end,
+    function() w.inventories.a[2]=nil; w.inventories.a[1]=raw("princess"); return "" end,
     "NORMAL","NORMAL"})
   wizard:addAlveary()
   eq(a.slots,{inventorySize=9,princess=1,drone=2,outputs={3,4,5,6,7,8,9},verified=true})
   local text=table.concat(out,"\n")
-  ok(text:find("Slot 1 is empty through transposer tp1, side 3",1,true))
+  ok(text:find("Slot 2 is empty through transposer tp1, side 3",1,true))
   ok(text:find("Analysis is not required",1,true)); ok(not text:find("Product/offspring output staging slots",1,true))
   eq(w.moves,0); eq(w.c.alvearyDraft,nil)
 end)
+test("direct registration detects its inventory and reuses the drone for housing verification",function()
+  local w=W.new(); local a=w:addMachine("a"); table.remove(w.c.alvearies)
+  w.inventories.a.size=9; w.inventories.a[2]=W.bee("Spirit","drone")
+  w.proxies.housing1.getQueen=function() local s=w.inventories.a[1]; return s and U.copy(s.individual) end
+  w.c.alvearyDraft={stage=2,machine=a}; w:build()
+  local wizard,out=picker(w,{"alveary","","",function()
+    w.inventories.a[2]=nil; w.inventories.a[1]=W.bee("Spirit","princess"); return ""
+  end,"NORMAL","NORMAL"})
+  wizard.address=function(_,label) return label=="Housing component address" and "housing1" or "tp1" end
+  wizard.endpoint=function(_,label) eq(label,"Archive for a"); return a.storage end
+  wizard:addAlveary()
+  eq(#w.c.alvearies,1); eq(a.side,3); eq(a.slots.verified,true); eq(w.moves,0)
+  local text=table.concat(out,"\n")
+  ok(text:find("Detected a: south (3)",1,true)); ok(text:find("Confirmed drone",1,true))
+  ok(not text:find("Inventory number for Alveary",1,true))
+end)
+
+test("alveary detection ignores registered neighbours and drones in other slots",function()
+  local w=W.new(); w:addMachine("old"); w.inventories.old.size=9
+  w.inventories.old[2]=W.bee("Spirit","drone")
+  w:inventory("new",9); w.inventories.new[2]={name="Forestry:beeDroneGE",size=1}
+  w:inventory("port",9); w.inventories.port[1]=W.bee("Spirit","drone")
+  w:addTransposer("tp1",{[0]="port",[2]="old",[5]="new"})
+  w.c.alvearies[1].side=2; w:build()
+  local wizard,out=picker(w,{""}); wizard.address=function() return "tp1" end
+  local ep=wizard:alvearyEndpoint("Alveary 2",{id="alveary_2"})
+  eq(ep,{id="alveary_2",transposer="tp1",side=5}); eq(w.moves,0)
+  ok(table.concat(out,"\n"):find("Detected Alveary 2: east (5)",1,true))
+end)
+
+test("alveary detection retries missing and ambiguous drones without selecting a default",function()
+  local w=W.new(); w:inventory("a",9); w:inventory("b",9)
+  w:addTransposer("tp1",{[2]="a",[5]="b"}); w:build()
+  local wizard,out=picker(w,{"",function()
+    w.inventories.a[2]=W.bee("Spirit","drone"); w.inventories.b[2]=W.bee("Spirit","drone"); return ""
+  end,function() w.inventories.a[2]=nil; return "" end})
+  wizard.address=function() return "tp1" end
+  local ep=wizard:alvearyEndpoint("Second",{id="second",side=2})
+  eq(ep.side,5); eq(w.moves,0)
+  local text=table.concat(out,"\n")
+  ok(text:find("No unregistered alveary found",1,true)); ok(text:find("More than one inventory matches",1,true))
+end)
+
+test("alveary detection rejects occupied queen slots and retries failed reads",function()
+  local w=W.new(); w:inventory("a",9); w.inventories.a[1]=W.bee("Spirit","queen")
+  w.inventories.a[2]=W.bee("Spirit","drone"); w:addTransposer("tp1",{[3]="a"})
+  local get=w.proxies.tp1.getStackInSlot; local failing=false
+  w.proxies.tp1.getStackInSlot=function(side,slot) if failing then error("unloaded") end; return get(side,slot) end
+  w:build()
+  local wizard,out=picker(w,{"",function() w.inventories.a[1]=nil; failing=true; return "" end,
+    function() failing=false; return "" end})
+  wizard.address=function() return "tp1" end
+  eq(wizard:alvearyEndpoint("New",{id="new"}).side,3); eq(w.moves,0)
+  ok(table.concat(out,"\n"):find("Cannot read south",1,true))
+end)
+
+test("alveary detection supports back and interrupted checks without saving a connection",function()
+  local w=W.new(); w:addTransposer("tp1",{}); w:build()
+  local wizard=picker(w,{"back"}); wizard.address=function() return "tp1" end
+  local success,err=pcall(function() wizard:alvearyEndpoint("New",{id="new"}) end)
+  eq(success,false); eq(err.setupBack,true); eq(w.c.inventoryIds,nil)
+  local resumed=picker(w,{}); resumed.address=wizard.address
+  raises(function() resumed:alvearyEndpoint("New",{id="new"}) end,"Setup interrupted")
+  eq(w.c.inventoryIds,nil); eq(w.moves,0)
+end)
+
 test("bee placement check distinguishes a queen from a princess and retries",function()
   local w=W.new(); w:addMachine("a"); w:build(); w.inventories.a[1]=W.bee("Spirit","queen")
   local ep={id="a",transposer="tp1",side=3}

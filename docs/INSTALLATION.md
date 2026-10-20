@@ -96,11 +96,18 @@ component. It then lists only newly discovered compatible components for selecti
 Use `R` to return to the complete list. Enter retains an available current selection.
 When registering an inventory, a lone already named compatible transposer is reused
 automatically. Otherwise, choose the transposer first. A separate numbered menu then
-asks which attached inventory serves the named role (Interface, alveary, analyser, etc.).
+asks which attached inventory serves the named role (Interface, analyser, etc.).
 Select its inventory menu number, not its world-side number; directions and contents
 are identification hints. Empty inventories can be selected. `R` refreshes this
 inventory menu without returning to transposer selection. The saved side remains
 the actual world direction, so existing configuration remains compatible.
+For a direct alveary, select its transposer, place a drone in the alveary's drone
+slot (2), leave its princess/queen slot (1) empty, and press Enter. Setup detects
+the side automatically, ignoring already registered alvearies on that transposer.
+Keep drones out of slot 2 in other unregistered nine-slot inventories touching
+that transposer, including Interfaces. Missing, ambiguous or unreadable results
+retry. Leave the drone in place for the housing-adapter check, then remove it
+before the princess check. Detection only reads inventories; analysis is not required.
 Transposer previews show world sides, inventory sizes and up to two occupied slots
 per inventory. Use a distinctive item in a previewed slot to identify a chest, then
 refresh; previews never move items. Full method documentation is available separately

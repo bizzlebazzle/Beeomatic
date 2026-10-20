@@ -167,6 +167,43 @@ function M.new(config,components,inv,save,read,out)
     self.out("Inventory reference: "..ep.id.." (assigned automatically)")
     self.inv:size(ep); return ep
   end
+  function w:alvearyEndpoint(name,default)
+    self:heading("Find "..name.." automatically")
+    self.out("Choose the transposer touching the alveary itself.")
+    local address=self:address("Transposer for "..name,{"getInventorySize","getStackInSlot","transferItem"},default.transposer,true)
+    local p=self.components:proxy(address)
+    local sides={"down","up","north","south","west","east"}
+    while true do
+      self.out("Put a drone in "..name.."'s drone slot (slot 2). Leave its princess/queen slot (slot 1) empty so mating cannot start. Analysis is not required.")
+      self.out("Keep drones out of slot 2 in other unregistered nine-slot inventories touching this transposer, including ME Interfaces.")
+      self:ask("Press Enter to detect the alveary, or type back to change the connection","")
+      local matches,unreadable={},false
+      for side=0,5 do
+        local registered=false
+        for _,a in ipairs(self.c.alvearies) do
+          if a.transposer==address and a.side==side then registered=true end
+        end
+        if not registered then
+          local success,match=pcall(function()
+            if p.getInventorySize(side)~=9 then return false end
+            return not p.getStackInSlot(side,1) and B.kind(p.getStackInSlot(side,2))=="drone"
+          end)
+          if not success then unreadable=true; self.out("Cannot read "..sides[side+1].." ("..side.."). Check the connection and loaded chunks.")
+          elseif match then matches[#matches+1]=side end
+        end
+      end
+      if #matches==1 and not unreadable then
+        local side=matches[1]
+        local ep={id=self:inventoryId(address,side,default),transposer=address,side=side}
+        self.out("Detected "..name..": "..sides[side+1].." ("..side..") from the transposer. Leave the drone there for the connection check.")
+        return ep
+      elseif #matches>1 then
+        self.out("More than one inventory matches: "..table.concat(matches,", ")..". Leave a drone only in the alveary being added, then retry.")
+      elseif #matches==0 then
+        self.out("No unregistered alveary found. Check the transposer, the drone in slot 2, and the empty princess/queen slot; then retry.")
+      end
+    end
+  end
   function w:port(label,default,transposer)
     local ep
     while true do
@@ -274,7 +311,8 @@ function M.new(config,components,inv,save,read,out)
           a.backend=self:ask("Inventory backend: alveary (direct access) or routed (external gated pipes)",a.backend or "alveary"):lower()
           assert(a.backend=="alveary" or a.backend=="routed","choose alveary or routed")
           if a.backend=="alveary" then a.routing=nil end
-          local ep=self:endpoint(a.backend=="routed" and "Input staging chest for "..a.name or "Alveary inventory for "..a.name,{id=a.id,transposer=a.transposer,side=a.side})
+          local connection={id=a.id,transposer=a.transposer,side=a.side}
+          local ep=a.backend=="routed" and self:endpoint("Input staging chest for "..a.name,connection) or self:alvearyEndpoint(a.name,connection)
           a.transposer=ep.transposer; a.side=ep.side
           a.storage=self.c.storage.kind=="me_interface" and
             self:port("ME Interface for "..a.name,a.storage or {id="port_"..a.id},a.transposer) or
@@ -308,10 +346,16 @@ function M.new(config,components,inv,save,read,out)
           end
           self.out("Connection check: test one bee at a time. This check only reads inventories and does not move bees.")
           local h=not a.routing and self.components:proxy(a.address) or nil
-          self:beeWitness(ep,slots.princess,"princess",slots.drone,h)
-          self.out("Remove the princess through the GUI before testing the drone.")
-          self:beeWitness(ep,slots.drone,"drone",slots.princess,h)
-          self.out("Remove the test drone. Before breeding, verify this alveary can complete a normal cycle and return the test stock to storage.")
+          if not a.routing then
+            self:beeWitness(ep,slots.drone,"drone",slots.princess,h)
+            self.out("Remove the drone through the GUI before testing the princess.")
+            self:beeWitness(ep,slots.princess,"princess",slots.drone,h)
+          else
+            self:beeWitness(ep,slots.princess,"princess",slots.drone,h)
+            self.out("Remove the princess through the GUI before testing the drone.")
+            self:beeWitness(ep,slots.drone,"drone",slots.princess,h)
+          end
+          self.out("Remove the test bee. Before breeding, verify this alveary can complete a normal cycle and return the test stock to storage.")
           if a.routing then slots.verified=self:yes("Have you tested the isolated output staging route and slot map?",false)
           else slots.verified=true end
           a.slots=slots

@@ -17,11 +17,11 @@ These are the prompts in order for `alveary add`, also used within full setup:
 | 2 | Component number: Housing component address | Select the housing adapter |
 | 3 | Inventory backend: alveary (direct access) or routed (external gated pipes) | Defaults to `alveary` |
 | 4 | Component number: Transposer for Alveary inventory | Skipped when there is only one compatible, already-named transposer |
-| 5 | Inventory number for Alveary inventory | Select the attached alveary/side |
+| 5 | Press Enter to detect the alveary, or type back to change the connection | Put a drone in the alveary's slot 2, with slot 1 empty; the side is detected automatically |
 | 6 | Inventory number for ME Interface | Uses the already selected transposer |
 | 7 | Component number: Adapter at ME Interface | Select its OC adapter |
-| 8 | Press Enter to check, or type back to change the inventory connection | Manually place princess in slot 1, slot 2 empty |
-| 9 | Press Enter to check, or type back to change the inventory connection | Remove princess; put drone in slot 2, slot 1 empty |
+| 8 | Press Enter to check, or type back to change the inventory connection | Leave the detection drone in slot 2, slot 1 empty |
+| 9 | Press Enter to check, or type back to change the inventory connection | Remove drone; put princess in slot 1, slot 2 empty |
 | 10 | Temperature: ICY COLD NORMAL WARM HOT HELLISH | Working climate including upgrades |
 | 11 | Humidity: ARID NORMAL DAMP | Working humidity |
 
@@ -30,7 +30,13 @@ this component** immediately after selection. Previously named components skip
 that question. Full setup also asks **Register another alveary?** after registration;
 standalone `alveary add` does not.
 
-The two placement checks (previously steps 11–12) are diagnostic: they compare
+Detection reads the selected transposer's six sides. It requires a nine-slot
+inventory with a drone in slot 2 and slot 1 empty, ignoring already registered
+alvearies on that transposer. Missing, ambiguous or unreadable results retry;
+keep drones out of slot 2 in other unregistered nine-slot inventories, including
+ME Interfaces. Analysis is not required and no bees are moved.
+
+The two placement checks are diagnostic: they compare
 the bee seen through the transposer with the housing adapter's bee. This catches
 wrong-side selections and adapters attached to another alveary, including when
 two alvearies share a transposer. They read inventories without moving bees.
