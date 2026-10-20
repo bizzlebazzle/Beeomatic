@@ -1,7 +1,9 @@
 # Commands and process control
 
-Commands and species names are case insensitive. Use quotes around multiword
-species. Full Forestry species UIDs and configured aliases are accepted.
+Commands and species names are case insensitive. Multiword species work with or
+without quotes: `Beeomatic plan end dust` and `Beeomatic plan "End Dust"` are
+equivalent. For `populate`, put the count last: `Beeomatic populate end dust 32`.
+Full Forestry species UIDs and configured aliases are accepted.
 
 ```sh
 Beeomatic setup

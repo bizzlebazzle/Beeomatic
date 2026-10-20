@@ -13,6 +13,7 @@ Beeomatic storage scan | bees list | bees inspect SPECIES
 Beeomatic help
 
 Jobs run in the foreground. p pauses, r resumes, q cancels all work immediately.
+Species names may contain spaces, with or without quotes. populate takes COUNT last.
 cancel abandons the entire process; stop is an alias. Bees remain in place.
 Ctrl+C exits with state preserved. Run resume after repairing a blocked job.
 Other OpenOS shells can send pause/resume/cancel through a persistent mailbox.
@@ -21,7 +22,22 @@ function M.parse(args)
   local positional,flags={},{}
   for _,a in ipairs(args) do
     if a:sub(1,2)=="--" then flags[a:sub(3):lower()]=true else positional[#positional+1]=a end
-  end; return positional,flags
+  end
+  local cmd,sub=U.lower(positional[1]),U.lower(positional[2])
+  local first,last=2,#positional
+  if cmd=="populate" then last=last-1
+  elseif cmd=="bees" and sub=="inspect" then first=3
+  elseif cmd~="plan" and cmd~="breed" and cmd~="convert" and cmd~="imprint" then
+    return positional,flags
+  end
+  if last>=first then
+    local species=table.concat(positional," ",first,last)
+    local count=cmd=="populate" and positional[last+1] or nil
+    for n=#positional,first,-1 do positional[n]=nil end
+    positional[first]=species
+    if count then positional[first+1]=count end
+  end
+  return positional,flags
 end
 function M.main(root,args)
   local fs=require("filesystem"); local computer=require("computer"); local event=require("event")

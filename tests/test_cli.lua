@@ -5,6 +5,73 @@ local function withAnswer(answer,fn)
   assert(success,err)
 end
 
+test("species commands accept quoted and unquoted multiword names and preserve flags",function()
+  local CLI=require("lib.cli")
+  for _,cmd in ipairs({"plan","breed","convert","imprint","populate"}) do
+    for _,words in ipairs({{"End","Dust"},{"End Dust"},{"Spirit"},{"test.speciesenddust"}}) do
+      local args={cmd,"--verbose"}
+      for _,word in ipairs(words) do args[#args+1]=word end
+      args[#args+1]="--noFinalImprint"
+      if cmd=="populate" then args[#args+1]="32" end
+      args[#args+1]="--no-pager"
+      local a,f=CLI.parse(args)
+      local expected={cmd,table.concat(words," ")}
+      if cmd=="populate" then expected[3]="32" end
+      eq(a,expected); ok(f.verbose); ok(f.nofinalimprint); ok(f["no-pager"])
+    end
+  end
+  eq(CLI.parse({"bees","inspect","End","Dust"}),{"bees","inspect","End Dust"})
+  eq(CLI.parse({"PLAN","END","DUST"}),{"PLAN","END DUST"})
+  eq(CLI.parse({"plan"}),{"plan"})
+  eq(CLI.parse({"populate","End Dust"}),{"populate","End Dust"})
+  eq(CLI.parse({"alveary","rename","a","Cold","room"}),{"alveary","rename","a","Cold","room"})
+  eq(CLI.parse({"doctor","--interface","scanner_port"}),{"doctor","scanner_port"})
+end)
+
+test("plan resolves the full unquoted End Dust species from verified stock",function()
+  local w=W.new(); w:addMachine("a"); w:build()
+  w.inventories.hub[1]=W.bee("End Dust","princess")
+  w.inventories.hub[2]=W.bee("End Dust","drone",64)
+  O.with(w,function(files,out)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    local _,err=require("lib.cli").main("/project",{"plan","end","dust","--no-pager"})
+    eq(err,nil,err)
+    local text=table.concat(out,"\n")
+    ok(text:find("End Dust",1,true)); ok(not text:find("Cannot plan",1,true)); eq(w.moves,0)
+  end)
+end)
+
+test("bees inspect matches a full multiword name and excludes other species",function()
+  local w=W.new(); w:addMachine("a"); w:build()
+  w.inventories.hub[1]=W.bee("End Dust","princess")
+  w.inventories.hub[2]=W.bee("End","drone",8)
+  O.with(w,function(files,out)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    require("lib.cli").main("/project",{"bees","inspect","end","dust"})
+    eq(#out,1); ok(out[1]:find("End Dust",1,true)); eq(w.moves,0)
+  end)
+end)
+
+test("worker requests retain the full multiword target and population count",function()
+  for _,cmd in ipairs({"breed","convert","imprint","populate"}) do
+    local w=W.new(); w:addMachine("a"); w:build()
+    O.with(w,function(files)
+      files["/project/data/config.lua"]="return "..U.encode(w.c)
+      -- Stop during recovery so the persisted request can be checked before planning.
+      local Scheduler=require("lib.scheduler"); local recover=Scheduler.recover
+      Scheduler.recover=function() error("test recovery interruption") end
+      local args={cmd,"end","dust","--noFinalImprint"}
+      if cmd=="populate" then args[#args+1]="32" end
+      local success,why=pcall(require("lib.cli").main,"/project",args)
+      Scheduler.recover=recover; assert(success,why)
+      local state=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
+      eq(state.pendingRequest.target,"end dust"); eq(state.pendingRequest.mode,cmd)
+      eq(state.pendingRequest.count,cmd=="populate" and 32 or nil)
+      ok(state.pendingRequest.flags.nofinalimprint)
+    end)
+  end
+end)
+
 test("doctor NBT check reports a blocked selection without running recovery or moving stock",function()
   local ME=require("tests.mocks.me"); local w=ME.new(); local s=ME.bee("Spirit","drone",8); w:addStock(s)
   w.state.scan={phase="REQUESTING",item={stack=s}}
