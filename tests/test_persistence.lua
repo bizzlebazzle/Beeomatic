@@ -89,3 +89,63 @@ test("corrupted temporary state cannot replace the previous generation",function
     eq(files[path],'return {old=true}'); eq(files[path..".bak"],nil)
   end)
 end)
+
+
+test("loading legacy receipts drops completed stacks while pending recovery remains exact",function()
+  local w=W.new(); w:addMachine("a"); w:build()
+  local stack=W.bee("Forest","princess"); stack.tag=string.rep("legacy-nbt",300)
+  local tx={id=1,owner="job",phase="COMMITTED",stack=stack,identity=require("lib.bees").identity(stack),
+    source={id="a"},dest={id="hub"},slot=1,destSlot=2,count=1,transform={batchId="old"}}
+  local value={transactions={U.copy(tx)},pending=U.copy(tx),scan={item={stack=U.copy(stack)}},
+    reservations={slot={owner="job",identity=tx.identity}}}
+  O.with(w,function(files,_,fs)
+    local path="/project/data/state.lua"; local original="return "..U.encode(value); files[path]=original
+    local state=P.new(path,fs,require("lib.storage.receipts").decoded):load({})
+    eq(state.transactions[1].stack,nil); eq(state.transactions[1].transform,nil)
+    eq(state.transactions[1].identity,tx.identity); eq(state.transactions[1].dest,tx.dest)
+    eq(state.pending,value.pending); eq(state.scan,value.scan); eq(state.reservations,value.reservations)
+    eq(files[path],original)
+  end)
+end)
+
+test("checkpoint disk preflight leaves primary backup and partial temporary file untouched",function()
+  local w=W.new(); w:addMachine("a"); w:build()
+  O.with(w,function(files,_,fs)
+    local path="/project/data/state.lua"
+    files[path]="return {old=true}"; files[path..".bak"]="previous"; files[path..".tmp"]="partial"
+    local original=U.copy(files)
+    fs.get=function() return {spaceTotal=function() return 4*1024*1024 end,
+      spaceUsed=function() return 4*1024*1024-4200 end} end
+    fs.size=function(p) return files[p] and #files[p] end
+    raises(function() P.new(path,fs):save({new=string.rep("data",500)}) end,"Not enough disk space for checkpoint")
+    eq(files,original)
+    fs.get=function() return {spaceTotal=function() return 4*1024*1024 end,spaceUsed=function() return 1000 end} end
+    P.new(path,fs):save({new=true})
+    eq(P.new(path,fs):load({}),{new=true}); eq(files[path..".bak"],original[path])
+  end)
+end)
+
+
+test("checkpoint reclaims an oversized backup only when the primary is verified",function()
+  for _,valid in ipairs({true,false}) do
+    local w=W.new(); w:addMachine("a"); w:build()
+    O.with(w,function(files,_,fs)
+      local path="/project/data/state.lua"
+      files[path]=valid and "return {old=true}" or "return {broken="
+      files[path..".bak"]="return "..U.encode({padding=string.rep("x",10000)})
+      fs.get=function() return {spaceTotal=function() return 4*1024*1024 end,
+        spaceUsed=function() return 4*1024*1024-5100 end} end
+      fs.size=function(p) return files[p] and #files[p] end
+      local store=P.new(path,fs); local loaded=store:load({})
+      local original=U.copy(files)
+      if valid then
+        store:save({new=string.rep("y",2000)})
+        eq(store:load({}).new,string.rep("y",2000)); eq(files[path..".bak"],original[path])
+      else
+        ok(loaded.recoveredBackup)
+        raises(function() store:save({new=string.rep("y",2000)}) end,"Not enough disk space")
+        eq(files,original)
+      end
+    end)
+  end
+end)

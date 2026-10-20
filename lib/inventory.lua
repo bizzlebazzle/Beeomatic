@@ -100,8 +100,7 @@ function M:move(item,dest,slot,count,owner,receipt)
     tx.phase="UNCERTAIN"; tx.returned=ok and n or tostring(n); self.save()
     error("transfer uncertain or rejected; inspect source/destination, run doctor: "..owner)
   end
-  tx.phase="COMMITTED"; Receipts.commit(self.state,tx); self.state.transactions[#self.state.transactions+1]=tx
-  if #self.state.transactions>64 then table.remove(self.state.transactions,1) end
+  tx.phase="COMMITTED"; Receipts.commit(self.state,tx); Receipts.archive(self.state,tx)
   -- Source slot numbers may immediately be reused by unrelated offspring. The
   -- selected units have moved; do not lease that location through an entire cycle.
   self.state.reservations[U.location(item.endpoint,item.slot)]=nil
@@ -134,7 +133,7 @@ function M:reconcile()
     if (tx.returned==tx.count and ((tx.dest.managed and sourceProof) or (tx.source.managed and (destProof or tx.scanning or tx.dest.managed)))) or
       (tx.source.managed and destProof) or (tx.dest.managed and sourceProof and destProof) then
       tx.phase=tx.partial and "PARTIAL_RECOVERED" or "COMMITTED_RECOVERED"; Receipts.commit(self.state,tx)
-      self.state.transactions[#self.state.transactions+1]=tx; self.state.pending=nil
+      Receipts.archive(self.state,tx); self.state.pending=nil
       self.state.reservations[U.location(tx.source,tx.slot)]=nil; self.save(); return true
     end
     if (tx.returned==0 or (not tx.returned and not tx.source.managed)) and
@@ -149,14 +148,14 @@ function M:reconcile()
   end
   if (not src or (src.size==tx.before-tx.count and B.identity(src)==tx.identity)) and
     dst and dst.size==(tx.destBefore or 0)+tx.count and B.identity(dst)==tx.identity then
-    tx.phase="COMMITTED_RECOVERED"; self.state.transactions[#self.state.transactions+1]=tx
+    tx.phase="COMMITTED_RECOVERED"; Receipts.archive(self.state,tx)
     self.state.pending=nil; self.state.reservations[U.location(tx.source,tx.slot)]=nil; self.save(); return true
   end
   local removed=tx.before-(src and src.size or 0)
   if removed>0 and removed<tx.count and (not src or B.identity(src)==tx.identity) and
     dst and B.identity(dst)==tx.identity and dst.size==(tx.destBefore or 0)+removed then
     tx.requested=tx.count; tx.count=removed; tx.phase="PARTIAL_RECOVERED"
-    self.state.transactions[#self.state.transactions+1]=tx; self.state.pending=nil
+    Receipts.archive(self.state,tx); self.state.pending=nil
     self.state.reservations[U.location(tx.source,tx.slot)]=nil; self.save(); return true
   end
   return false,"Ambiguous movement owned by "..tx.owner.."; preserve both inventories. No automatic replay."

@@ -586,3 +586,19 @@ test("offline stop collects an active cycle without starting another one",functi
     eq(#state.jobs,0)
   end)
 end)
+
+
+test("worker mailbox commands avoid loading the full saved state",function()
+  local w=W.new(); w:addMachine("a"); w:build()
+  O.with(w,function(files)
+    files["/project/data/config.lua"]="broken config that must not be read"
+    files["/project/data/state.lua"]="broken journal that must not be read"
+    files["/project/data/worker.lock"]="active"
+    for _,action in ipairs({"pause","stop","resume"}) do
+      require("lib.cli").main("/project",{action})
+      local request=assert(load(files["/project/data/control.lua"],"=control","t",{}))()
+      eq(request.action,action)
+    end
+    eq(files["/project/data/state.lua"],"broken journal that must not be read")
+  end)
+end)

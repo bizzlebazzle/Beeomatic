@@ -292,3 +292,31 @@ test("optimized completion agrees with pairwise rules across stock, template and
     eq(not not w.scheduler:completion(job,items,template),not not reference(job,items,template),"completion case "..n)
   end
 end)
+
+
+test("completed receipt history remains compact and bounded on every archive path",function()
+  local receipts=require("lib.storage.receipts"); local state={transactions={}}
+  for n=1,80 do
+    receipts.archive(state,{id=n,identity="exact-nbt-"..n,stack={individual={large=string.rep("x",1000)}},
+      transform={batchId="old"},source={id="source"},dest={id="archive"},count=2})
+  end
+  eq(#state.transactions,64); eq(state.transactions[1].id,17)
+  for _,tx in ipairs(state.transactions) do
+    eq(tx.stack,nil); eq(tx.transform,nil); eq(tx.count,2); eq(tx.identity,"exact-nbt-"..tx.id)
+  end
+end)
+
+test("scheduler releases its observation inventory before obtaining a dispatch snapshot",function()
+  local w=W.new(); w:build(); W.job(w,"job","Spirit","populate")
+  local weak=setmetatable({},{__mode="v"}); local scans=0
+  w.storage.scan=function()
+    scans=scans+1
+    if scans==1 then
+      local items={{stack=W.bee("Spirit","drone",8),endpoint={id="hub"},slot=1}}
+      weak[1]=items; return items
+    end
+    collectgarbage("collect"); eq(weak[1],nil,"observation retained full stock during dispatch")
+    return {}
+  end
+  w.scheduler:step(); ok(scans>=2)
+end)

@@ -70,12 +70,12 @@ function M:populationMinimum(items,target)
   -- above the reserve, but do not demand an unreachable population target.
   return low and self.c.reserveDrones+1 or self.c.minDrones
 end
-function M:observeParentStock(items)
+function M:observeParentStock(items,allWaiting)
   -- Use the same whole-storage snapshot as storageCounts, including stock owned
   -- by population helpers. Selection still applies its usual ownership rules.
   self.state.parentStock={}
   for _,j in ipairs(self.state.jobs) do
-    if j.state=="WAITING" and j.error=="Waiting for stable parent population" then
+    if j.state=="WAITING" and (allWaiting or j.error=="Waiting for stable parent population") then
       for _,parent in ipairs(j.route and j.route.parents or {}) do
         if not self.state.parentStock[parent] then
           self.state.parentStock[parent]={count=self:count(items,parent,"drone"),minimum=self:populationMinimum(items,parent)}
@@ -364,7 +364,8 @@ function M:advance(j)
     else j.confirmed=0 end
     j.progress=(p and G.purity(p.stack,j.species) or 0)+(d and G.purity(d.stack,j.species) or 0)
     machine.job=nil; machine.state="IDLE"; machine.lastSuccess=self.now()
-    j.machine=nil; j.state="WAITING"; j.error=nil; j.resultLocations=nil; self.save()
+    j.machine=nil; j.state="WAITING"; j.error=nil; j.resultLocations=nil
+    j.expectedPrincess=nil; j.preparedPrincess=nil; j.preparedDrone=nil; self.save()
   end
 end
 function M:resume(id)
@@ -443,7 +444,7 @@ function M:adopt(j)
       U.equal(q.individual.active,j.expectedPrincess.individual.active) and
       U.equal(q.individual.inactive,j.expectedPrincess.individual.inactive),"queen genome does not witness this insertion")
     tx.phase="ADOPTED_OBSERVED_MATING"; require("lib.storage.receipts").commit(self.state,tx)
-    self.state.transactions[#self.state.transactions+1]=tx; self.state.pending=nil
+    require("lib.storage.receipts").archive(self.state,tx); self.state.pending=nil
   end
   j.state=status=="FINISHED" and "COLLECTING" or "RUNNING"
   if status=="FINISHED" then j.collectionAfter=self.state.transferSequence or 0; j.resultLocations={} end
@@ -506,6 +507,10 @@ function M:step()
   local scanOk,scanned,reason=pcall(self.prepareStock,self,items)
   if not scanOk then self.state.error=tostring(scanned); scanned=false; self.save()
   elseif not scanned then self.state.error=reason end
+  self:observeParentStock(items,true)
+  -- Only small counts are needed for display. Do not retain this whole-network
+  -- snapshot while assessment/dispatch obtain fresh stock after movements.
+  items=nil
   -- Advance machines even when a different scanner operation is outstanding.
   for _,j in ipairs(self.state.jobs) do
     if j.state=="RUNNING" or j.state=="COLLECTING" or j.state=="ASSESSING" then
@@ -535,7 +540,13 @@ function M:step()
       self.storage:releaseBatches(j.id); j.lineage=nil; self.inv:release(j.id)
     end end
   end
-  self:observeParentStock(items)
+  local needed={}
+  for _,j in ipairs(self.state.jobs) do
+    if j.state=="WAITING" and j.error=="Waiting for stable parent population" then
+      for _,parent in ipairs(j.route and j.route.parents or {}) do needed[parent]=true end
+    end
+  end
+  for species in pairs(self.state.parentStock) do if not needed[species] then self.state.parentStock[species]=nil end end
   -- Cursor position, observation timestamps and fresh stock counts can be
   -- recomputed after restart. Idle polls need no disk write. Physical/lifecycle
   -- transitions retain their own durable checkpoints; persist new diagnostics

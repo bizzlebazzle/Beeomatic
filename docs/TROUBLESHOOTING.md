@@ -69,3 +69,18 @@ Mutation conditions are saved by exact text and alveary ID. If a special foundat
 is installed, use `doctor --confirm ID` and explicitly confirm it. Day/time/weather
 or equipment-dependent descriptions may become false later: revoke their saved
 confirmation after changes.
+
+
+## Limited RAM and disk space
+
+For the 2048 KiB RAM / 4 MB disk computer, update and reboot OpenOS before running
+`Beeomatic resume` so old loaded modules are released. Existing state is retained:
+legacy completed receipts are compacted as they are read, and the next successful
+checkpoint writes the smaller form. Pending transfers, scanner batches and exact
+identities remain available for recovery. Do not delete `data/state.lua` to fix RAM.
+
+`Not enough disk space for checkpoint` means the new generation cannot fit with
+recovery protection. Beeomatic checks the mounted filesystem before writing and
+keeps a verified generation. Free unrelated disk space, then resume. Old backup
+space is reclaimed automatically only when a verified primary exists and that
+reclaim is sufficient; a backup recovered after a corrupt primary is protected.

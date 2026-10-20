@@ -1,23 +1,24 @@
 local U=require("lib.util")
 local M={}; M.__index=M
-function M.new(path,fs)
-  return setmetatable({path=path,fs=fs or require("filesystem")},M)
+function M.new(path,fs,onTable)
+  return setmetatable({path=path,fs=fs or require("filesystem"),onTable=onTable},M)
 end
 function M:readFile(path)
   local f,why=io.open(path,"rb"); if not f then return nil,why or "cannot open file" end
   local ok,v=pcall(require("lib.state_codec").read,function()
     local chunk,err=f:read(4096); assert(not err,err); return chunk
-  end)
+  end,self.onTable)
   f:close()
   if ok then return v end
   return nil,tostring(v)
 end
 function M:load(default)
   local v,primaryError=self:readFile(self.path)
-  if v then return v end
+  if v then self.primaryVerified=true; return v end
+  collectgarbage("collect") -- release a partial parse before trying the backup
   local backupError
   v,backupError=self:readFile(self.path..".bak")
-  if v then v.recoveredBackup=true; return v end
+  if v then self.primaryVerified=false; v.recoveredBackup=true; return v end
   assert(not self.fs.exists(self.path) and not self.fs.exists(self.path..".bak"),
     "Cannot load saved data; files preserved.\n"..self.path..": "..tostring(primaryError)..
     "\n"..self.path..".bak: "..tostring(backupError))
@@ -25,6 +26,26 @@ function M:load(default)
 end
 function M:save(value)
   local tmp=self.path..".tmp"
+  -- Check space for the complete new generation before opening the temporary
+  -- file. Never sacrifice the only verified generation to make room.
+  if self.fs.get then
+    local disk=self.fs.get(self.path)
+    if disk and disk.spaceTotal and disk.spaceUsed then
+      local bytes=0; U.write(value,function(chunk) bytes=bytes+#chunk end)
+      local previous=self.fs.size and self.fs.size(tmp) or 0
+      local free=disk.spaceTotal()-disk.spaceUsed()
+      local needed=math.max(0,bytes-(previous or 0))+4096
+      -- An old, bloated backup can block the second compact save after upgrade.
+      -- Reclaim it only if a valid primary is known and doing so is sufficient.
+      local backup=self.path..".bak"
+      local reclaim=self.primaryVerified and self.fs.size and self.fs.size(backup) or 0
+      if free<needed and reclaim and reclaim>0 and free+reclaim>=needed then
+        assert(self.fs.remove(backup)); free=free+reclaim
+      end
+      assert(free>=needed,
+        "Not enough disk space for checkpoint ("..bytes.." bytes; "..free.." free). Saved files preserved.")
+    end
+  end
   local f=assert(io.open(tmp,"wb"))
   local ok,why=pcall(function()
     U.write(value,function(chunk) assert(f:write(chunk)) end)
@@ -51,5 +72,6 @@ function M:save(value)
     assert(self.fs.rename(self.path,self.path..".bak"))
   end
   assert(self.fs.rename(tmp,self.path),"atomic replacement failed; backup retained")
+  self.primaryVerified=true
 end
 return M

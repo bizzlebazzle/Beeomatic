@@ -3,6 +3,7 @@ import os
 import pathlib
 import sys
 import tempfile
+from resource_limits import check as check_startup
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / '.tools'))
@@ -44,3 +45,4 @@ for version, runtime in [('5.2', LuaRuntime), ('5.3', Lua53Runtime)]:
           end
         ''', str(pathlib.Path(folder) / 'state.lua'))
         print(f'Lua {version}: 1,600 records saved, verified and reloaded within 2 MiB; old encoder exhausted memory', flush=True)
+    check_startup(runtime, ROOT, version)

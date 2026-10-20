@@ -24,11 +24,9 @@ function M.parse(args)
 end
 function M.main(root,args)
   local fs=require("filesystem"); local computer=require("computer"); local event=require("event")
-  local Components=require("lib.components"); local Inventory=require("lib.inventory")
-  local Planner=require("lib.planner"); local Mutations=require("lib.mutations")
-  local Status=require("lib.ui.status"); local Diagnostics=require("lib.ui.diagnostics")
   local data=root.."/data"; fs.makeDirectory(data)
   local a,f=M.parse(args); local cmd=U.lower(a[1]); local sub=U.lower(a[2])
+  if cmd=="" or cmd=="help" then print(help); return end
   local crashPath=data.."/crash.log"
   -- Crash reports must remain readable even if loading configuration/state fails.
   if cmd=="logs" and f.crash then
@@ -37,14 +35,34 @@ function M.main(root,args)
     local text=report:read("*a"); report:close()
     require("lib.ui.pager").show(text,{enabled=not f["no-pager"]}); return
   end
-  local cp=P.new(data.."/config.lua",fs); local sp=P.new(data.."/state.lua",fs)
+  local cp=P.new(data.."/config.lua",fs)
+  local sp=P.new(data.."/state.lua",fs,require("lib.storage.receipts").decoded)
   local ctl=P.new(data.."/control.lua",fs); local lock=data.."/worker.lock"
+  if fs.exists(lock) and (cmd=="pause" or cmd=="stop" or (cmd=="resume" and not f.recover)) then
+    ctl:save({action=cmd,id=a[2],requested=computer.uptime()})
+    print("Requested "..cmd..(a[2] and " "..a[2] or "")); return
+  end
   local c=cp:load(Config.defaults()); local state=sp:load({jobs={},reservations={},transactions={},events={}})
+  collectgarbage("collect")
+  local Components=require("lib.components"); local Inventory=require("lib.inventory")
   local function save() sp:save(state) end
   local components=Components.new(); local inv=Inventory.new(components,state,save)
   local Storage=require("lib.storage."..c.storage.kind); local storage=Storage.new(c.storage,inv,components)
-  local scanner=require("lib.scanner").new(c.scanner,inv,state,save,computer.uptime,storage)
-  local scheduler=require("lib.scheduler").new(c,state,components,inv,storage,scanner,save,computer.uptime)
+  local scannerInstance,schedulerInstance
+  local function scanner()
+    if not scannerInstance then
+      collectgarbage("collect")
+      scannerInstance=require("lib.scanner").new(c.scanner,inv,state,save,computer.uptime,storage)
+    end
+    return scannerInstance
+  end
+  local function scheduler()
+    if not schedulerInstance then
+      collectgarbage("collect")
+      schedulerInstance=require("lib.scheduler").new(c,state,components,inv,storage,scanner(),save,computer.uptime)
+    end
+    return schedulerInstance
+  end
   local function scanInterval()
     return math.min(Config.pollInterval(c,"worker"),Config.pollInterval(c,"scanner"))
   end
@@ -57,7 +75,7 @@ function M.main(root,args)
       if ok then source=p; break end
     end end
     assert(source,"No registered accessible housing provides getBeeParents. Run setup/doctor.")
-    local m=Mutations.new(source,c.aliases); m:index(items); return m
+    local m=require("lib.mutations").new(source,c.aliases); m:index(items); return m
   end
   local function sendControl(action,id)
     ctl:save({action=action,id=id,requested=computer.uptime()}); print("Requested "..action..(id and " "..id or ""))
@@ -66,28 +84,28 @@ function M.main(root,args)
     if not fs.exists(data.."/control.lua") then return end
     local x=ctl:load({}); assert(fs.remove(data.."/control.lua"))
     if x.action=="pause" then
-      if x.id then local j=assert(Jobs.find(state,x.id),"unknown job"); scheduler:pause(j,"Paused by user") else state.paused=true end
-    elseif x.action=="resume" then scheduler:resume(x.id)
+      if x.id then local j=assert(Jobs.find(state,x.id),"unknown job"); scheduler():pause(j,"Paused by user") else state.paused=true end
+    elseif x.action=="resume" then scheduler():resume(x.id)
     elseif x.action=="stop" then state.paused=false; state.stopping=true end
     save()
   end
   local function run(draining)
     Config.validate(c); storage:validate()
-    if storage.interface then scanner:validate() end
+    if storage.interface then scanner():validate() end
     if fs.exists(lock) then
       assert(f.recover,"Worker lock exists. Use resume --recover only after stopping the old process.")
       assert(fs.remove(lock))
     end
     local lf=assert(io.open(lock,"w")); lf:write(tostring(computer.address())); lf:close()
     local ok,err=xpcall(function()
-      scheduler:recover()
+      scheduler():recover()
       if draining then
         state.paused=false; state.stopped=false; state.stopping=true; save()
       elseif state.pendingRequest then
         -- This request already passed the admission checks. Prepare its stock
         -- without resuming jobs from the previously drained plan.
         state.paused=false; state.stopped=false; state.stopping=false; save()
-      else scheduler:resume(a[2] and cmd=="resume" and a[2] or nil) end
+      else scheduler():resume(a[2] and cmd=="resume" and a[2] or nil) end
       local lastDisplay=""; local nextObservation=0
       while true do
         applyControl()
@@ -98,26 +116,31 @@ function M.main(root,args)
           -- only when selecting a new batch, as in the standalone plan scanner.
           local items=state.scan and {} or storage:scan()
           do
-            local success,ready,why=pcall(scheduler.prepareStock,scheduler,items)
+            local success,ready,why=pcall(scheduler().prepareStock,scheduler(),items)
             if not success then status="BLOCKED"; state.error=tostring(ready); save()
             elseif not ready then status="SCANNING"; state.error=why; save()
             else
               state.error=nil
               items=storage:scan()
               local req=state.pendingRequest; local m=mutations(items)
-              local plan,e=Planner.plan(req.target,m,items,c); assert(plan,e)
+              local plan,e=require("lib.planner").plan(req.target,m,items,c); assert(plan,e)
               Jobs.create(state,plan,req.mode,req.count,req.flags,req); state.pendingRequest=nil; save()
+              -- Planning is finished. Its graph/index and code need not compete
+              -- with live storage/scanner snapshots for the rest of this run.
+              m=nil; plan=nil; items=nil
+              package.loaded["lib.planner"]=nil; package.loaded["lib.mutations"]=nil
+              collectgarbage("collect")
             end
           end
-        else active,status=scheduler:step() end
+        else active,status=scheduler():step() end
         -- Housing details are display data. Do not repeatedly query every
         -- housing or write a full recovery checkpoint just to redraw the UI.
         local now=computer.uptime()
         if now>=nextObservation or status=="DONE" or status=="STOPPED" or status=="BLOCKED" then
-          Status.observe(state,c,components,inv,now); nextObservation=now+1
+          require("lib.ui.status").observe(state,c,components,inv,now); nextObservation=now+1
         end
-        local display=Status.render(state,c,false)
-        if display~=lastDisplay then Status.show(display); lastDisplay=display end
+        local display=require("lib.ui.status").render(state,c,false)
+        if display~=lastDisplay then require("lib.ui.status").show(display); lastDisplay=display end
         if status=="DONE" or status=="STOPPED" then break end
         if status=="BLOCKED" and not active and not state.paused then
           print("Progress saved. Repair the reported condition, then Beeomatic resume."); break
@@ -126,7 +149,7 @@ function M.main(root,args)
         local name,_,char=event.pull(scanning and scanInterval() or Config.pollInterval(c,"worker"))
         if name=="interrupted" then break end
         if name=="key_down" then
-          if char==112 then state.paused=true elseif char==114 then scheduler:resume()
+          if char==112 then state.paused=true elseif char==114 then scheduler():resume()
           elseif char==113 then state.paused=false; state.stopping=true end
           save()
         end
@@ -151,7 +174,6 @@ function M.main(root,args)
       return nil,err
     end
   end
-  if cmd=="" or cmd=="help" then print(help); return end
   if cmd=="cancel" then
     local function refused(message) print(message); return nil,message end
     if fs.exists(lock) then return refused("A worker lock exists. Exit the running worker with Ctrl+C before cancelling saved work.") end
@@ -188,13 +210,13 @@ function M.main(root,args)
     return
   end
   if cmd=="status" then
-    Status.observe(state,c,components,inv,computer.uptime()); print(Status.render(state,c,f.verbose)); return
+    require("lib.ui.status").observe(state,c,components,inv,computer.uptime()); print(require("lib.ui.status").render(state,c,f.verbose)); return
   end
   if cmd=="logs" then for _,e in ipairs(state.events or {}) do print(tostring(e.time).." "..e.message) end; return end
   if cmd=="pause" or cmd=="stop" then
     if fs.exists(lock) then sendControl(cmd,a[2])
     else if cmd=="pause" then
-      if a[2] then scheduler:pause(assert(Jobs.find(state,a[2]),"unknown job"),"Paused by user") else state.paused=true end
+      if a[2] then scheduler():pause(assert(Jobs.find(state,a[2]),"unknown job"),"Paused by user") else state.paused=true end
     else state.stopping=true; state.paused=false end; save()
       if cmd=="stop" then return run(true) end
       print("Saved "..cmd.." request") end
@@ -251,7 +273,7 @@ function M.main(root,args)
       assert(port,"Use doctor --interface PORT_ID from your configuration")
       storage:probe(port); print("PASS Interface exact-stock, partial extraction and return: "..port.id)
     end
-    if f.probe then Diagnostics.probe(components) end
+    if f.probe then require("lib.ui.diagnostics").probe(components) end
     if f.confirm then
       unlocked(); local id=a[2]; local machine
       for _,x in ipairs(c.alvearies) do if x.id==id then machine=x end end
@@ -266,18 +288,18 @@ function M.main(root,args)
     end
     if f.adopt then
       unlocked(); local j=assert(Jobs.find(state,a[2]),"Use doctor --adopt JOB_ID")
-      scheduler:adopt(j)
+      scheduler():adopt(j)
       print("Adopted observed machine state; resume will continue without repeating insertion")
     end
     if f.retry then
       unlocked(); local ok,err=inv:reconcile(); assert(ok,err)
-      scheduler:retryInsertion(assert(Jobs.find(state,a[2]),"Use doctor --retry JOB_ID"))
+      scheduler():retryInsertion(assert(Jobs.find(state,a[2]),"Use doctor --retry JOB_ID"))
     end
     if not fs.exists(lock) then
       local ok,why=inv:reconcile(); print(ok and "Transfer journal reconciled" or why)
       if storage.reconcile then local yes,e=storage:reconcile(); print(yes and "AE2 journal reconciled" or e) end
     end
-    for _,r in ipairs(Diagnostics.check(c,components,inv,storage)) do print((r.ok and "PASS " or "FAIL ")..r.name..(r.error and (": "..r.error) or "")) end
+    for _,r in ipairs(require("lib.ui.diagnostics").check(c,components,inv,storage)) do print((r.ok and "PASS " or "FAIL ")..r.name..(r.error and (": "..r.error) or "")) end
     return
   end
   if (cmd=="storage" and sub=="scan") or cmd=="bees" then
@@ -323,7 +345,7 @@ function M.main(root,args)
             items=state.scan and {} or storage:scan()
             local ready,message
             if storage.prepare and not storage:prepare(items) then message="Inspecting ME stock"
-            else ready,message=scanner:step(items) end
+            else ready,message=scanner():step(items) end
             if ready then break end
             if message and message~=lastMessage then print(message); lastMessage=message end
             local name,_,char=event.pull(scanInterval())
@@ -338,12 +360,12 @@ function M.main(root,args)
       end
     end
     local m=mutations(items)
-    local plan,reason=Planner.plan(a[2],m,items,c)
+    local plan,reason=require("lib.planner").plan(a[2],m,items,c)
     if not plan then
       local message=reason or ("Not enough verified parent stock to reach "..a[2]..".")
       print(message); return nil,message
     end
-    require("lib.ui.pager").show(Planner.render(plan,{verbose=f.verbose}),{enabled=not f["no-pager"]}); return
+    require("lib.ui.pager").show(require("lib.planner").render(plan,{verbose=f.verbose}),{enabled=not f["no-pager"]}); return
   end
   if cmd=="breed" or cmd=="convert" or cmd=="populate" or cmd=="imprint" then
     unlocked(); assert(a[2],"Specify a species")
