@@ -71,8 +71,10 @@ reference-drone imprinting are additional options. No destructive discard policy
 runs. Exact identity/quantity ownership survives ME stack merging and analysis
 changing NBT; each job keeps its own princess lineage while active.
 
-The foreground worker supports `p`, `r`, `q`, Ctrl+C and persistent mailbox control
-from another shell. `resume` reconciles inventories and pending receipts. Ambiguous
+Use `Beeomatic cancel` to abandon the entire process immediately, including
+paused/broken jobs; `stop` and the foreground `q` key do the same. Bees remain in
+place. Ctrl+C preserves work for resuming. The worker supports `p`, `r` and
+persistent mailbox control from another shell. `resume` reconciles inventories and pending receipts. Ambiguous
 movement pauses for audit instead of replaying an insertion.
 
 Chest-only storage remains optional. Existing `kind="ae2"` export-bus installations

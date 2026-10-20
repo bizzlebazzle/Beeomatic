@@ -1,5 +1,6 @@
 -- Fresh VM: no test framework or preloaded Beeomatic modules hide startup costs.
-local root,compact,gcMode=...
+local root,compact,gcMode,command=...
+command=command or "resume"
 local hostGC=collectgarbage
 if gcMode=="missing" then collectgarbage=nil
 elseif gcMode=="disabled" then collectgarbage=function() error("host collectgarbage unavailable") end end
@@ -71,7 +72,7 @@ if not compact then
 end
 local messages=0
 print=function() messages=messages+1 end
-local _,why=require("lib.cli").main(root,{"resume"})
+local _,why=require("lib.cli").main(root,{command})
 assert(not why,why)
 assert(messages>0)
 for _,name in ipairs({"lib.planner","lib.mutations","lib.setup","lib.ui.diagnostics"}) do

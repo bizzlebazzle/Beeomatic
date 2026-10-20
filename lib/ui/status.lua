@@ -70,11 +70,11 @@ function M.render(state,c,verbose)
   end
   for _,a in ipairs(c.alvearies or {}) do
     local housing=(state.housings or {})[a.id]
-    if housing and housing.error then
+    if housing and housing.error and not state.cancelled then
       warnings[#warnings+1]=(a.name or a.id)..": cannot read housing"
     end
   end
-  local status=state.paused and "Paused" or state.finished and "Complete" or state.stopped and "Stopped"
+  local status=state.cancelled and "Cancelled" or state.paused and "Paused" or state.finished and "Complete" or state.stopped and "Stopped"
     or state.stopping and "Stopping after active work" or (#warnings>0 or paused>0) and "Needs attention" or "Working"
   local target=state.pendingRequest and state.pendingRequest.target or state.target
   local r={"BEEOMATIC | "..status,"Target: "..speciesName(target)}
@@ -82,7 +82,7 @@ function M.render(state,c,verbose)
     r[#r+1]=string.format("Progress: %d/%d steps complete | %d active | %d queued%s",
       done,#state.jobs,busy,queued,paused>0 and (" | "..paused.." paused") or "")
   else r[#r+1]=state.pendingRequest and "Progress: preparing stock before planning" or "Progress: no saved work" end
-  local q=state.scan
+  local q=not state.cancelled and state.scan
   if q then
     local scanner={REQUESTING="Fetching bees",INSERTING="Sending bees for analysis",PROCESSING="Analysing bees",
       VERIFYING="Checking returned bees",RETURNING="Returning analysed bees",EXTERNAL_RETURNED="Finishing analysis",
@@ -120,7 +120,7 @@ function M.render(state,c,verbose)
     for _,warning in ipairs(warnings) do r[#r+1]="  "..warning:gsub("\n","\n    ") end
     r[#r+1]="Details: Beeomatic status --verbose"
   end
-  r[#r+1]="p pause | r resume | q stop after active work"
+  r[#r+1]=state.cancelled and "All work cancelled. Bees remain in place." or "p pause | r resume | q cancel all work"
   return table.concat(r,"\n")
 end
 -- Refresh the foreground dashboard instead of printing a new report every tick.
@@ -139,10 +139,10 @@ function M.show(text)
 end
 function M.details(state,c,verbose)
   local r={"========== BEEOMATIC ==========","Target: "..tostring(state.target or "none"),
-    "State: "..(state.paused and "PAUSED" or state.finished and "DONE" or state.stopping and "DRAINING" or "ACTIVE")}
+    "State: "..(state.cancelled and "CANCELLED" or state.paused and "PAUSED" or state.finished and "DONE" or state.stopping and "DRAINING" or "ACTIVE")}
   local done=0; for _,j in ipairs(state.jobs or {}) do if j.state=="DONE" then done=done+1 end end
   if state.stockPhase then r[#r+1]="Stock: "..state.stockPhase.."; drones awaiting inspection/analysis="..(state.stockRemaining or 0) end
-  if state.scan and state.scan.phase then r[#r+1]="Shared scanner: "..state.scan.phase.." ("..state.scan.count.." bees)" end
+  if state.scan and state.scan.phase then r[#r+1]=(state.cancelled and "Inactive scanner recovery: " or "Shared scanner: ")..state.scan.phase.." ("..state.scan.count.." bees)" end
   r[#r+1]="Completed operations: "..done.."/"..#(state.jobs or {})
   for _,a in ipairs(c.alvearies) do
     local m=(state.machines or {})[a.id] or {}
@@ -172,7 +172,7 @@ function M.details(state,c,verbose)
   if state.error then r[#r+1]="Intervention: "..state.error end
   r[#r+1]="Last completed cycle: "..tostring(state.lastCycle or "none")
   local last=(state.events or {})[#(state.events or {})]; if last then r[#r+1]="Recent: "..last.message end
-  r[#r+1]="Foreground keys: p pause | r resume | q drain/stop"
+  r[#r+1]="Foreground keys: p pause | r resume | q cancel all work"
   return table.concat(r,"\n")
 end
 return M

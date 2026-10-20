@@ -6,11 +6,12 @@ function M.new(config,inv,components,runtime)
   state.aeCatalog=state.aeCatalog or {}; state.meRequests=state.meRequests or {}; state.meBatches=state.meBatches or {}
   local self=setmetatable({config=config,inv=inv,components=components,state=state},M)
   self.now=runtime.now or function() return require("computer").uptime() end
+  self.cancelled=runtime.cancelled
   self.wait=runtime.wait or function(seconds)
     local name,_,char=require("event").pull(seconds)
     if name=="interrupted" then error("Interface wait interrupted; saved request preserved") end
     if name=="key_down" and (char==112 or char==113) then
-      if char==112 then state.paused=true else state.stopping=true end
+      if char==112 then state.paused=true else state.cancelRequested=true; state.stopping=true end
       inv.save(); error("Interface wait stopped; saved request preserved")
     end
   end
@@ -26,6 +27,10 @@ function M:poll(fn,why)
   local interval=require("lib.config").pollInterval({storage=self.config},"storage")
   local timeout=self.config.timeout or 60
   repeat
+    if self.state.cancelRequested or (self.cancelled and self.cancelled()) then
+      self.state.cancelRequested=true; self.state.stopping=true
+      error("Cancellation requested",0)
+    end
     local value=fn(); if value then return value end
     local remaining=timeout-(self.now()-start)
     assert(remaining>0,why.."; request preserved, inspect power/channels/capacity")

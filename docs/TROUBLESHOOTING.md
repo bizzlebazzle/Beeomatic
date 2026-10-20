@@ -84,3 +84,14 @@ recovery protection. Beeomatic checks the mounted filesystem before writing and
 keeps a verified generation. Free unrelated disk space, then resume. Old backup
 space is reclaimed automatically only when a verified primary exists and that
 reclaim is sufficient; a backup recovered after a corrupt primary is protected.
+
+
+## Abandoning a stuck process
+
+Run `Beeomatic cancel`. `Beeomatic stop` and the foreground `q` key do the same.
+This removes the whole breeding plan immediately, including jobs paused after a
+queen was removed manually or blocked by missing flowers. It does not require
+working hardware or a completed cycle. Bees remain in-world; occupied housings
+must be emptied manually before reuse. Already-inserted scanner batches and
+unresolved transfers remain as inactive recovery records for the next fresh
+request. `resume` does not restart a cancelled plan.

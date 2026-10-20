@@ -115,13 +115,17 @@ Ethereal/Aware preference is ignored if the runtime does not return that pair.
 
 Breeding, conversion, population and imprinting run in the **foreground**. Keep the
 computer powered and chunks loaded. On-screen keys are `p` (pause), `r` (resume),
-`q` (drain and stop). Ctrl+C preserves state and returns to the shell. Pausing
+`q` (cancel all work immediately). Ctrl+C preserves state and returns to the shell. Pausing
 suspends scheduling/observation; Minecraft may continue a queen's natural lifecycle.
-Resuming inspects reality before continuing. Stopping prevents new insertions and
-collects active cycles when possible; a broken or explicitly paused machine still
-needs recovery before its stock can be released. Never delete state to stop work.
+Resuming inspects reality before continuing. `Beeomatic cancel` discards the
+whole process, including running, paused and broken assignments, without waiting
+for queens to finish. `stop` is an alias for the same action. Bees already in
+housings or scanner paths remain there; Minecraft may continue their natural
+processing. Dedicated routing gates are switched off and saved Interface stock
+filters are cleared when reachable; filters needed to prove an unresolved
+transfer are retained until reconciliation. Never delete state to cancel work.
 
-If OpenOS provides another shell/process, `pause`, `resume`, and `stop` write
+If OpenOS provides another shell/process, `pause`, `resume`, and `cancel` write
 `data/control.lua`. The foreground worker reads this mailbox at its bounded polling
 interval; it does not pretend a second command magically controls another process.
 The running screen refreshes in place on an available OpenOS terminal. It shows
@@ -133,7 +137,7 @@ readability. Routine scanner waiting is activity; actual failures appear under
 parent's analysed drone count/required minimum and any ongoing stable-cycle
 confirmation. Counts use the latest storage snapshot and include stock held by
 population helpers; breeding still respects ownership and reserve rules. Such
-waits do not trigger `Needs attention`. `q` lets active work finish before stopping.
+waits do not trigger `Needs attention`. `q` cancels at the next safe worker point.
 
 `status` uses the same compact overview. `status --verbose` includes full species
 IDs, job IDs, cycle/genetics counters, resident bees and flowers, storage counts,
@@ -169,16 +173,26 @@ Confirmation asks about each exact requirement string and saves only explicit
 block, biome, dimension, equipment or world condition changes. Structured route `environment` constraints
 are supported by the planner/backend if supplied by an extension/configuration.
 
-To discard a pending request before its plan has been created, exit the worker
-with Ctrl+C if it is running, then use `Beeomatic cancel`. This also clears requests
-stranded by the old stopped-plan replacement bug. It preserves the old drained
-jobs and all scanner/transfer/ownership records; a new request reconciles those
-records before breeding. It refuses cancellation while a worker lock or active
-machine/job assignment remains. For an existing idle or blocked plan, `cancel`
-removes its jobs and releases their logical stock ownership. Unresolved physical
-transfers or Interface requests must be reconciled first. Use `stop` to drain
-assigned work before cancelling. At the shell, `stop` runs the foreground worker
-to complete the drain; with another worker running, it sends that worker a request.
+To abandon the entire process, use one command:
+
+```sh
+Beeomatic cancel
+```
+
+It removes all queued jobs, paused/running assignments and the pending breeding
+request, even if a queen was removed manually, flowers are missing, or the scanner
+or database is broken. It does not launch the working screen or require `stop`
+first. `stop` and the foreground `q` key perform the same cancellation. If another
+worker is running, `cancel` sends it a mailbox request; it exits at its next safe
+point, including during an Interface wait. No in-flight transfer is replayed by
+cancellation.
+
+`status` then says `Cancelled` with no saved work. `resume` cannot restart the old
+plan; issue a new breeding request when ready. Bees already inserted are left in
+place; manually empty occupied housings before reusing them. Unresolved transfer
+receipts and already-inserted scanner batches remain recorded but inactive. A new
+request reconciles those physical records before planning fresh work, without
+resuming the cancelled jobs. Unstarted scanner fetches are discarded immediately.
 
 Recovery tools for a reserved job:
 
@@ -196,9 +210,8 @@ caste inside the housing. `--retry` requires an empty machine, reconciled journa
 and restored recorded source items in chest/legacy mode. In Interface mode it
 returns unconsumed local requests to ME before reselection. Neither command discards bees.
 
-To replan after changed stock/routes: drain existing work with `stop`, resolve any
-reserved machines, and issue `breed TARGET` again. The completed stopped plan stays
-in the journal until replaced. The `--noFinalImprint` and `--onlyFinalImprint` flags
+To replan after changed stock/routes: use `cancel`, empty any occupied housings,
+and issue `breed TARGET` again. The cancelled plan is removed immediately. The `--noFinalImprint` and `--onlyFinalImprint` flags
 affect optional reference-drone crossing only; ordinary breeding works without
 templates. Full genome equivalence is configured separately from species purity
 using `fullEquivalence=true` in `data/config.lua` while the worker is stopped.
@@ -233,6 +246,6 @@ continue rather than discarding their progress.
 stopped. It needs two identical analysed drones, requests two, transfers one into
 its unconfigured return slot, clears/refunds local stock and checks that the original
 exact network count returns. `doctor --probe` remains the read-only capability dump.
-Use `setup --reconfigure` only after old work is finished or fully drained and
+Use `setup --reconfigure` only after old work is finished or cancelled and
 journals are reconciled. Setup offers `me`/`chest`; existing export-bus configurations
 remain supported for recovery without exposing old export questions in new setup.

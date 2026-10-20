@@ -384,6 +384,7 @@ end
 function M:recover()
   local ok,why=self.inv:reconcile(); assert(ok,why)
   if self.storage.reconcile then local yes,err=self.storage:reconcile(); assert(yes,err) end
+  J.releaseCancelled(self.state)
   self.storage:scan()
   if self.state.scan then self.state.scan.started=self.now() end
   if self.storage.interface then self.state.stockReady=false; self.state.stockPhase="PREPARING_STOCK" end
@@ -513,6 +514,7 @@ function M:step()
   items=nil
   -- Advance machines even when a different scanner operation is outstanding.
   for _,j in ipairs(self.state.jobs) do
+    if self.state.cancelRequested then break end
     if j.state=="RUNNING" or j.state=="COLLECTING" or j.state=="ASSESSING" then
       local success,err=pcall(self.advance,self,j); if not success then self:pause(j,err); self:log(j.id..": "..tostring(err)) end
     end
@@ -521,6 +523,7 @@ function M:step()
     -- Rotate the starting job each tick to avoid starving independent prerequisites.
     local n=#self.state.jobs; local start=(self.state.cursor or 0)%math.max(1,n)
     for off=1,n do local j=self.state.jobs[(start+off-1)%n+1]
+      if self.state.cancelRequested then break end
       if j.state=="WAITING" and J.ready(self.state,j) then
         local success,err=pcall(self.dispatch,self,j); if not success then self:pause(j,err); self:log(j.id..": "..tostring(err)) end
       end

@@ -17,8 +17,8 @@ test("cancel clears a stranded request and allows a new breeding request",functi
     files["/project/data/state.lua"]="return "..U.encode(w.state)
     require("lib.cli").main("/project",{"cancel"})
     local state=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
-    eq(state.pendingRequest,nil); ok(state.stopped); eq(state.jobs,w.state.jobs); eq(w.moves,0)
-    ok(table.concat(out,"\n"):find("Cancelled pending request for unwanted",1,true))
+    eq(state.pendingRequest,nil); ok(state.cancelled); eq(#state.jobs,0); eq(w.moves,0)
+    ok(table.concat(out,"\n"):find("Cancelled all work",1,true))
     local _,err=require("lib.cli").main("/project",{"populate","spirit","2"})
     eq(err,nil,err)
     state=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
@@ -40,26 +40,44 @@ test("cancel preserves pending scanner and transfer recovery records without mov
     files["/project/data/state.lua"]="return "..U.encode(w.state)
     require("lib.cli").main("/project",{"cancel"})
     local state=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
-    for _,key in ipairs({"scan","pending","pendingExternal","meRequests","meBatches","reservations","jobs","transactions"}) do
+    for _,key in ipairs({"scan","pending","pendingExternal","meBatches","reservations","transactions"}) do
       eq(state[key],w.state[key],key)
     end
     eq(state.pendingRequest,nil); eq(w.moves,0)
-    ok(table.concat(out,"\n"):find("recovery records retained",1,true))
+    eq(state.meRequests.scanner.phase,"RETURNING"); ok(state.cancelled)
+    ok(table.concat(out,"\n"):find("Cancelled all work",1,true))
   end)
 end)
 
-test("cancel refuses a running worker or live job assignment without rewriting state",function()
-  for _,blocked in ipairs({"worker","machine","job"}) do
+test("cancel sends a mailbox request to a running worker without loading its state",function()
+  local w=W.new(); w:addMachine("a"); w:build()
+  O.with(w,function(files,out)
+    files["/project/data/config.lua"]="unreadable config"
+    files["/project/data/state.lua"]="unreadable state"
+    files["/project/data/worker.lock"]="running"
+    require("lib.cli").main("/project",{"cancel"})
+    eq(files["/project/data/state.lua"],"unreadable state")
+    local request=assert(load(files["/project/data/control.lua"],"=control","t",{}))()
+    eq(request.action,"cancel"); ok(table.concat(out,"\n"):find("Requested cancel",1,true))
+  end)
+end)
+
+test("cancel abandons every assigned job state without requiring a working queen",function()
+  for _,phase in ipairs({"WAITING","PREPARING","RUNNING","COLLECTING","ASSESSING","PAUSED"}) do
     local w=W.new(); w:addMachine("a"); w:build()
+    local j=W.job(w,"old","Attuned"); j.state=phase; j.machine="a"; j.previous="RUNNING"
+    w.state.machines.a={job=j.id,state=phase}; w.state.error="database did not preserve exact bee NBT"
     w.state.pendingRequest={target="unwanted",mode="breed"}
-    if blocked=="machine" then w.state.machines.a={job="old"} end
-    if blocked=="job" then local j=W.job(w,"old","Forest"); j.machine="a" end
-    O.with(w,function(files)
+    w.proxies.housing1.canBreed=function() error("missing dragon egg flower") end
+    O.with(w,function(files,out)
       files["/project/data/config.lua"]="return "..U.encode(w.c)
-      local before="return "..U.encode(w.state); files["/project/data/state.lua"]=before
-      if blocked=="worker" then files["/project/data/worker.lock"]="running" end
-      local _,err=require("lib.cli").main("/project",{"cancel"})
-      ok(err); eq(files["/project/data/state.lua"],before); eq(w.moves,0)
+      files["/project/data/state.lua"]="return "..U.encode(w.state)
+      local _,err=require("lib.cli").main("/project",{"cancel"}); eq(err,nil,err)
+      local state=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
+      eq(#state.jobs,0); eq(state.machines,{}); eq(state.pendingRequest,nil); eq(state.error,nil)
+      ok(state.cancelled); ok(state.stopped); eq(w.moves,0)
+      local text=table.concat(out,"\n"); ok(text:find("Cancelled all work",1,true))
+      ok(not text:find("BEEOMATIC |",1,true)); ok(not text:find("use Beeomatic stop",1,true))
     end)
   end
 end)
@@ -74,30 +92,31 @@ test("cancel discards an idle blocked plan and releases its logical ownership",f
     require("lib.cli").main("/project",{"cancel"})
     local state=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
     eq(#state.jobs,0); ok(state.stopped); eq(state.reservations.slot,nil)
-    ok(state.reservations.scan); eq(state.meBatches.batch,nil); ok(state.meBatches.scan); eq(w.moves,0)
-    ok(table.concat(out,"\n"):find("Cancelled saved breeding plan",1,true))
+    eq(state.reservations,{}); eq(state.meBatches,{}); eq(w.moves,0)
+    ok(table.concat(out,"\n"):find("Cancelled all work",1,true))
   end)
 end)
 
-test("offline stop actually drains a blocked idle plan without dispatching it",function()
+test("stop is an immediate cancel alias and never opens a worker screen",function()
   local w=W.new(); w:addMachine("a"); w:build(); W.job(w,"old","Forest")
   O.with(w,function(files)
     files["/project/data/config.lua"]="return "..U.encode(w.c)
     files["/project/data/state.lua"]="return "..U.encode(w.state)
     local _,err=require("lib.cli").main("/project",{"stop"}); eq(err,nil,err)
     local state=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
-    ok(state.stopped); eq(w.moves,0); eq(files["/project/data/worker.lock"],nil)
+    ok(state.cancelled); eq(#state.jobs,0); eq(w.moves,0); eq(files["/project/data/worker.lock"],nil)
   end)
 end)
 
-test("cancel refuses unresolved transfers in an existing plan",function()
+test("cancel retains unresolved transfer evidence while discarding the plan",function()
   local w=W.new(); w:addMachine("a"); w:build(); W.job(w,"old","Forest")
   w.state.pending={owner="old",phase="INTENT"}
   O.with(w,function(files)
     files["/project/data/config.lua"]="return "..U.encode(w.c)
     local before="return "..U.encode(w.state); files["/project/data/state.lua"]=before
     local _,err=require("lib.cli").main("/project",{"cancel"})
-    ok(err); eq(files["/project/data/state.lua"],before); eq(w.moves,0)
+    eq(err,nil); local state=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
+    eq(#state.jobs,0); ok(state.cancelled); eq(state.pending,w.state.pending); eq(w.moves,0)
   end)
 end)
 
@@ -569,24 +588,22 @@ test("alveary configure persists changed climate and resume uses it",function()
   end)
 end)
 
-test("offline stop collects an active cycle without starting another one",function()
+test("stop cancels an active queen immediately and leaves the bee untouched",function()
   local w=W.new(); w:addMachine("a"); w:build()
-  w.inventories.hub[1]=W.bee("Spirit","princess")
-  w.inventories.hub[2]=W.bee("Spirit","drone",8)
+  w.inventories.hub[1]=W.bee("Spirit","princess"); w.inventories.hub[2]=W.bee("Spirit","drone",8)
   local j=W.job(w,"old","Spirit","populate"); j.count=64
   w.scheduler:dispatch(j); eq(j.state,"RUNNING")
+  local moves=w.moves; local queen=U.copy(w.inventories.a[4])
+  w.proxies.housing1.canBreed=function() error("cannot work without dragon egg") end
   O.with(w,function(files)
     files["/project/data/config.lua"]="return "..U.encode(w.c)
     files["/project/data/state.lua"]="return "..U.encode(w.state)
     local _,err=require("lib.cli").main("/project",{"stop"}); eq(err,nil,err)
     local state=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
-    ok(state.stopped); eq(state.jobs[1].cycles,1); eq(state.jobs[1].machine,nil)
-    require("lib.cli").main("/project",{"cancel"})
-    state=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
-    eq(#state.jobs,0)
+    ok(state.cancelled); eq(#state.jobs,0); eq(w.moves,moves); eq(w.inventories.a[4],queen)
+    raises(function() require("lib.cli").main("/project",{"resume"}) end,"Work was cancelled")
   end)
 end)
-
 
 test("worker mailbox commands avoid loading the full saved state",function()
   local w=W.new(); w:addMachine("a"); w:build()
@@ -597,8 +614,176 @@ test("worker mailbox commands avoid loading the full saved state",function()
     for _,action in ipairs({"pause","stop","resume"}) do
       require("lib.cli").main("/project",{action})
       local request=assert(load(files["/project/data/control.lua"],"=control","t",{}))()
-      eq(request.action,action)
+      eq(request.action,action=="stop" and "cancel" or action)
     end
     eq(files["/project/data/state.lua"],"broken journal that must not be read")
+  end)
+end)
+
+
+test("running worker accepts cancel stop and q without draining its queen",function()
+  for _,action in ipairs({"cancel","stop","q"}) do
+    local w=W.new(); w:addMachine("a"); w:build()
+    w.inventories.hub[1]=W.bee("Attuned","princess"); w.inventories.hub[2]=W.bee("Attuned","drone",8)
+    local j=W.job(w,"old","Attuned","populate"); j.count=64; w.scheduler:dispatch(j)
+    local queen=U.copy(w.inventories.a[4]); local moves=w.moves; w.obstructed=true
+    O.with(w,function(files,out)
+      files["/project/data/config.lua"]="return "..U.encode(w.c)
+      files["/project/data/state.lua"]="return "..U.encode(w.state)
+      local pulls=0
+      require("event").pull=function()
+        pulls=pulls+1; eq(pulls,1,"cancel should exit on the next safe point")
+        if action=="q" then return "key_down",nil,113 end
+        require("lib.cli").main("/project",{action}); return nil
+      end
+      local _,err=require("lib.cli").main("/project",{"resume"}); eq(err,nil,err)
+      local state=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
+      eq(#state.jobs,0); ok(state.cancelled); eq(state.machines,{})
+      eq(w.inventories.a[4],queen); eq(w.moves,moves)
+      eq(files["/project/data/worker.lock"],nil); eq(files["/project/data/control.lua"],nil)
+      eq(files["/project/data/crash.log"],nil)
+      ok(table.concat(out,"\n"):find("Cancelled all work",1,true))
+    end)
+  end
+end)
+
+test("cancel interrupts Interface stock waits and permits a fresh request after cleanup",function()
+  local ME=require("tests.mocks.me"); local w=ME.new(); w.noStock=true
+  w.c.confirmCycles=1; w.c.minDrones=2
+  w:addStock(ME.bee("Spirit","princess")); w:addStock(ME.bee("Spirit","drone",8,true))
+  O.with(w,function(files,out)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    local event=require("event"); local pull=event.pull; local calls=0
+    event.pull=function()
+      calls=calls+1; eq(calls,1)
+      require("lib.cli").main("/project",{"cancel"}); return nil
+    end
+    local _,err=require("lib.cli").main("/project",{"populate","spirit","2"}); eq(err,nil,err)
+    local state=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
+    ok(state.cancelled); eq(state.pendingRequest,nil); eq(#state.jobs,0); eq(state.scan,nil)
+    ok(next(state.meRequests)); for _,request in pairs(state.meRequests) do eq(request.phase,"RETURNING") end
+    eq(files["/project/data/worker.lock"],nil); eq(files["/project/data/crash.log"],nil)
+    w.noStock=false; event.pull=pull
+    _,err=require("lib.cli").main("/project",{"populate","spirit","2"}); eq(err,nil,err)
+    state=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
+    ok(state.finished); eq(state.cancelled,nil); eq(state.cancelCleanup,nil)
+  end)
+end)
+
+test("cancel stops routing gates even with missing hardware or invalid configuration",function()
+  local w=W.new(); w:addMachine("a"); w:build()
+  w.c.alvearies[1].routing={gate={address="gate",side=2,off=0,on=15}}
+  local output=15; w.proxies.gate={setOutput=function(side,value) eq(side,2); output=value end}
+  local exportLevel=15; local filterCleared=false
+  w.proxies.exportGate={setOutput=function(side,value) eq(side,1); exportLevel=value end}
+  w.proxies.exportBus={setExportConfiguration=function(side,slot) eq(side,4); eq(slot,1); filterCleared=true end}
+  w.state.pendingExternal={gate={address="exportGate",side=1,off=0},exportAddress="exportBus",exportSide=4}
+  W.job(w,"old","Attuned").machine="a"
+  O.with(w,function(files)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    files["/project/data/state.lua"]="return "..U.encode(w.state)
+    require("lib.cli").main("/project",{"cancel"}); eq(output,0); eq(exportLevel,0); ok(filterCleared)
+    files["/project/data/config.lua"]="invalid config"
+    files["/project/data/state.lua"]="return "..U.encode(w.state)
+    require("lib.cli").main("/project",{"cancel"})
+    local state=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
+    ok(state.cancelled); eq(#state.jobs,0)
+  end)
+end)
+
+test("cancel is repeatable and status never presents inactive scanner recovery as work",function()
+  local w=W.new(); w:addMachine("a"); w:build()
+  W.job(w,"old","Attuned").machine="a"
+  w.state.scan={phase="PROCESSING",count=1,identity="exact-bee",inserted=true}
+  w.state.pending={owner="scanner",scanning=true,identity="exact-bee",phase="UNCERTAIN"}
+  O.with(w,function(files,out)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    files["/project/data/state.lua"]="return "..U.encode(w.state)
+    require("lib.cli").main("/project",{"cancel"})
+    local first=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
+    require("lib.cli").main("/project",{"cancel"})
+    local second=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
+    eq(first,second); eq(second.scan,w.state.scan); eq(second.pending,w.state.pending)
+    local text=require("lib.ui.status").render(second,w.c,false)
+    ok(text:find("BEEOMATIC | Cancelled",1,true)); ok(text:find("no saved work",1,true))
+    ok(not text:find("Scanner:",1,true)); ok(not text:find("Attention:",1,true))
+  end)
+end)
+
+
+test("cancel does not require a healthy database or storage scan to abandon fetching",function()
+  local ME=require("tests.mocks.me"); local w=ME.new()
+  w.proxies.db.get=function() error("database did not preserve exact bee NBT") end
+  w.proxies.me.getItemsInNetwork=function() error("network offline") end
+  W.job(w,"old","Attuned").machine="a"
+  w.state.scan={phase="REQUESTING",count=1,identity="recorded-nbt"}
+  w.state.meRequests.old={phase="READY",owner="scanner",ep=w.c.scanner.storage,slot=2,identity="recorded-nbt",count=1}
+  O.with(w,function(files)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    files["/project/data/state.lua"]="return "..U.encode(w.state)
+    local _,err=require("lib.cli").main("/project",{"cancel"}); eq(err,nil,err)
+    local state=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
+    ok(state.cancelled); eq(#state.jobs,0); eq(state.scan,nil)
+    eq(state.meRequests.old.phase,"RETURNING"); eq(state.meRequests.old.identity,"recorded-nbt")
+  end)
+end)
+
+test("cancel preserves an inserted scanner batch until a new request reconciles its return",function()
+  local ME=require("tests.mocks.me"); local B=require("lib.bees"); local w=ME.new()
+  w.c.confirmCycles=1; w.c.minDrones=2
+  local raw=ME.bee("Spirit","drone",8,true)
+  w:addStock(ME.bee("Spirit","princess")); w:addStock(raw)
+  w.state.meBatches.old={root="old",identity=B.identity(raw),owner="old-job",count=8,stack=U.copy(raw)}
+  w.state.pendingRequest={target="spirit",mode="populate",count=2,flags={}}
+  O.with(w,function(files)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    files["/project/data/state.lua"]="return "..U.encode(w.state)
+    local event=require("event"); local pull=event.pull; local calls=0
+    event.pull=function(...)
+      local current=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
+      if current.scan and current.scan.phase=="PROCESSING" then
+        calls=calls+1; eq(calls,1)
+        require("lib.cli").main("/project",{"cancel"}); return nil
+      end
+      return pull(...)
+    end
+    local _,err=require("lib.cli").main("/project",{"resume"}); eq(err,nil,err)
+    local state=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
+    ok(state.cancelled); eq(state.scan.phase,"PROCESSING"); eq(state.scan.batchId,"old")
+    ok(state.meBatches.old); eq(state.pendingRequest,nil)
+    event.pull=pull
+    _,err=require("lib.cli").main("/project",{"populate","spirit","2"}); eq(err,nil,err)
+    state=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
+    ok(state.finished); eq(state.scan,nil); eq(state.cancelCleanup,nil); eq(state.meBatches.old,nil)
+  end)
+end)
+
+
+test("cancel abandons a prepared scanner insertion but retains uncertain insertion evidence",function()
+  for _,uncertain in ipairs({false,true}) do
+    local state={jobs={},meRequests={['port:2']={owner="scanner",phase="READY",consumed=false}},
+      scan={phase="INSERTING",count=1,source={endpoint={id="port"},slot=2}},reservations={},meBatches={}}
+    if uncertain then state.pending={owner="scanner",scanning=true,phase="INTENT"} end
+    require("lib.jobs").cancel(state)
+    ok(state.cancelled); eq(state.meRequests['port:2'].phase,"RETURNING")
+    if uncertain then ok(state.scan); ok(state.pending) else eq(state.scan,nil) end
+  end
+end)
+
+
+test("cancel preserves managed slot evidence while a transfer is unresolved",function()
+  local ME=require("tests.mocks.me"); local w=ME.new()
+  local ep=w.c.scanner.storage; local cleared=0
+  w.proxies[ep.address].setInterfaceConfiguration=function() cleared=cleared+1; return true end
+  w.state.meRequests.slot={owner="scanner",phase="READY",ep=ep,slot=2,identity="exact-nbt",count=1}
+  w.state.pending={owner="scanner",source=ep,slot=2,dest=w.c.scanner.input,destSlot=1,
+    identity="exact-nbt",before=1,count=1,returned=0,phase="UNCERTAIN"}
+  O.with(w,function(files)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    files["/project/data/state.lua"]="return "..U.encode(w.state)
+    require("lib.cli").main("/project",{"cancel"})
+    local state=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
+    ok(state.cancelled); eq(#state.jobs,0); eq(state.pending,w.state.pending)
+    eq(cleared,0); eq(state.meRequests.slot.phase,"RETURNING")
   end)
 end)

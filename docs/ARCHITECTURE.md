@@ -79,8 +79,13 @@ Each job assesses only its own receipt roots, even when identical offspring merg
 in ME or analysis splits/transforms a batch. The chosen princess batch stays owned
 between cycles. Committed insertion spends only selected units; logical source
 leases are then released so another job can use other drones in the same stack.
-Drone/template reserves are exact-genotype quantities. Completed jobs and explicit
-fully drained stops release their remaining batch ownership without discarding bees.
+Drone/template reserves are exact-genotype quantities. Completed jobs release
+their remaining batch ownership without discarding bees. `cancel` (also `stop`
+and the foreground `q` key) drops the entire scheduling plan immediately, turns
+off reachable dedicated routing/export gates, and clears saved Interface requests.
+Pending physical receipts and already-inserted scanner batches are retained as
+inactive recovery data; their ownership is released after reconciliation for a
+fresh request. Queens remain physically in their housings.
 
 ## Transfers and restart
 

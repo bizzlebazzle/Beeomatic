@@ -7,14 +7,15 @@ Beeomatic plan SPECIES [--verbose] [--no-pager]
 Beeomatic breed SPECIES [--noFinalImprint | --onlyFinalImprint]
 Beeomatic convert SPECIES | populate SPECIES COUNT | imprint SPECIES
 Beeomatic status [--verbose] | logs [--crash]
-Beeomatic pause [JOB] | resume [JOB] [--recover] | stop | cancel
+Beeomatic pause [JOB] | resume [JOB] [--recover] | cancel
 Beeomatic alveary list | add | remove ID | configure ID | rename ID NAME
 Beeomatic storage scan | bees list | bees inspect SPECIES
 Beeomatic help
 
-Jobs run in the foreground. p pauses, r resumes, q drains active cycles and stops.
+Jobs run in the foreground. p pauses, r resumes, q cancels all work immediately.
+cancel abandons the entire process; stop is an alias. Bees remain in place.
 Ctrl+C exits with state preserved. Run resume after repairing a blocked job.
-Other OpenOS shells can send pause/resume/stop through a persistent mailbox.
+Other OpenOS shells can send pause/resume/cancel through a persistent mailbox.
 Use resume --recover ONLY after stopping any old worker (stale lock after reboot).]]
 function M.parse(args)
   local positional,flags={},{}
@@ -26,6 +27,7 @@ function M.main(root,args)
   local fs=require("filesystem"); local computer=require("computer"); local event=require("event")
   local data=root.."/data"; fs.makeDirectory(data)
   local a,f=M.parse(args); local cmd=U.lower(a[1]); local sub=U.lower(a[2])
+  if cmd=="stop" then cmd="cancel" end
   if cmd=="" or cmd=="help" then print(help); return end
   local crashPath=data.."/crash.log"
   -- Crash reports must remain readable even if loading configuration/state fails.
@@ -39,25 +41,66 @@ function M.main(root,args)
   local receipts=require("lib.storage.receipts")
   local sp=P.new(data.."/state.lua",fs,receipts.decoded,receipts.skipField)
   local ctl=P.new(data.."/control.lua",fs); local lock=data.."/worker.lock"
-  if fs.exists(lock) and (cmd=="pause" or cmd=="stop" or (cmd=="resume" and not f.recover)) then
+  if fs.exists(lock) and (cmd=="pause" or cmd=="cancel" or (cmd=="resume" and not f.recover)) then
     ctl:save({action=cmd,id=a[2],requested=computer.uptime()})
     print("Requested "..cmd..(a[2] and " "..a[2] or "")); return
+  end
+  local state
+  local function cancelWork(config)
+    Jobs.cancel(state); sp:save(state)
+    -- Stop dedicated pipe gates and clear saved Interface stock filters without
+    -- waiting for inventories to drain. Failure cannot reinstate cancelled jobs.
+    if not config then local ok,value=pcall(cp.load,cp,Config.defaults()); if ok then config=value end end
+    local ok,api=pcall(require,"component")
+    if ok then
+      for _,machine in ipairs(config and config.alvearies or {}) do
+        local gate=machine.routing and machine.routing.gate
+        if gate then pcall(function() api.proxy(gate.address).setOutput(gate.side,gate.off) end) end
+      end
+      local export=state.pendingExternal
+      if export then
+        local gate=export.gate
+        if gate then pcall(function() api.proxy(gate.address).setOutput(gate.side,gate.off) end) end
+        if export.exportAddress then
+          pcall(function() api.proxy(export.exportAddress).setExportConfiguration(export.exportSide,1) end)
+        end
+      end
+      for _,request in pairs(state.meRequests or {}) do
+        -- An unresolved transfer still needs its original slot contents as
+        -- evidence. Its filters are cleared after reconciliation, not here.
+        if not state.pending and request.ep and request.ep.managed then
+          pcall(function() api.proxy(request.ep.address).setInterfaceConfiguration(request.slot) end)
+        end
+      end
+    end
+    if fs.exists(data.."/control.lua") then fs.remove(data.."/control.lua") end
+    print("Cancelled all work. Bees remain in place; no cycles will be resumed.")
+  end
+  if cmd=="cancel" then
+    state=sp:load({jobs={},reservations={},transactions={},events={}})
+    cancelWork(); return
   end
   local c=cp:load(Config.defaults())
   local Components=require("lib.components"); local Inventory=require("lib.inventory")
   local Storage=require("lib.storage."..c.storage.kind)
-  if cmd=="resume" or cmd=="stop" or cmd=="breed" or cmd=="convert" or cmd=="populate" or cmd=="imprint" then
+  if cmd=="resume" or cmd=="breed" or cmd=="convert" or cmd=="populate" or cmd=="imprint" then
     -- OpenOS concatenates module source while loading it. Compile worker code
     -- before the large journal is resident, even when manual GC is unavailable.
     require("lib.scanner"); if c.storage.kind=="me_interface" then require("lib.scanner_me") end
     require("lib.scheduler"); require("lib.ui.status")
     for _,machine in ipairs(c.alvearies) do require("lib.breeders."..(machine.backend or "alveary")) end
   end
-  local state=sp:load({jobs={},reservations={},transactions={},events={}})
+  state=sp:load({jobs={},reservations={},transactions={},events={}})
   U.collect()
   local function save() sp:save(state) end
   local components=Components.new(); local inv=Inventory.new(components,state,save)
-  local storage=Storage.new(c.storage,inv,components)
+  local function cancellationPending()
+    if state.cancelRequested then return true end
+    if not fs.exists(data.."/control.lua") then return false end
+    local request=ctl:load({})
+    return request.action=="cancel" or request.action=="stop"
+  end
+  local storage=Storage.new(c.storage,inv,components,{cancelled=cancellationPending})
   local scannerInstance,schedulerInstance
   local function scanner()
     if not scannerInstance then
@@ -92,33 +135,34 @@ function M.main(root,args)
   end
   local function applyControl()
     if not fs.exists(data.."/control.lua") then return end
-    local x=ctl:load({}); assert(fs.remove(data.."/control.lua"))
+    local x=ctl:load({})
+    if x.action=="cancel" or x.action=="stop" then cancelWork(c); return true end
+    assert(fs.remove(data.."/control.lua"))
     if x.action=="pause" then
       if x.id then local j=assert(Jobs.find(state,x.id),"unknown job"); scheduler():pause(j,"Paused by user") else state.paused=true end
     elseif x.action=="resume" then scheduler():resume(x.id)
-    elseif x.action=="stop" then state.paused=false; state.stopping=true end
+    end
     save()
   end
-  local function run(draining)
-    Config.validate(c); storage:validate()
-    if storage.interface then scanner():validate() end
+  local function run()
     if fs.exists(lock) then
       assert(f.recover,"Worker lock exists. Use resume --recover only after stopping the old process.")
       assert(fs.remove(lock))
     end
     local lf=assert(io.open(lock,"w")); lf:write(tostring(computer.address())); lf:close()
     local ok,err=xpcall(function()
+      if cancellationPending() then cancelWork(c); return end
+      Config.validate(c); storage:validate()
+      if storage.interface then scanner():validate() end
       scheduler():recover()
-      if draining then
-        state.paused=false; state.stopped=false; state.stopping=true; save()
-      elseif state.pendingRequest then
+      if state.pendingRequest then
         -- This request already passed the admission checks. Prepare its stock
         -- without resuming jobs from the previously drained plan.
         state.paused=false; state.stopped=false; state.stopping=false; save()
       else scheduler():resume(a[2] and cmd=="resume" and a[2] or nil) end
       local lastDisplay=""; local nextObservation=0
       while true do
-        applyControl()
+        if applyControl() then break end
         local active,status
         if state.pendingRequest and not state.paused and not state.stopping then
           -- The saved batch carries its own exact source and return baseline.
@@ -131,6 +175,7 @@ function M.main(root,args)
             elseif not ready then status="SCANNING"; state.error=why; save()
             else
               state.error=nil
+              Jobs.releaseCancelled(state)
               items=storage:scan()
               local req=state.pendingRequest; local m=mutations(items)
               local plan,e=require("lib.planner").plan(req.target,m,items,c); assert(plan,e)
@@ -143,6 +188,7 @@ function M.main(root,args)
             end
           end
         else active,status=scheduler():step() end
+        if cancellationPending() then cancelWork(c); break end
         -- Housing details are display data. Do not repeatedly query every
         -- housing or write a full recovery checkpoint just to redraw the UI.
         local now=computer.uptime()
@@ -160,11 +206,12 @@ function M.main(root,args)
         if name=="interrupted" then break end
         if name=="key_down" then
           if char==112 then state.paused=true elseif char==114 then scheduler():resume()
-          elseif char==113 then state.paused=false; state.stopping=true end
+          elseif char==113 then cancelWork(c); break end
           save()
         end
       end
     end,debug.traceback)
+    if cancellationPending() then cancelWork(c); ok=true; err=nil end
     fs.remove(lock)
     if not ok then
       -- Keep crash diagnostics separate from the breeding journal. A full disk
@@ -184,56 +231,21 @@ function M.main(root,args)
       return nil,err
     end
   end
-  if cmd=="cancel" then
-    local function refused(message) print(message); return nil,message end
-    if fs.exists(lock) then return refused("A worker lock exists. Exit the running worker with Ctrl+C before cancelling saved work.") end
-    for _,m in pairs(state.machines or {}) do
-      if m.job then return refused("A machine is still assigned; use Beeomatic stop to drain it before cancelling.") end
-    end
-    for _,j in ipairs(state.jobs) do
-      if j.machine or j.state=="RUNNING" or j.state=="COLLECTING" or j.state=="ASSESSING" or j.state=="PREPARING" then
-        return refused("A job still has active work; use Beeomatic stop to drain it before cancelling.")
-      end
-    end
-    if not state.pendingRequest then
-      if #state.jobs==0 then print("No saved work to cancel."); return end
-      -- Physical requests must be reconciled before their owning jobs disappear.
-      if state.pending or state.pendingExternal or next(state.meRequests or {}) then
-        return refused("Unresolved transfers/Interface requests remain; run Beeomatic resume or doctor to reconcile them before cancelling.")
-      end
-      local owners={}; for _,j in ipairs(state.jobs) do owners[j.id]=true end
-      for key,r in pairs(state.reservations or {}) do if owners[r.owner] then state.reservations[key]=nil end end
-      for key,b in pairs(state.meBatches or {}) do if owners[b.owner] then state.meBatches[key]=nil end end
-      state.jobs={}; state.machines={}; state.target=nil; state.error=nil
-      state.finished=false; state.paused=false; state.stopping=false; state.stopped=true
-      save(); print("Cancelled saved breeding plan. You can start a new request."); return
-    end
-    local target=state.pendingRequest.target
-    -- The pending request passed admission after the previous plan was drained.
-    -- Restore that plan's stopped status, including requests stranded by old code.
-    -- Keep all scanner, transfer, ownership and job records for reconciliation.
-    state.pendingRequest=nil; state.stopped=true; state.stopping=false; save()
-    print("Cancelled pending request for "..tostring(target)..". You can start a new request.")
-    if state.scan or state.pending or state.pendingExternal or next(state.meRequests or {}) then
-      print("Scanner/transfer recovery records retained; they will be reconciled before new breeding starts.")
-    end
-    return
-  end
   if cmd=="status" then
     require("lib.ui.status").observe(state,c,components,inv,computer.uptime()); print(require("lib.ui.status").render(state,c,f.verbose)); return
   end
   if cmd=="logs" then for _,e in ipairs(state.events or {}) do print(tostring(e.time).." "..e.message) end; return end
-  if cmd=="pause" or cmd=="stop" then
+  if cmd=="pause" then
     if fs.exists(lock) then sendControl(cmd,a[2])
-    else if cmd=="pause" then
+    else
       if a[2] then scheduler():pause(assert(Jobs.find(state,a[2]),"unknown job"),"Paused by user") else state.paused=true end
-    else state.stopping=true; state.paused=false end; save()
-      if cmd=="stop" then return run(true) end
+      save()
       print("Saved "..cmd.." request") end
     return
   end
   if cmd=="resume" then
     if fs.exists(lock) and not f.recover then sendControl("resume",a[2]); return end
+    assert(not state.cancelled or state.pendingRequest,"Work was cancelled. Start a new breed/convert/populate/imprint request.")
     assert(#state.jobs>0 or state.pendingRequest,"No saved work to resume")
     return run()
   end
@@ -243,7 +255,7 @@ function M.main(root,args)
       assert(not state.pending and not state.pendingExternal and not state.scan and not next(state.meRequests or {}) and not next(state.meBatches or {}),
         "reconcile outstanding movements/scanning before reconfiguring storage")
       for _,j in ipairs(state.jobs) do
-        assert(j.state=="DONE" or (state.stopped and not j.machine),"finish/drain saved jobs before reconfiguring storage")
+        assert(j.state=="DONE" or (state.stopped and not j.machine),"finish or cancel saved jobs before reconfiguring storage")
       end
     end
     local w=require("lib.setup").new(c,components,inv,function() cp:save(c) end)
@@ -264,8 +276,8 @@ function M.main(root,args)
         assert(name~="","Use alveary rename ID NAME")
         machine.name=name; cp:save(c); print("Renamed "..machine.id.." to "..name)
       else
-        assert(not (state.machines and state.machines[machine.id] and state.machines[machine.id].job),"machine has saved work; drain it before reconfiguring")
-        for _,j in ipairs(state.jobs) do assert(j.machine~=machine.id,"machine has saved work; drain it before reconfiguring") end
+        assert(not (state.machines and state.machines[machine.id] and state.machines[machine.id].job),"machine has saved work; finish or cancel it before reconfiguring")
+        for _,j in ipairs(state.jobs) do assert(j.machine~=machine.id,"machine has saved work; finish or cancel it before reconfiguring") end
         require("lib.setup").new(c,components,inv,function() cp:save(c) end):editAlveary(machine)
       end
     elseif sub=="remove" then unlocked()
@@ -350,6 +362,7 @@ function M.main(root,args)
         ok,why=pcall(function()
           local lastMessage
           while true do
+            if cancellationPending() then cancelWork(c); return end
             -- A pending scanner batch carries its own exact source/return state.
             -- Refresh all stock only when selecting the next batch.
             items=state.scan and {} or storage:scan()
@@ -359,13 +372,16 @@ function M.main(root,args)
             if ready then break end
             if message and message~=lastMessage then print(message); lastMessage=message end
             local name,_,char=event.pull(scanInterval())
-            if name=="interrupted" or (name=="key_down" and char==113) then
+            if name=="key_down" and char==113 then cancelWork(c); return end
+            if name=="interrupted" then
               error("Scanning stopped; progress saved. Run Beeomatic plan "..a[2].." again to continue.",0)
             end
           end
           items=storage:scan(); print("Scanning complete.")
         end)
+        if cancellationPending() then cancelWork(c) end
         fs.remove(lock)
+        if state.cancelled then return end
         if not ok then return blocked("Scanning paused: "..tostring(why).."\nProgress preserved; repair the scanner and rerun Beeomatic plan "..a[2]..".") end
       end
     end
@@ -380,9 +396,9 @@ function M.main(root,args)
   if cmd=="breed" or cmd=="convert" or cmd=="populate" or cmd=="imprint" then
     unlocked(); assert(a[2],"Specify a species")
     assert(not state.pendingRequest,"Saved request exists; use resume")
-    assert(#state.jobs==0 or state.finished or state.stopped,"Existing work is preserved; use resume or drain with stop")
+    assert(#state.jobs==0 or state.finished or state.stopped,"Existing work is preserved; use resume, or cancel to abandon it")
     local count=cmd=="populate" and U.assertNumber(a[3],1,1000000) or nil
-    state.pendingRequest={target=a[2],mode=cmd,count=count,flags=f}; save(); return run()
+    state.pendingRequest={target=a[2],mode=cmd,count=count,flags=f}; state.cancelled=nil; save(); return run()
   end
   error("Unknown command. Run Beeomatic help")
 end

@@ -7,11 +7,12 @@ function M.new(components,inv,runtime)
   runtime=runtime or {}
   local self=setmetatable({components=components,inv=inv},M)
   self.now=runtime.now or function() return require("computer").uptime() end
+  self.cancelled=runtime.cancelled
   self.wait=runtime.wait or function(seconds)
     local name,_,char=require("event").pull(seconds)
     if name=="interrupted" then error("Export wait interrupted; inspect saved receipts before resuming") end
     if name=="key_down" and (char==112 or char==113) then
-      if char==112 then inv.state.paused=true else inv.state.stopping=true end
+      if char==112 then inv.state.paused=true else inv.state.cancelRequested=true; inv.state.stopping=true end
       inv.save(); error("Export wait stopped by user; progress preserved")
     end
   end
@@ -88,6 +89,10 @@ function M:run(x,database,entry)
       p.setOutput(g.side,g.on); assert(p.getOutput(g.side)==g.on,"export gate did not enable")
       local deadline=self.now()+x.timeout
       while true do
+        if self.inv.state.cancelRequested or (self.cancelled and self.cancelled()) then
+          self.inv.state.cancelRequested=true; self.inv.state.stopping=true
+          error("Cancellation requested",0)
+        end
         local items=self:receipts(x)
         if #items>0 then break end
         assert(self.now()<deadline,"ME export timeout waiting for receipt; check channel, power, stock and redstone wiring")

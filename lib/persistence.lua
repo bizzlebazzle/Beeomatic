@@ -4,8 +4,9 @@ function M.new(path,fs,onTable,skipField)
   return setmetatable({path=path,fs=fs or require("filesystem"),onTable=onTable,skipField=skipField},M)
 end
 function M:readFile(path)
+  local read=require("lib.state_codec").read
   local f,why=io.open(path,"rb"); if not f then return nil,why or "cannot open file" end
-  local ok,v=pcall(require("lib.state_codec").read,function()
+  local ok,v=pcall(read,function()
     local chunk,err=f:read(4096); assert(not err,err); return chunk
   end,self.onTable,self.skipField)
   f:close()
