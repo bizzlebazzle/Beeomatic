@@ -231,3 +231,64 @@ test("ME owned splits and unowned remainder have independent returned genomes",f
   items[1].stack.individual.active.fertility=99
   eq(items[2].stack.individual.active.fertility,3)
 end)
+
+test("completion skips stock and genotype work before stable confirmations",function()
+  local w=W.new(); w:build()
+  w.scheduler.populationMinimum=function() error("must not inspect stock before confirmations") end
+  w.scheduler.count=function() error("must not count stock before confirmations") end
+  for _,mode in ipairs({"breed","populate","convert","imprint"}) do
+    eq(w.scheduler:completion({species="spirit",mode=mode,confirmed=2},{},nil),false)
+  end
+end)
+
+test("default completion checks template candidates in one pass",function()
+  local w=W.new(); w:build(); local items={}
+  for n=1,40 do items[#items+1]={stack=W.bee("Spirit","princess",1,nil,{nocturnal=false})} end
+  for n=1,40 do items[#items+1]={stack=W.bee("Forest","drone",32)} end
+  items[#items+1]={stack=W.bee("Spirit","drone",32,nil,{nocturnal=false})}
+  local template={stack=W.bee("Spirit","drone",1,nil,{nocturnal=true})}
+  local job={species="spirit",mode="breed",confirmed=3,count=32}
+  local G=require("lib.genetics"); local purity=G.purity; local calls=0
+  G.purity=function(...) calls=calls+1; return purity(...) end
+  local success,result=pcall(w.scheduler.completion,w.scheduler,job,items,template)
+  G.purity=purity; ok(success,result); eq(result,false); ok(calls<=#items)
+  for _,index in ipairs({1,#items}) do
+    items[index].stack.individual.active.nocturnal=true; items[index].stack.individual.inactive.nocturnal=true
+  end
+  ok(w.scheduler:completion(job,items,template))
+end)
+
+test("optimized completion agrees with pairwise rules across stock, template and equivalence cases",function()
+  local w=W.new(); w:build(); local G=require("lib.genetics")
+  local function reference(job,items,template)
+    local minimum=job.count or w.scheduler:populationMinimum(items,job.species)
+    if job.mode=="convert" then
+      return job.baseline and w.scheduler:count(items,job.species,"princess")>job.baseline and
+        job.confirmed>=w.c.confirmCycles and w.scheduler:count(items,job.species,"drone")>=minimum
+    end
+    if w.scheduler:count(items,job.species,"drone")<minimum then return false end
+    for _,p in ipairs(items) do if B.kind(p.stack)=="princess" then
+      for _,d in ipairs(items) do if B.kind(d.stack)=="drone" and
+        G.complete(p.stack,d.stack,job.species,w.c,template and template.stack.individual.active) then
+        return job.confirmed>=w.c.confirmCycles
+      end end
+    end end
+    return false
+  end
+  for n=1,144 do
+    local items={}
+    for i=1,6 do
+      local species=(n+i)%3==0 and "Forest" or "Spirit"
+      local kind=i%2==0 and "drone" or "princess"
+      local stack=W.bee(species,kind,kind=="drone" and (n+i)%20+1 or 1,
+        (n+i)%4==0 and "Forest" or nil,{fertility=(n+i)%3+1,nocturnal=(n+i)%2==0})
+      if (n+i)%7==0 then stack.individual.isAnalyzed=false end
+      items[#items+1]={stack=stack}
+    end
+    local modes={"breed","populate","convert","imprint"}
+    local job={species="spirit",mode=modes[n%4+1],confirmed=n%5,count=n%2==0 and 8 or nil,baseline=n%3}
+    local template=n%3==0 and {stack=W.bee("Spirit","drone",1,nil,{nocturnal=true})} or nil
+    w.c.fullEquivalence=n%2==1
+    eq(not not w.scheduler:completion(job,items,template),not not reference(job,items,template),"completion case "..n)
+  end
+end)

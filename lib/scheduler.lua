@@ -219,6 +219,8 @@ function M:select(j,items,template)
   return nil,nil,"Waiting for parent stock/reserves or a spare princess for automatic conversion"
 end
 function M:completion(j,items,template)
+  -- No stock combination can complete before its stable-cycle requirement.
+  if j.confirmed<self.c.confirmCycles then return false end
   local minimum=j.count or self:populationMinimum(items,j.species)
   if j.mode=="convert" then
     -- Conversion creates one additional stable princess; baseline is captured before work.
@@ -226,6 +228,22 @@ function M:completion(j,items,template)
       self:count(items,j.species,"drone")>=minimum
   end
   if self:count(items,j.species,"drone")<minimum then return false end
+  if not self.c.fullEquivalence then
+    -- With equivalence disabled the two candidates have independent purity
+    -- and template requirements. Check each item once, rather than comparing
+    -- every princess against every drone in the inventory.
+    local princess,drone=false,false
+    local genes=template and template.stack.individual.active
+    for _,i in ipairs(items) do
+      local kind=B.kind(i.stack)
+      if ((kind=="princess" and not princess) or (kind=="drone" and not drone)) and
+        G.purity(i.stack,j.species)==2 and (not genes or G.templateMatch(i.stack,genes)) then
+        if kind=="princess" then princess=true else drone=true end
+        if princess and drone then return true end
+      end
+    end
+    return false
+  end
   for _,p in ipairs(items) do if B.kind(p.stack)=="princess" then
     for _,d in ipairs(items) do if B.kind(d.stack)=="drone" and
       G.complete(p.stack,d.stack,j.species,self.c,template and template.stack.individual.active) then

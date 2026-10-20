@@ -16,6 +16,7 @@ mocks; they are not measurements of elapsed time on an OpenComputer.
 | ME request | Clearing every database slot and refilling the same verified entry repeatedly | Clear the required matching-variant range; re-read cached entry NBT before reuse; verify configuration and actual stocked quantity |
 | ME stock ownership | Sorting and walking all batches for every genotype | One sorted batch grouping by exact identity; existing count and missing-batch checks |
 | Genetic comparisons | Serializing both operands just to compare them | Recursive field/value comparison, including extra fields and false values |
+| Completion checks | Stock/genotype work before sufficient confirmation cycles, and all princess/drone pairs in the default mode | Reject insufficient confirmations immediately; check candidates independently in one pass unless full equivalence requires pair comparison |
 | Parent selection | Recounting all exact-genotype drones for every candidate | One temporary count map per selection snapshot; exact reserves and ownership filtering |
 | Dispatch | Two standalone logical ME lease saves | Save both leases with PREPARING before the first materialization |
 | Startup scanning | Repeated global stock scans while a batch already has a saved source/baseline | Scanner still verifies its exact physical returns; global stock is refreshed before the next batch and planning |
@@ -28,7 +29,9 @@ transfer uses three state checkpoints instead of four; a fresh one-variant ME
 selection clears one slot instead of nine; a second verified entry selection
 requires no clear/store calls. Selection across 80 drone variants stays within a
 linear identity-call bound and rebuilds totals after stock changes. Split stacks
-share reserves only when their exact identities match. Bulk destination selection
+share reserves only when their exact identities match. Completion is checked against
+the prior pairwise rules across 144 stock/template/equivalence cases, with a
+linear purity-check bound in the default mode. Bulk destination selection
 uses one snapshot even when a merge is blocked; fallback selection reads each slot
 once, including empty gaps. One unowned ME stack uses two full stack copies
 (network mock plus private pooling) instead of three, with genome isolation tested.
