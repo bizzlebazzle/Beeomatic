@@ -1,6 +1,49 @@
 local U=require("lib.util"); local P=require("lib.persistence")
 local W=require("tests.mocks.world"); local O=require("tests.mocks.openos")
 
+test("checkpoint yields during encoding writing and verification under a simulated watchdog",function()
+  for _,free in ipairs({1360217,524288}) do
+    local w=W.new(); w:build()
+    O.with(w,function(files,_,fs)
+      local now,lastYield,phase=0,0,"encode"; local yields={}
+      local function work()
+        now=now+0.1
+        assert(now-lastYield<1,"too long without yielding")
+      end
+      local computer=require("computer")
+      computer.uptime=function() return now end
+      computer.freeMemory=function() return free end
+      local sleep,write,open=os.sleep,U.write,io.open
+      os.sleep=function(seconds)
+        ok(seconds>0); yields[phase]=(yields[phase] or 0)+1
+        coroutine.yield("watchdog"); lastYield=now
+      end
+      U.write=function(value,sink)
+        return write(value,function(chunk) work(); sink(chunk) end)
+      end
+      io.open=function(path,mode)
+        local f,why=open(path,mode)
+        if f then
+          local writing,reading=f.write,f.read
+          f.write=function(self,...) phase="write"; work(); return writing(self,...) end
+          f.read=function(self,...) phase="read"; work(); return reading(self,...) end
+        end
+        return f,why
+      end
+      local data={tag=string.rep("x",339000)}
+      local thread=coroutine.create(function() P.new("/state.lua",fs):save(data) end)
+      local success,why
+      repeat
+        success,why=coroutine.resume(thread)
+      until not success or coroutine.status(thread)=="dead"
+      os.sleep,U.write,io.open=sleep,write,open
+      ok(success,why)
+      for _,name in ipairs({"encode","write","read"}) do ok((yields[name] or 0)>0,name) end
+      eq(P.new("/state.lua",fs):load({}),data)
+    end)
+  end
+end)
+
 test("checkpoint byte count matches serialization for all bytes keys and scalar types",function()
   local bytes={}; for i=0,255 do bytes[#bytes+1]=string.char(i) end
   local binary=table.concat(bytes):rep(9)

@@ -703,6 +703,28 @@ test("worker mailbox commands avoid loading the full saved state",function()
 end)
 
 
+test("standalone cancel permits watchdog yields and preserves unresolved transfers",function()
+  local w=W.new(); w:addMachine("a"); w:build(); W.job(w,"job","Spirit")
+  w.state.pending={phase="INTENT",owner="job",identity="saved evidence"}
+  w.state.padding=string.rep("x",339000)
+  O.with(w,function(files)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    files["/project/data/state.lua"]="return "..U.encode(w.state)
+    local sleep=os.sleep; local now,yields=0,0
+    require("computer").uptime=function() now=now+0.1; return now end
+    require("computer").freeMemory=function() return 1360217 end
+    os.sleep=function(seconds) ok(seconds>0); yields=yields+1; coroutine.yield("watchdog") end
+    local thread=coroutine.create(function() require("lib.cli").main("/project",{"cancel"}) end)
+    local success,why
+    repeat success,why=coroutine.resume(thread) until not success or coroutine.status(thread)=="dead"
+    os.sleep=sleep
+    ok(success,why); ok(yields>1); eq(w.moves,0)
+    local state=assert(load(files["/project/data/state.lua"]))()
+    ok(state.cancelled); eq(#state.jobs,0); eq(state.pending,w.state.pending)
+    eq(files["/project/data/worker.lock"],nil)
+  end)
+end)
+
 test("running worker accepts cancel stop and q without draining its queen",function()
   for _,action in ipairs({"cancel","stop","q"}) do
     local w=W.new(); w:addMachine("a"); w:build()

@@ -198,6 +198,17 @@ local function main(root,args,profile)
       assert(fs.remove(lock))
     end
     local lf=assert(io.open(lock,"w")); lf:write(tostring(computer.address())); lf:close()
+    -- Save-time sleeps must not discard a quit key. Remember it without
+    -- interrupting the checkpoint; the driver acts after atomic replacement.
+    sp.wait=function(seconds)
+      local deadline=computer.uptime()+seconds
+      repeat
+        local name,_,char=event.pull(math.max(0,deadline-computer.uptime()))
+        if name=="interrupted" then pendingKey="interrupted"
+        elseif name=="key_down" and (char==112 or char==113 or char==114) and
+          pendingKey~="interrupted" and pendingKey~=113 then pendingKey=char end
+      until computer.uptime()>=deadline
+    end
     worker=coroutine.create(function() return xpcall(function()
       if cancellationPending() then cancelWork(c); return end
       Config.validate(c); storage:validate()
@@ -269,6 +280,8 @@ local function main(root,args,profile)
       local result=table.pack(coroutine.resume(worker))
       while result[1] and coroutine.status(worker)~="dead" do
         if result[2]==checkpoint then
+          if pendingKey=="interrupted" then return end
+          if pendingKey==113 then state.cancelRequested=true; return end
           if cancellationPending() then return end
           local name,_,char=event.pull(0)
           if name=="interrupted" then return end
@@ -287,7 +300,7 @@ local function main(root,args,profile)
       if not result[1] then error(result[2],0) end
       if not result[2] then error(result[3],0) end
     end,debug.traceback)
-    worker=nil
+    worker=nil; sp.wait=nil
     if cancellationPending() then cancelWork(c); ok=true; err=nil end
     fs.remove(lock)
     if not ok then

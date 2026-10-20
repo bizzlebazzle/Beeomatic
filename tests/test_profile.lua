@@ -262,3 +262,28 @@ test("worker forwards host coroutine yields and their nil-containing results",fu
     eq(files["/project/data/worker.lock"],nil)
   end)
 end)
+
+test("quit keys received during checkpoint watchdog waits survive until the safe boundary",function()
+  for _,key in ipairs({"q","interrupted"}) do
+    local w=W.new(); w:addMachine("a"); w:build(); W.job(w,"job","Spirit")
+    O.with(w,function(files)
+      files["/project/data/config.lua"]="return "..U.encode(w.c)
+      files["/project/data/state.lua"]="return "..U.encode(w.state)
+      local now,waits=0,0; local sleep=os.sleep
+      require("computer").uptime=function() return now end
+      os.sleep=function(seconds) now=now+seconds end
+      require("event").pull=function(seconds)
+        ok(seconds>0,"quit must be remembered before the zero-time checkpoint poll")
+        now=now+seconds; waits=waits+1
+        if key=="q" then return "key_down",nil,113 end
+        return "interrupted"
+      end
+      local success,_,why=pcall(require("lib.cli").main,"/project",{"resume"})
+      os.sleep=sleep
+      ok(success,why); eq(why,nil); eq(waits,1); eq(w.moves,0)
+      local state=assert(load(files["/project/data/state.lua"]))()
+      eq(not not state.cancelled,key=="q")
+      eq(files["/project/data/worker.lock"],nil); eq(files["/project/data/crash.log"],nil)
+    end)
+  end
+end)

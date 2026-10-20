@@ -30,6 +30,16 @@ In-flight enclosing operations are absent from completed-call profile totals
 when the worker stops at a checkpoint; completed saves and calls remain recorded.
 Repeat the in-game profile to measure the actual improvement.
 
+Standalone `cancel` subsequently exposed a watchdog timeout during checkpoint
+verification. Saves now yield before encoding and at chunk boundaries when
+0.5 seconds have elapsed, including writing and exact readback verification.
+Buffered I/O alone does not guarantee a yield. The wait is 0.05 seconds because
+some OpenOS versions have a [zero-sleep yielding bug](https://github.com/MightyPirates/OpenComputers/pull/3779).
+During foreground saves, keyboard requests received in these waits are retained
+and acted on after atomic replacement. A simulated watchdog tests both buffered
+and streaming saves; standalone cancellation and quit-during-save tests cover
+the command paths.
+
 ## Changes
 
 | Path | Avoidable work removed | Checks retained |

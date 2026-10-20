@@ -32,11 +32,23 @@ function M:save(value)
   -- bytes during this pass; larger states fall back to bounded streaming.
   local limit=16384
   local computer=package.loaded.computer
+  -- Buffered filesystem calls need not yield. Keep encoding, writing and
+  -- verification below OC's watchdog even outside the foreground worker.
+  local nextYield=0
+  local function cooperate()
+    if computer and computer.uptime and os.sleep and computer.uptime()>=nextYield then
+      if self.wait then self.wait(0.05)
+      else os.sleep(0.05) end -- zero sleeps do not yield on some OpenOS versions
+      nextYield=computer.uptime()+0.5
+    end
+  end
+  cooperate()
   if computer and computer.freeMemory then
     limit=math.max(0,math.min(524288,math.floor((computer.freeMemory()-524288)/2)))
   end
   local chunks,bytes={},0
   U.write(value,function(chunk)
+    cooperate()
     bytes=bytes+#chunk
     if bytes>limit then chunks=nil end
     if chunks then chunks[#chunks+1]=chunk end
@@ -61,8 +73,9 @@ function M:save(value)
     end
   end
   local function each(sink)
-    if chunks then for _,chunk in ipairs(chunks) do sink(chunk) end
-    else U.write(value,sink) end
+    local function consume(chunk) cooperate(); sink(chunk) end
+    if chunks then for _,chunk in ipairs(chunks) do consume(chunk) end
+    else U.write(value,consume) end
   end
   local f=assert(io.open(tmp,"wb"))
   if self.profile then f=self.profile:file(f) end
@@ -79,6 +92,7 @@ function M:save(value)
     each(function(chunk)
       local offset=1
       while offset<=#chunk do
+        cooperate()
         local actual=f:read(#chunk-offset+1)
         assert(actual and #actual>0 and actual==chunk:sub(offset,offset+#actual-1),"state verification failed")
         offset=offset+#actual
