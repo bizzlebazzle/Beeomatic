@@ -189,7 +189,6 @@ function M:materialize(item,ep,owner,count)
       local entry=self:selectEntry(item)
       local yes,why=p.setInterfaceConfiguration(slot,self.config.database,entry,count)
       assert(yes,"Interface configuration failed: "..tostring(why))
-      x.phase="CONFIGURED"; self.inv.save()
     end
   else
     local filter,err=p.getInterfaceConfiguration(slot); assert(not err,tostring(err))
@@ -200,8 +199,9 @@ function M:materialize(item,ep,owner,count)
     self.state.meRequests[key]=x; self.inv.save()
     local yes,why=p.setInterfaceConfiguration(slot,self.config.database,entry,count)
     assert(yes,"Interface configuration failed: "..tostring(why))
-    x.phase="CONFIGURED"; self.inv.save()
   end
+  -- INTENT already recovers a configured filter; READY is the next durable
+  -- boundary, before any caller can extract the stocked bee.
   local configured,err=p.getInterfaceConfiguration(slot)
   assert(not err and configured and B.identity(configured)==x.identity and configured.size==count,
     "Interface stock configuration does not match saved exact request")
@@ -217,7 +217,9 @@ function M:materialize(item,ep,owner,count)
   return {endpoint=ep,slot=slot,stack=stack,batchId=item.batchId}
 end
 function M:clearRequest(x)
-  x.phase="RETURNING"; self.inv.save()
+  -- A committed consumption already makes reconcile() clear this filter.
+  -- Unconsumed cancellations still need intent before changing the hardware.
+  if not x.consumed and x.phase~="RETURNING" then x.phase="RETURNING"; self.inv.save() end
   local p=self:port(x.ep); local yes,why=p.setInterfaceConfiguration(x.slot)
   assert(yes,"Interface request cleanup failed: "..tostring(why))
   local filter,err=p.getInterfaceConfiguration(x.slot); assert(not err and not filter,"Interface filter did not clear")

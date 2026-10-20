@@ -3,6 +3,61 @@ local function select(w,s)
   return {network=true,endpoint={id="ME"},slot=B.identity(s),stack=U.copy(s)}
 end
 
+test("Interface stocking and consumed cleanup need only intent ready and cleared checkpoints",function()
+  local w=ME.new(); local s=ME.bee("Spirit","drone",8); w:addStock(s)
+  local saved={}; w.inv.save=function() saved[#saved+1]=U.copy(w.state) end
+  local ep=w.c.alvearies[1].storage
+  local p=w.storage:materialize(select(w,s),ep,"job",1)
+  eq(#saved,2); eq(saved[1].meRequests["port1:2"].phase,"INTENT")
+  eq(saved[2].meRequests["port1:2"].phase,"READY")
+  w.inv:move(p,{id="destination",transposer="tp1",side=3},10,1,"job")
+  eq(#saved,5); ok(saved[5].meRequests["port1:2"].consumed)
+  w.storage:releasePort(ep); eq(#saved,6); eq(next(saved[6].meRequests),nil)
+end)
+
+test("a crash after filter configuration resumes saved intent without configuring or extracting twice",function()
+  local w=ME.new(); local s=ME.bee("Spirit","drone",8); w:addStock(s)
+  local saved; w.inv.save=function() saved=U.copy(w.state) end
+  local ep=w.c.alvearies[1].storage; local port=w.proxies[ep.address]
+  local configure=port.setInterfaceConfiguration
+  port.setInterfaceConfiguration=function(...) configure(...); w:tick(); error("power cut") end
+  raises(function() w.storage:materialize(select(w,s),ep,"job",1) end,"power cut")
+  eq(saved.meRequests["port1:2"].phase,"INTENT")
+  w.state.meRequests=U.copy(saved.meRequests)
+  port.setInterfaceConfiguration=function() error("must reuse configured filter") end
+  local p=w.storage:materialize(select(w,s),ep,"job",1)
+  eq(p.stack.size,1); eq(w.cells[B.identity(s)].size,7); eq(w.moves,0)
+end)
+
+test("consumed cleanup recovers from a crash after clearing the filter using the committed receipt",function()
+  local w=ME.new(); local s=ME.bee("Spirit","drone",8); w:addStock(s)
+  local saved; w.inv.save=function() saved=U.copy(w.state) end
+  local ep=w.c.alvearies[1].storage
+  local p=w.storage:materialize(select(w,s),ep,"job",1)
+  w.inv:move(p,{id="destination",transposer="tp1",side=3},10,1,"job")
+  local port=w.proxies[ep.address]; local configure=port.setInterfaceConfiguration
+  port.setInterfaceConfiguration=function(...) configure(...); error("power cut") end
+  raises(function() w.storage:releasePort(ep) end,"power cut")
+  ok(saved.meRequests["port1:2"].consumed)
+  w.state.meRequests=U.copy(saved.meRequests); port.setInterfaceConfiguration=configure
+  w.storage:reconcile(); eq(next(w.state.meRequests),nil)
+  eq(w.moves,1); eq(w.cells[B.identity(s)].size,7)
+end)
+
+test("unconsumed cancellations persist intent before clearing and retries reuse that intent",function()
+  local w=ME.new(); local s=ME.bee("Spirit","drone",8); w:addStock(s)
+  local ep=w.c.alvearies[1].storage
+  w.storage:materialize(select(w,s),ep,"job",1)
+  local saved={}; w.inv.save=function() saved[#saved+1]=U.copy(w.state) end
+  local port=w.proxies[ep.address]; local configure=port.setInterfaceConfiguration
+  port.setInterfaceConfiguration=function(...) configure(...); error("power cut") end
+  raises(function() w.storage:cancel("job") end,"power cut")
+  eq(#saved,1); eq(saved[1].meRequests["port1:2"].phase,"RETURNING")
+  w.state.meRequests=U.copy(saved[1].meRequests); port.setInterfaceConfiguration=configure
+  w.storage:reconcile(); eq(#saved,2); eq(next(w.state.meRequests),nil)
+  eq(w.cells[B.identity(s)].size,8); eq(w.moves,0)
+end)
+
 test("Interface stocks the exact bee when database and physical NBT use different compound order",function()
   local F=require("tests.fixtures.nbt"); local w=ME.new(); local s=ME.bee("End","queen",1); s.tag=F.a; w:addStock(s)
   local store=w.proxies.me.store
