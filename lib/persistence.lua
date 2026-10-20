@@ -6,6 +6,7 @@ end
 function M:readFile(path)
   local read=require("lib.state_codec").read
   local f,why=io.open(path,"rb"); if not f then return nil,why or "cannot open file" end
+  if self.profile then f=self.profile:file(f) end
   local ok,v=pcall(read,function()
     local chunk,err=f:read(4096); assert(not err,err); return chunk
   end,self.onTable,self.skipField)
@@ -58,6 +59,7 @@ function M:save(value)
     else U.write(value,sink) end
   end
   local f=assert(io.open(tmp,"wb"))
+  if self.profile then f=self.profile:file(f) end
   local ok,why=pcall(function()
     each(function(chunk) assert(f:write(chunk)) end)
     assert(f:flush())
@@ -66,6 +68,7 @@ function M:save(value)
   -- Compare the exact written bytes in bounded chunks. Loading the temporary
   -- document would allocate a second complete state while the live one exists.
   f=assert(io.open(tmp,"rb"))
+  if self.profile then f=self.profile:file(f) end
   ok,why=pcall(function()
     each(function(chunk)
       local offset=1

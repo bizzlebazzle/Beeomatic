@@ -13,6 +13,7 @@ function M:proxy(address,methods)
   for _,m in ipairs(methods or {}) do
     assert(advertised[m]~=nil and p[m]~=nil,address.." missing method "..m)
   end
+  if self.profile then return self.profile:proxy(address,p,entry and entry.methods or self.api.methods(address)) end
   return p
 end
 function M:discover()

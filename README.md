@@ -51,6 +51,8 @@ an interruption. Use `Beeomatic alveary add` to add a machine without repeating
 storage/scanner setup. Each housing retains its own slot map and climate.
 
 See the [movement performance audit](docs/PERFORMANCE.md) for resource costs and optimizations.
+For in-game timings, stop the worker with Ctrl+C, run `Beeomatic resume --profile`,
+let it move several bees, then stop with Ctrl+C and read `Beeomatic logs --profile`.
 
 See [installation and migration](docs/INSTALLATION.md), [hardware](docs/HARDWARE.md),
 [commands](docs/COMMANDS.md), [architecture](docs/ARCHITECTURE.md),

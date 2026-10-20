@@ -39,8 +39,9 @@ def check(runtime, root, version):
         else:
             raise AssertionError("legacy receipt fixture must exceed 2 MiB")
         installed = sum((root / p).stat().st_size for p in seed.eval('assert(loadfile("manifest.lua"))()').values())
-        for mode, command in (("missing", "resume"), ("disabled", "resume"),
-                              ("missing", "cancel"), ("disabled", "cancel")):
+        for mode, command, profile in (("missing", "resume", False), ("disabled", "resume", False),
+                                      ("missing", "cancel", False), ("disabled", "cancel", False),
+                                      ("missing", "resume", True), ("disabled", "resume", True)):
             for file in (path / "data").iterdir():
                 if file.name != "config.lua":
                     file.unlink()
@@ -53,14 +54,14 @@ def check(runtime, root, version):
                 peak_disk = max(peak_disk, used)
                 return used
             limited.globals().disk_used = disk_used
-            _, live_kib = limited.execute(source, path.as_posix(), True, mode, command)
+            _, live_kib = limited.execute(source, path.as_posix(), True, mode, command, profile)
             current = (path / "data/state.lua").stat().st_size
             # Cancel retains the known-genome catalogue without querying broken
             # hardware; resume can prune entries proven absent from live stock.
             ratio = 0.5 if command == "resume" else 0.65
             assert current < len(legacy) * ratio, (current, len(legacy))
             assert peak_disk < 4 * 1024 * 1024, peak_disk
-            print(f"Lua {version}: full ME {command} with collectgarbage {mode} fits 2 MiB "
+            print(f"Lua {version}: full ME {command}{' --profile' if profile else ''} with collectgarbage {mode} fits 2 MiB "
                   f"with 384 KiB host reserve; live {live_kib:.0f} KiB; "
                   f"checkpoint {len(legacy):,} -> {current:,} bytes; "
                   f"disk fixture peak {peak_disk:,}/4,194,304 bytes", flush=True)

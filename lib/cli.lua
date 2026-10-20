@@ -6,13 +6,14 @@ Beeomatic doctor [--nbt | --probe | --interface PORT | --adopt JOB | --retry JOB
 Beeomatic plan SPECIES [--verbose] [--no-pager]
 Beeomatic breed SPECIES [--noFinalImprint | --onlyFinalImprint]
 Beeomatic convert SPECIES | populate SPECIES COUNT | imprint SPECIES
-Beeomatic status [--verbose] | logs [--crash]
-Beeomatic pause [JOB] | resume [JOB] [--recover] | cancel
+Beeomatic status [--verbose] | logs [--crash | --profile]
+Beeomatic pause [JOB] | resume [JOB] [--recover] [--profile] | cancel
 Beeomatic alveary list | add | remove ID | configure ID | rename ID NAME
 Beeomatic storage scan | bees list | bees inspect SPECIES
 Beeomatic help
 
 Jobs run in the foreground. p pauses, r resumes, q cancels all work immediately.
+Add --profile to breed/convert/populate/imprint/resume/plan to record timings.
 Species names may contain spaces, with or without quotes. populate takes COUNT last.
 cancel abandons the entire process; stop is an alias. Bees remain in place.
 Ctrl+C exits with state preserved. Run resume after repairing a blocked job.
@@ -39,7 +40,7 @@ function M.parse(args)
   end
   return positional,flags
 end
-function M.main(root,args)
+local function main(root,args,profile)
   local fs=require("filesystem"); local computer=require("computer"); local event=require("event")
   local data=root.."/data"; fs.makeDirectory(data)
   local a,f=M.parse(args); local cmd=U.lower(a[1]); local sub=U.lower(a[2])
@@ -47,9 +48,10 @@ function M.main(root,args)
   if cmd=="" or cmd=="help" then print(help); return end
   local crashPath=data.."/crash.log"
   -- Crash reports must remain readable even if loading configuration/state fails.
-  if cmd=="logs" and f.crash then
-    local report=io.open(crashPath,"r")
-    if not report then print("No saved crash report. Older versions did not save tracebacks."); return end
+  if cmd=="logs" and (f.crash or f.profile) then
+    local path=f.profile and data.."/profile.log" or crashPath
+    local report=io.open(path,"r")
+    if not report then print(f.profile and "No profiling log. Run Beeomatic resume --profile first." or "No saved crash report. Older versions did not save tracebacks."); return end
     local text=report:read("*a"); report:close()
     require("lib.ui.pager").show(text,{enabled=not f["no-pager"]}); return
   end
@@ -57,6 +59,14 @@ function M.main(root,args)
   local receipts=require("lib.storage.receipts")
   local sp=P.new(data.."/state.lua",fs,receipts.decoded,receipts.skipField)
   local ctl=P.new(data.."/control.lua",fs); local lock=data.."/worker.lock"
+  if profile then
+    assert(not fs.exists(lock) or f.recover,"Stop the running worker with Ctrl+C before enabling profiling.")
+    profile.statePath=data.."/state.lua"
+    for _,store in ipairs({cp,sp,ctl}) do store.profile=profile end
+    profile:wrap(cp,"load","config.load"); profile:wrap(cp,"save","checkpoint.config")
+    profile:wrap(sp,"load","state.load"); profile:wrap(sp,"save","checkpoint.state")
+    profile:wrap(ctl,"load","control.load"); profile:wrap(ctl,"save","checkpoint.control")
+  end
   if fs.exists(lock) and (cmd=="pause" or cmd=="cancel" or (cmd=="resume" and not f.recover)) then
     ctl:save({action=cmd,id=a[2],requested=computer.uptime()})
     print("Requested "..cmd..(a[2] and " "..a[2] or "")); return
@@ -111,6 +121,13 @@ function M.main(root,args)
   U.collect()
   local function save() sp:save(state) end
   local components=Components.new(); local inv=Inventory.new(components,state,save)
+  if profile then
+    components.profile=profile
+    for _,key in ipairs({"scan","readSlots","destination"}) do profile:wrap(inv,key,"inventory."..key) end
+    profile:wrap(inv,"move","inventory.move",function(_,item,dest,slot,count,owner)
+      return item.endpoint.id..":"..item.slot.." -> "..dest.id..":"..slot.." x"..count.." "..tostring(owner)
+    end)
+  end
   local function cancellationPending()
     if state.cancelRequested then return true end
     if not fs.exists(data.."/control.lua") then return false end
@@ -118,11 +135,17 @@ function M.main(root,args)
     return request.action=="cancel" or request.action=="stop"
   end
   local storage=Storage.new(c.storage,inv,components,{cancelled=cancellationPending})
+  if profile then
+    for _,key in ipairs({"scan","materialize","deposit","selectEntry","releasePort"}) do profile:wrap(storage,key,"storage."..key) end
+    profile:wrap(storage,"poll","storage.poll",function(_,_,why) return why end)
+    profile:wrap(storage,"wait","storage.wait")
+  end
   local scannerInstance,schedulerInstance
   local function scanner()
     if not scannerInstance then
       U.collect()
       scannerInstance=require("lib.scanner").new(c.scanner,inv,state,save,computer.uptime,storage)
+      if profile then profile:wrap(scannerInstance,"step","scanner.step") end
     end
     return scannerInstance
   end
@@ -130,6 +153,7 @@ function M.main(root,args)
     if not schedulerInstance then
       U.collect()
       schedulerInstance=require("lib.scheduler").new(c,state,components,inv,storage,scanner(),save,computer.uptime)
+      if profile then profile:wrap(schedulerInstance,"step","scheduler.step") end
     end
     return schedulerInstance
   end
@@ -214,6 +238,7 @@ function M.main(root,args)
         end
         local display=require("lib.ui.status").render(state,c,false)
         if display~=lastDisplay then require("lib.ui.status").show(display); lastDisplay=display end
+        if profile then profile:flush() end
         if status=="DONE" or status=="STOPPED" then break end
         if status=="BLOCKED" and not active and not state.paused then
           print("Progress saved. Repair the reported condition, then Beeomatic resume."); break
@@ -391,6 +416,7 @@ function M.main(root,args)
             else ready,message=scanner():step(items) end
             if ready then break end
             if message and message~=lastMessage then print(message); lastMessage=message end
+            if profile then profile:flush() end
             local name,_,char=event.pull(scanInterval())
             if name=="key_down" and char==113 then cancelWork(c); return end
             if name=="interrupted" then
@@ -421,5 +447,29 @@ function M.main(root,args)
     state.pendingRequest={target=a[2],mode=cmd,count=count,flags=f}; state.cancelled=nil; save(); return run()
   end
   error("Unknown command. Run Beeomatic help")
+end
+function M.main(root,args)
+  local a,f=M.parse(args)
+  if not f.profile or U.lower(a[1])=="logs" then return main(root,args) end
+  local cmd=U.lower(a[1])
+  assert(cmd=="resume" or cmd=="breed" or cmd=="convert" or cmd=="populate" or cmd=="imprint" or cmd=="plan",
+    "Use --profile with breed/convert/populate/imprint/resume/plan, or logs.")
+  local computer=require("computer"); local fs=require("filesystem")
+  assert(not fs.exists(root.."/data/worker.lock") or f.recover,"Stop the running worker with Ctrl+C before enabling profiling.")
+  local profile=require("lib.profile").new(root.."/data/profile.log",computer.uptime,fs,computer.freeMemory)
+  profile.command=table.concat(args," "):gsub("[%c]"," "):sub(1,200)
+  local result=table.pack(pcall(function()
+    profile:wrap(U,"write","serialize"); profile:wrap(U,"size","checkpoint.measure")
+    profile:wrap(B,"identity","bee.identity"); profile:wrap(B,"migrateIdentities","identity.migrate")
+    profile:wrap(require("lib.nbt"),"canonical","nbt.canonical")
+    profile:wrap(require("event"),"pull","event.wait")
+    for _,key in ipairs({"exists","get","size","remove","rename"}) do profile:wrap(fs,key,"filesystem."..key) end
+    print("Profiling enabled. Read timings with Beeomatic logs --profile after stopping with Ctrl+C.")
+    return main(root,args,profile)
+  end))
+  profile.outcome=result[1] and not result[3] and "returned" or "failed (see crash log / command error)"
+  profile:finish()
+  if not result[1] then error(result[2],0) end
+  return table.unpack(result,2,result.n)
 end
 return M

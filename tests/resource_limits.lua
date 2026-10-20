@@ -1,5 +1,5 @@
 -- Fresh VM: no test framework or preloaded Beeomatic modules hide startup costs.
-local root,compact,gcMode,command=...
+local root,compact,gcMode,command,profile=...
 command=command or "resume"
 local hostGC=collectgarbage
 if gcMode=="missing" then collectgarbage=nil
@@ -72,13 +72,20 @@ if not compact then
 end
 local messages=0
 print=function() messages=messages+1 end
-local _,why=require("lib.cli").main(root,{command})
+local _,why=require("lib.cli").main(root,profile and {command,"--profile"} or {command})
 assert(not why,why)
 assert(messages>0)
 for _,name in ipairs({"lib.planner","lib.mutations","lib.setup","lib.ui.diagnostics"}) do
   assert(not package.loaded[name],"resume eagerly loaded "..name)
 end
 assert(not exists(root.."/data/worker.lock"))
+if profile then
+  local f=assert(baseOpen(root.."/data/profile.log","rb"))
+  local report=f:read("*a"); f:close()
+  assert(#report<=32768 and report:find("checkpoint.state",1,true),"missing bounded profiling report")
+else
+  assert(not package.loaded["lib.profile"],"profiling module loaded without --profile")
+end
 hostGC("collect")
 local live=hostGC("count")
 return #reserved,live

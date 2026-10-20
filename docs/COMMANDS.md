@@ -25,6 +25,7 @@ Beeomatic status --verbose
 Beeomatic pause
 Beeomatic pause job3
 Beeomatic resume
+Beeomatic resume --profile
 Beeomatic resume job3
 Beeomatic stop
 Beeomatic cancel
@@ -38,8 +39,18 @@ Beeomatic bees list
 Beeomatic bees inspect spirit
 Beeomatic logs
 Beeomatic logs --crash
+Beeomatic logs --profile
+Beeomatic logs --profile --no-pager
 Beeomatic help
 ```
+
+For performance diagnosis, stop an existing worker with Ctrl+C, then run
+`Beeomatic resume --profile`. New breed/convert/populate/imprint commands and
+`plan` also accept `--profile`. Let it complete several slow movements, stop with
+Ctrl+C, and read `Beeomatic logs --profile --no-pager`. Profiling applies to that
+invocation only; a later `resume` runs normally. The latest run replaces
+`data/profile.log`; copy it before profiling another run. See
+[profiling details](PERFORMANCE.md#in-game-profiling) for interpreting the report.
 
 `alveary list` shows IDs, friendly names, saved climates, priorities and disabled
 registrations. `alveary rename ID NAME` changes a friendly name without changing

@@ -36,6 +36,55 @@ uses one snapshot even when a merge is blocked; fallback selection reads each sl
 once, including empty gaps. One unowned ME stack uses two full stack copies
 (network mock plus private pooling) instead of three, with genome isolation tested.
 
+## In-game profiling
+
+Stop the current worker with Ctrl+C (which preserves breeding progress), then:
+
+```sh
+Beeomatic resume --profile
+# Let several slow insertions and collections happen, then press Ctrl+C.
+Beeomatic logs --profile --no-pager
+```
+
+`breed`, `convert`, `populate`, `imprint` and `plan` also accept `--profile`.
+Profiling is disabled by default and applies only to that invocation. It times
+wall-clock seconds using `computer.uptime()`, including component synchronization,
+disk and machine waits. It writes `data/profile.log` at safe worker/scanner loop
+boundaries once 30 seconds have passed and again on normal exit, Ctrl+C or a caught
+failure. A long operation can delay the periodic snapshot until its loop completes;
+a power loss or hard process kill can lose the most recent measurements. Each run
+replaces the previous report, so copy the report before starting another one.
+
+Rows are sorted by `own_s`, the time excluding other instrumented calls nested
+inside that operation. `total_s` includes those children, `max_s` is the slowest
+individual call, and `errors` counts thrown errors. Do not add overlapping totals.
+Counts and totals cover the whole invocation; the history retains the last 24
+completed calls taking at least 0.25 seconds, plus thrown errors. Transfers show
+source/destination IDs and slots; component calls show full addresses and up to
+five primitive arguments. Inventory contents, bee genomes and NBT are not logged.
+
+- `ADDRESS.transferItem` measures the transposer callback itself.
+- `inventory.move` includes the checks and checkpoints around a transfer.
+- `checkpoint.state` includes the complete durable save. `checkpoint.measure`
+  measures its byte count; `serialize` measures encoding plus its streaming sink.
+  `disk.read`, `disk.write`, `disk.flush`, `disk.close` and `filesystem.*` separate
+  measured I/O from the enclosing operation. Untimed work, including file opens,
+  remains in the enclosing row's `own_s`.
+- `bee.identity` and `nbt.canonical` expose identity and decompression work.
+- `storage.scan` includes ME discovery and Interface inventory scans.
+- `storage.poll` includes waiting for AE stocking/draining; `storage.wait` and
+  `event.wait` expose intentional sleeps. Large idle wait totals are expected
+  during breeding and do not by themselves indicate a transfer bottleneck.
+
+The report also includes available free RAM and state-file size. Counters are
+limited to 128 operation groups (excess groups aggregate under `other`), proxy
+caching to 32 addresses, and slow history to 24 entries. The report is capped at
+32 KiB; replacement can temporarily require a second 32 KiB file. Log writes are
+best effort and excluded from operation timings; failure does not change breeding
+or recovery state. The optional wrappers add measurement overhead, especially to
+frequent short Lua calls, so use profiling for diagnosis and omit the flag for
+normal operation. No profiler hooks remain after the invocation returns.
+
 ## Remaining costs
 
 - Durable checkpoints still serialize and verify the complete saved state. Their
