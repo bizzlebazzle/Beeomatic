@@ -9,6 +9,8 @@ mocks; they are not measurements of elapsed time on an OpenComputer.
 | Path | Avoidable work removed | Checks retained |
 | --- | --- | --- |
 | Component access | Repeated method discovery for the same proxy | Resolve the current proxy on access, reject missing methods, refresh metadata when the proxy changes |
+| Destination selection | A second inventory walk to find an empty slot after merge search | Reuse the same ordered snapshot and its size; prefer exact unreserved merges and verify the destination again before movement |
+| ME result allocation | Deep-copying already privately pooled unowned stacks again | Transfer the private stack to the result; catalogue, owned splits and network data remain independent |
 | Housing/output reads | Inventory-size checks for each slot in a group | One availability check per group, fresh reads of every selected slot |
 | Physical transfer | Separate reservation checkpoint and duplicate initial source read | Reservation and intent saved together before movement, moved count saved before receipt evaluation, exact source/destination checks and committed receipt |
 | ME request | Clearing every database slot and refilling the same verified entry repeatedly | Clear the required matching-variant range; re-read cached entry NBT before reuse; verify configuration and actual stocked quantity |
@@ -26,7 +28,10 @@ transfer uses three state checkpoints instead of four; a fresh one-variant ME
 selection clears one slot instead of nine; a second verified entry selection
 requires no clear/store calls. Selection across 80 drone variants stays within a
 linear identity-call bound and rebuilds totals after stock changes. Split stacks
-share reserves only when their exact identities match.
+share reserves only when their exact identities match. Bulk destination selection
+uses one snapshot even when a merge is blocked; fallback selection reads each slot
+once, including empty gaps. One unowned ME stack uses two full stack copies
+(network mock plus private pooling) instead of three, with genome isolation tested.
 
 ## Remaining costs
 

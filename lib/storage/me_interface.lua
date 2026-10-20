@@ -121,8 +121,11 @@ function M:scan()
         assert(n==available,"owned ME batch missing: "..id.."; audit stock before resuming")
       end
     end
-    if remaining>0 then local copy=U.copy(s); copy.size=remaining
-      result[#result+1]={network=true,endpoint={id="ME"},slot=key,stack=copy}
+    if remaining>0 then
+      -- pooled already owns a private copy. Transfer it to the result instead
+      -- of copying the complete genome a second time for unowned stock.
+      s.size=remaining
+      result[#result+1]={network=true,endpoint={id="ME"},slot=key,stack=s}
     end
   end
   for id,batch in pairs(self.state.meBatches) do

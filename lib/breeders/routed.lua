@@ -45,7 +45,7 @@ function M:getCycleState()
   local h=self:housing()
   if h.getQueen() or h.getDrone() or #self.inv:scan(self.endpoint)>0 then return "RUNNING" end
   local princess,drones=0,0
-  for _,slot in ipairs(self:getSlots().outputs) do local s=self.inv:get(self.output,slot)
+  for _,s in pairs(self.inv:readSlots(self.output,self:getSlots().outputs)) do
     if B.kind(s)=="princess" then princess=princess+s.size end
     if B.kind(s)=="drone" then drones=drones+s.size end
   end
@@ -54,7 +54,8 @@ function M:getCycleState()
 end
 function M:collectResults(storage,owner,onReceipt)
   self:gate(self.config.routing.gate.off); local results={}
-  for _,slot in ipairs(self:getSlots().outputs) do local stack=self.inv:get(self.output,slot)
+  local slots=self:getSlots().outputs; local stacks=self.inv:readSlots(self.output,slots)
+  for _,slot in ipairs(slots) do local stack=stacks[slot]
     if stack then
       local i=storage:deposit({endpoint=self.output,slot=slot,stack=stack},self.config.storage,owner)
       results[#results+1]=i; if onReceipt then onReceipt(i) end

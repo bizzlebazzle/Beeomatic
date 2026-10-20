@@ -6,7 +6,8 @@ end
 function M:outputs()
   local c=self.config; local items={}
   if c.outputSlots then
-    for _,slot in ipairs(c.outputSlots) do local stack=self.inv:get(c.output,slot)
+    local stacks=self.inv:readSlots(c.output,c.outputSlots)
+    for _,slot in ipairs(c.outputSlots) do local stack=stacks[slot]
       if stack then items[#items+1]={endpoint=c.output,slot=slot,stack=stack} end
     end
   else items=self.inv:scan(c.output) end

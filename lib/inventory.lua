@@ -6,7 +6,10 @@ function M.new(components,state,save)
 end
 function M:proxy(ep) return self.components:proxy(ep.transposer,{"getInventorySize","getStackInSlot","transferItem"}) end
 function M:size(ep) return assert(self:proxy(ep).getInventorySize(ep.side),"inventory unavailable: "..ep.id) end
-function M:get(ep,slot) self:size(ep); return self:proxy(ep).getStackInSlot(ep.side,slot) end
+function M:get(ep,slot)
+  local p=self:proxy(ep); assert(p.getInventorySize(ep.side),"inventory unavailable: "..ep.id)
+  return p.getStackInSlot(ep.side,slot)
+end
 -- One availability check for a group of fresh reads, never cached item contents.
 function M:readSlots(ep,slots)
   local p=self:proxy(ep); assert(p.getInventorySize(ep.side),"inventory unavailable: "..ep.id)
@@ -15,23 +18,24 @@ function M:readSlots(ep,slots)
   return result
 end
 function M:scan(ep)
-  local p=self:proxy(ep); local r={}
+  local p=self:proxy(ep); local r,size={}
   if p.getAllStacks then
     -- OC's snapshot iterator preserves slot positions, including empty slots.
     -- Read exactly count() entries; nil in the middle is not end-of-inventory.
     local snapshot,why=p.getAllStacks(ep.side)
     assert(snapshot,why or ("inventory unavailable: "..ep.id))
-    for slot=1,snapshot.count() do local stack=snapshot()
+    size=snapshot.count()
+    for slot=1,size do local stack=snapshot()
       if stack and stack.name then r[#r+1]={endpoint=ep,slot=slot,stack=stack} end
     end
   else
     -- Older components/mocks: validate once per scan, not once per slot.
-    local size=assert(p.getInventorySize(ep.side),"inventory unavailable: "..ep.id)
+    size=assert(p.getInventorySize(ep.side),"inventory unavailable: "..ep.id)
     for slot=1,size do local stack=p.getStackInSlot(ep.side,slot)
       if stack then r[#r+1]={endpoint=ep,slot=slot,stack=stack} end
     end
   end
-  return r
+  return r,size
 end
 function M:empty(ep)
   local p=self:proxy(ep)
@@ -41,10 +45,16 @@ function M:empty(ep)
 end
 function M:destination(ep,stack)
   if (not B.kind(stack) or B.scanned(stack) or type(stack.tag)=="string") then
-    for _,i in ipairs(self:scan(ep)) do
-      if B.identity(i.stack)==B.identity(stack) and i.stack.size+stack.size<=(i.stack.maxSize or 1) and
+    local items,size=self:scan(ep); local empty=1; local identity=B.identity(stack)
+    for _,i in ipairs(items) do
+      if i.slot==empty then empty=empty+1 end
+      if i.stack.size+stack.size<=(i.stack.maxSize or 1) and B.identity(i.stack)==identity and
         not self.state.reservations[U.location(ep,i.slot)] then return i.slot end
     end
+    -- scan is in physical slot order, so its first gap is already known. Do
+    -- not read the inventory again just to rediscover the same empty slot.
+    assert(empty<=size,"inventory full: "..ep.id)
+    return empty
   end
   return self:empty(ep)
 end

@@ -180,3 +180,54 @@ test("Interface assessment reuses its verified stock snapshot without another sc
   w.scheduler:advance(job)
   eq(job.state,"WAITING"); eq(scans,1); ok(job.lineage)
 end)
+
+test("destination search reuses one bulk snapshot and prefers an exact merge beyond empty gaps",function()
+  local w=W.new(); w:addMachine("a"); w:build(); local ep=w.c.storage.endpoints[1]
+  local bee=W.bee("Spirit","drone",4); bee.tag="exact"; w.inventories.hub[87]=U.copy(bee)
+  local proxy=w.proxies.tp1; local bulk=proxy.getAllStacks; local snapshots=0
+  proxy.getAllStacks=function(side) snapshots=snapshots+1; return bulk(side) end
+  proxy.getInventorySize=function() error("destination must use snapshot size") end
+  proxy.getStackInSlot=function() error("destination must not reread slots") end
+  eq(w.inv:destination(ep,bee),87); eq(snapshots,1)
+  w.state.reservations["hub:87"]={owner="other"}
+  eq(w.inv:destination(ep,bee),1); eq(snapshots,2)
+  w.state.reservations={}; w.inventories.hub[87].tag="different"
+  eq(w.inv:destination(ep,bee),1); eq(snapshots,3)
+end)
+
+test("fallback destination search reads each slot once and reports full inventories",function()
+  local w=W.new(); w:addMachine("a"); w:build(); local ep=w.c.storage.endpoints[1]
+  local proxy=w.proxies.tp1; proxy.getAllStacks=nil
+  for slot=1,100 do w.inventories.hub[slot]=W.bee("Forest","drone",64) end
+  w.inventories.hub[93]=nil
+  local read,size=proxy.getStackInSlot,proxy.getInventorySize; local reads,sizes=0,0
+  proxy.getStackInSlot=function(side,slot) reads=reads+1; return read(side,slot) end
+  proxy.getInventorySize=function(side) sizes=sizes+1; return size(side) end
+  local item=W.bee("Spirit","princess")
+  eq(w.inv:destination(ep,item),93); eq(reads,100); eq(sizes,1)
+  w.inventories.hub[93]=W.bee("Forest","drone",64)
+  raises(function() w.inv:destination(ep,item) end,"inventory full")
+  eq(reads,200); eq(sizes,2)
+end)
+
+test("ME unowned stock avoids another stack copy while returned genomes stay isolated",function()
+  local w=ME.new(); w.hideGenomes=false; local bee=ME.bee("Spirit","drone",8); w:addStock(bee)
+  local copy=U.copy; local stackCopies=0
+  U.copy=function(value)
+    if type(value)=="table" and value.name==bee.name and value.tag==bee.tag then stackCopies=stackCopies+1 end
+    return copy(value)
+  end
+  local success,items=pcall(w.storage.scan,w.storage); U.copy=copy; ok(success,items)
+  eq(stackCopies,2); eq(#items,1)
+  items[1].stack.individual.active.fertility=99; items[1].stack.size=1
+  eq(w.cells[B.identity(bee)].size,8); eq(w.cells[B.identity(bee)].individual.active.fertility,3)
+  eq(w.state.aeCatalog[B.identity(bee)].active.fertility,3)
+end)
+
+test("ME owned splits and unowned remainder have independent returned genomes",function()
+  local w=ME.new(); w.hideGenomes=false; local bee=ME.bee("Spirit","drone",8); w:addStock(bee)
+  w.state.meBatches.owned={identity=B.identity(bee),count=3,owner="job",root="owned",stack=U.copy(bee)}
+  local items=w.storage:scan(); eq(#items,2); eq(items[1].stack.size,3); eq(items[2].stack.size,5)
+  items[1].stack.individual.active.fertility=99
+  eq(items[2].stack.individual.active.fertility,3)
+end)
