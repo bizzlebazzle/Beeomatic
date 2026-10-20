@@ -27,12 +27,12 @@ function M:load(default)
 end
 function M:save(value)
   local tmp=self.path..".tmp"
+  local bytes=U.size(value)
   -- Check space for the complete new generation before opening the temporary
   -- file. Never sacrifice the only verified generation to make room.
   if self.fs.get then
     local disk=self.fs.get(self.path)
     if disk and disk.spaceTotal and disk.spaceUsed then
-      local bytes=0; U.write(value,function(chunk) bytes=bytes+#chunk end)
       local previous=self.fs.size and self.fs.size(tmp) or 0
       local free=disk.spaceTotal()-disk.spaceUsed()
       local needed=math.max(0,bytes-(previous or 0))+4096
@@ -47,9 +47,19 @@ function M:save(value)
         "Not enough disk space for checkpoint ("..bytes.." bytes; "..free.." free). Saved files preserved.")
     end
   end
+  -- Small checkpoints (including control/config files) fit a bounded buffer.
+  -- Serialize once, then write and compare the same bytes. Large states stream.
+  local chunks
+  if bytes<=16384 then
+    chunks={}; U.write(value,function(chunk) chunks[#chunks+1]=chunk end)
+  end
+  local function each(sink)
+    if chunks then for _,chunk in ipairs(chunks) do sink(chunk) end
+    else U.write(value,sink) end
+  end
   local f=assert(io.open(tmp,"wb"))
   local ok,why=pcall(function()
-    U.write(value,function(chunk) assert(f:write(chunk)) end)
+    each(function(chunk) assert(f:write(chunk)) end)
     assert(f:flush())
   end)
   f:close(); assert(ok,why)
@@ -57,7 +67,7 @@ function M:save(value)
   -- document would allocate a second complete state while the live one exists.
   f=assert(io.open(tmp,"rb"))
   ok,why=pcall(function()
-    U.write(value,function(chunk)
+    each(function(chunk)
       local offset=1
       while offset<=#chunk do
         local actual=f:read(#chunk-offset+1)

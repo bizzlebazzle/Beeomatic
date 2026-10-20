@@ -1,6 +1,32 @@
 local U=require("lib.util"); local P=require("lib.persistence")
 local W=require("tests.mocks.world"); local O=require("tests.mocks.openos")
 
+test("checkpoint byte count matches serialization for all bytes keys and scalar types",function()
+  local bytes={}; for i=0,255 do bytes[#bytes+1]=string.char(i) end
+  local binary=table.concat(bytes):rep(9)
+  for _,value in ipairs({{}, {binary=binary,[binary]=false,[false]=true,[3.5]=-1.25e30,
+    nested={empty="",zero=0}}, {boundary=string.rep("\\",513).."\0\127\255"}}) do
+    local actual=0; U.write(value,function(chunk) actual=actual+#chunk end)
+    eq(U.size(value),actual)
+  end
+  raises(function() U.size({bad=function() end}) end,"cannot persist")
+  raises(function() U.size({bad=math.huge}) end)
+end)
+
+test("small checkpoints serialize once while large ones retain bounded streaming verification",function()
+  local w=W.new(); w:build()
+  O.with(w,function(files,_,fs)
+    for _,length in ipairs({0,16363,16364,32000}) do
+      local data={tag=string.rep("x",length)}; local calls=0; local write=U.write
+      U.write=function(...) calls=calls+1; return write(...) end
+      local success,why=pcall(function() P.new("/state.lua",fs):save(data) end)
+      U.write=write; ok(success,why)
+      eq(calls,U.size(data)<=16384 and 1 or 2)
+      eq(P.new("/state.lua",fs):load({}),data)
+    end
+  end)
+end)
+
 test("legacy and streamed state decode correctly across every byte boundary",function()
   local Codec=require("lib.state_codec")
   local bytes={}; for i=0,255 do bytes[#bytes+1]=string.char(i) end
@@ -88,6 +114,25 @@ test("corrupted temporary state cannot replace the previous generation",function
     raises(function() P.new(path,fs):save({new=true}) end,"state verification failed")
     eq(files[path],'return {old=true}'); eq(files[path..".bak"],nil)
   end)
+end)
+
+test("large streaming checkpoints also reject truncation and trailing bytes before replacement",function()
+  for _,corrupt in ipairs({function(s) return s:sub(1,-2) end,function(s) return s.."x" end}) do
+    local w=W.new(); w:build()
+    O.with(w,function(files,_,fs)
+      local path="/state.lua"; files[path]="return {old=true}"
+      local open=io.open
+      io.open=function(name,mode)
+        local f,why=open(name,mode)
+        if f and name==path..".tmp" and mode=="wb" then
+          f.flush=function() files[name]=corrupt(files[name]); return true end
+        end
+        return f,why
+      end
+      raises(function() P.new(path,fs):save({large=string.rep("x",20000)}) end,"state verification failed")
+      eq(files[path],"return {old=true}"); eq(files[path..".bak"],nil)
+    end)
+  end
 end)
 
 

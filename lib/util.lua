@@ -24,6 +24,33 @@ function M.encode(v)
   end
   r[#r+1]="}"; return table.concat(r)
 end
+-- Exact size of write()'s format, without sorting keys or escaping a document.
+function M.size(v)
+  local function count(x)
+    local ty=type(x)
+    if ty=="string" then
+      local bytes=#x+2
+      for first=1,#x,512 do
+        local chunk=x:sub(first,first+511)
+        local _,quotes=chunk:gsub('["\\]',"")
+        local _,controls=chunk:gsub('[%z\1-\31\127]',"")
+        bytes=bytes+quotes+3*controls
+      end
+      return bytes
+    elseif ty=="table" then
+      local bytes=2
+      for key,value in pairs(x) do bytes=bytes+4+count(key)+count(value) end
+      return bytes
+    elseif ty=="number" then
+      assert(x==x and x~=math.huge and x~=-math.huge); return #tostring(x)
+    end
+    assert(ty=="boolean" or ty=="nil","cannot persist "..ty); return #tostring(x)
+  end
+  return 8+count(v) -- "return " and the final newline
+end
+local escapes={['"']='\\"',['\\']='\\\\'}
+for byte=0,31 do escapes[string.char(byte)]=string.format("\\%03d",byte) end
+escapes[string.char(127)]="\\127"
 -- Stream the same data-only Lua format without constructing the entire document
 -- (or an escaped copy of a large binary NBT key) in memory. Identity encoding
 -- above stays unchanged so saved reservations/receipts remain compatible.
@@ -41,10 +68,7 @@ function M.write(v,sink)
     if ty=="string" then
       emit('"')
       for first=1,#x,512 do
-        emit((x:sub(first,first+511):gsub('[%z\1-\31\127"\\]',function(ch)
-          if ch=='"' or ch=='\\' then return '\\'..ch end
-          return string.format("\\%03d",ch:byte())
-        end)))
+        emit((x:sub(first,first+511):gsub('[%z\1-\31\127"\\]',escapes)))
       end
       emit('"')
     elseif ty=="table" then
