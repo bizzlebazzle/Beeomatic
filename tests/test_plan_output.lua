@@ -65,6 +65,45 @@ test("runtime species labels retain spelling and multiword names",function()
   ok(P.render(p):find("Breeding plan: Certus Quartz",1,true))
 end)
 
+test("recursive plans explain missing external founders by name and recover when supplied",function()
+  local species={
+    target={name="End Dust",uid="gregtech.bee.speciesenddust"},
+    middle={name="Test Intermediate",uid="test.speciesmiddle"},
+    base={name="Forest",uid="forestry.speciesForest"},
+    external={name="Monastic",uid="forestry.speciesMonastic"}}
+  -- Synthetic routes exercise recursive lookup, not a hardcoded pack recipe.
+  local routes={
+    [species.target.uid]={{allele1=species.middle,allele2=species.base,chance=10}},
+    [species.middle.uid]={{allele1=species.external,allele2=species.base,chance=10}}}
+  local m=require("lib.mutations").new({
+    listAllSpecies=function() return {species.target,species.middle} end,
+    getBeeParents=function(id) return routes[id] or {} end},{})
+  local function bee(s,kind,count)
+    local stack=W.bee(s.name,kind,count)
+    stack.individual.active.species=s; stack.individual.inactive.species=s
+    return stack
+  end
+  local stock={bee(species.base,"princess"),bee(species.base,"drone",16)}
+  m:index(stock)
+  local c=require("lib.config").defaults(); c.reserveDrones=2
+  local p,e=P.plan("end dust",m,stock,c)
+  eq(p,nil); ok(e:find("Cannot plan End Dust",1,true))
+  ok(e:find("Monastic: no mutation recipe reported; pure stock: 0 princesses, 0 drones.",1,true))
+  ok(e:find("more than 2 pure drones for princess conversion",1,true))
+  ok(not e:find("gregtech.",1,true)); ok(not e:find("forestry.",1,true))
+  stock[#stock+1]=bee(species.external,"drone",2)
+  p,e=P.plan("end dust",m,stock,c)
+  eq(p,nil); ok(e:find("0 princesses, 2 drones",1,true))
+  stock[#stock].size=3
+  p=assert(P.plan("end dust",m,stock,c))
+  eq(#p.order,4); ok(p.root.children[1].children[1].conversion)
+  local text=P.render(p)
+  ok(text:find("End Dust <- Test Intermediate + Forest",1,true))
+  stock[#stock+1]=bee(species.external,"princess")
+  p=assert(P.plan("end dust",m,stock,c))
+  eq(#p.order,4); ok(p.root.children[1].children[1].available)
+end)
+
 local function terminal(keys,fn,width,height)
   local oldTerm,oldEvent,oldPrint=package.loaded.term,package.loaded.event,print
   local output,reads={},0

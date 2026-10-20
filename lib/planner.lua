@@ -3,6 +3,9 @@ local M={}
 function M.plan(target,mutations,items,c)
   local requested=target
   target=mutations:resolve(target)
+  local function display(name)
+    return mutations.displayName and mutations:displayName(name) or B.displayName(name)
+  end
   -- OpenOS resets the CPU watchdog when sleeping, even with a zero timeout.
   -- Count inner-loop work too: one route can inspect thousands of bee stacks.
   local work=0
@@ -179,7 +182,10 @@ function M.plan(target,mutations,items,c)
     while #stack>0 do
       checkpoint()
       local frame=stack[#stack]; local n=frame.node
-      if n.missing then failure("missing hive stock or unknown/unobtainable species: "..n.species) end
+      if n.missing then
+        failure(display(n.species)..": no mutation recipe reported; pure stock: "..
+          count(n.species,"princess").." princesses, "..count(n.species,"drone").." drones.")
+      end
       local edge=n.routes[frame.route]
       if not edge then
         active[n.species]=nil; done[n.species]=true; table.remove(stack)
@@ -187,14 +193,14 @@ function M.plan(target,mutations,items,c)
         local p=edge.parents[frame.parent]; frame.parent=frame.parent+1
         if not p then frame.route=frame.route+1; frame.parent=1
         elseif not p.plan then
-          if active[p.species] then failure("dependency cycle at "..p.species)
+          if active[p.species] then failure("dependency cycle at "..display(p.species))
           elseif not done[p.species] then
             active[p.species]=true; stack[#stack+1]={node=p,route=1,parent=1}
           end
         end
       end
     end
-    local lines={"Cannot plan "..target.." from verified stock."}
+    local lines={"Cannot plan "..display(target).." from verified stock."}
     for _,message in ipairs(err.messages) do lines[#lines+1]="- "..message end
     if err.omitted then lines[#lines+1]="- Additional route failures omitted." end
     local unknown=0
@@ -203,7 +209,9 @@ function M.plan(target,mutations,items,c)
       if B.kind(s) and not B.scanned(s) then unknown=unknown+(s.size or 1) end
     end
     if unknown>0 then lines[#lines+1]=tostring(unknown).." bees lack verified genes; analyse/inspect them before planning." end
-    lines[#lines+1]="Check Beeomatic bees list for recognised stock; hive founders need a pure princess and drones."
+    lines[#lines+1]="Recipes were followed back to these unresolved prerequisites."
+    lines[#lines+1]="Supply a pure princess + drones, or more than "..c.reserveDrones.." pure drones for princess conversion."
+    lines[#lines+1]="Species with no mutation recipe may require hives, trades or other external sources. Check Beeomatic bees list."
     return nil,table.concat(lines,"\n")
   end
   -- Settlement order already places every prerequisite before its result.
@@ -222,7 +230,7 @@ function M.plan(target,mutations,items,c)
   local names={}
   for _,n in ipairs(order) do
     checkpoint()
-    names[n.species]=mutations.displayName and mutations:displayName(n.species) or B.displayName(n.species)
+    names[n.species]=display(n.species)
   end
   return {target=target,requested=requested,root=root,order=order,names=names}
 end

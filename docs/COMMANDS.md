@@ -75,6 +75,15 @@ failures preserve progress; repair the scanner and rerun `plan TARGET` to contin
 Scanning requires no running worker or unfinished breeding work; use `resume`
 for saved breeding work instead.
 
+`plan` follows mutation recipes recursively back to verified stock, including all
+intermediate species. A missing species is not a blocker if its parents can be
+bred from your stock. If a prerequisite has no reported mutation recipe, the
+failure report names it and shows its verified pure princess/drone counts. These
+founders may need to come from hives, trades or other external sources. For
+example, Forestry's Monastic bee is obtained from Apiarist villagers rather than
+a mutation. Supply a pure pair, or more pure drones than `reserveDrones` so the
+planner can include a princess conversion. Then rerun the original target plan.
+
 The plan starts with a summary, any condition/climate checks requiring attention,
 and the species already in verified stock. Numbered recipes list prerequisites
 before offspring, with each shared prerequisite included once. Chances are base

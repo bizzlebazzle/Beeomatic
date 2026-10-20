@@ -1,0 +1,6 @@
+- You are working on a LUA program for the minecraft mod OpenComputers, specifically the custom version used by the modpack Gregtech New Horizons.
+- The programs purpose is to fully automate the bee breeding process from base bees to any chosen stage.
+- The program must handle multiple alvearies/apiaries.
+- The modpack version is 2.9.0-beta3.
+- Always commit your changes at logical intervals with concise commit messages.
+- The opencomputer has strict hardware limits of 2MiB RAM and 4MiB Hdd space, always make sure that the program is capable of running under these constraints. Make sure to only write the bare minimum code to make the script function.

@@ -44,7 +44,7 @@ test("shared missing prerequisites finish without exhausting the search budget",
   end
   local c=Config.defaults(); c.maxPlanExpansion=500
   local p,e=run(recipes,{},"spirit",c)
-  eq(p,nil); ok(e:find("species: missing",1,true)); ok(#e<1000,e)
+  eq(p,nil); ok(e:find("Missing: no mutation recipe reported",1,true)); ok(#e<1000,e)
   ok(not e:find("search limit",1,true)); ok(not e:find("budget exceeded",1,true))
 end)
 
@@ -107,7 +107,7 @@ test("known mutated species with spare drones uses conversion without rebuilding
   eq(#p.order,3); ok(p.root.children[1].conversion); ordered(p)
   local stock={W.bee("Ethereal","drone",c.reserveDrones)}
   local missing,e=run({ethereal={W.route("Missing","Impossible")}},stock,"ethereal")
-  eq(missing,nil); ok(e:find("species: missing",1,true))
+  eq(missing,nil); ok(e:find("Missing: no mutation recipe reported",1,true))
 end)
 
 test("target recovery creates a conversion dependency before the requested operation",function()
@@ -188,7 +188,8 @@ test("dependency cycle terminates with useful diagnostic",function()
   eq(p,nil); ok(e:find("cycle",1,true))
 end)
 test("unknown or missing hive stock is diagnosed",function()
-  local p,e=run({}); eq(p,nil); ok(e:find("unknown/unobtainable",1,true))
+  local p,e=run({}); eq(p,nil); ok(e:find("Spirit: no mutation recipe reported",1,true))
+  ok(e:find("pure stock: 0 princesses, 0 drones",1,true))
 end)
 
 test("shared missing founders are reported once across nested routes",function()
@@ -199,8 +200,8 @@ test("shared missing founders are reported once across nested routes",function()
   end
   local p,e=run(recipes)
   eq(p,nil)
-  local _,count=e:gsub("magicbees.speciesunusual","")
-  eq(count,1); ok(#e<500,e)
+  local _,count=e:gsub("Unusual: no mutation recipe","")
+  eq(count,1); ok(not e:find("magicbees.speciesunusual",1,true)); ok(#e<750,e)
 end)
 
 test("many distinct failures have a bounded summary",function()
