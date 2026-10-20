@@ -13,7 +13,6 @@ def check(runtime, root, version):
           local root=...
           local W=require("tests.mocks.world"); local ME=require("tests.mocks.me")
           local U=require("lib.util"); local w=ME.new()
-          w.c.scanner.mode="external"; w.c.scanner.output=nil; w.c.scanner.outputSlots=nil
           for n=1,6 do W.job(w,"job"..n,"Spirit","convert") end
           for n=1,64 do
             local s=ME.bee("Forest","drone",8); s.tag=string.rep(string.char(32+n),12000)..n

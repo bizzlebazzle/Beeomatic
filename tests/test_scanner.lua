@@ -22,9 +22,8 @@ test("already scanned bees bypass scanner",function()
   ok(w.scanner:step(w.storage:scan())); eq(w.moves,0)
 end)
 
-test("doctor accepts external ME scanner without legacy provenance flag and checks hardware",function()
+test("doctor accepts buffered ME scanner and checks all three sides",function()
   local w=require("tests.mocks.me").new(); local c=w.c.scanner
-  c.mode="external"; c.output=nil; c.outputSlots=nil; c.inputSlot=nil; c.isolatedVerified=nil
   local function scannerResult()
     for _,r in ipairs(require("lib.ui.diagnostics").check(w.c,w.components,w.inv,w.storage)) do
       if r.name=="scanner" then return r end
@@ -36,8 +35,8 @@ test("doctor accepts external ME scanner without legacy provenance flag and chec
   r=scannerResult(); ok(not r.ok); ok(r.error:find("separate sides",1,true)); eq(w.moves,0)
 end)
 
-test("doctor retains provenance checks for chest and legacy ME scanners",function()
-  local worlds={scanWorld(),require("tests.mocks.me").new()}
+test("doctor retains provenance checks for archive chest scanners",function()
+  local worlds={scanWorld()}
   for _,w in ipairs(worlds) do
     w.c.scanner.isolatedVerified=nil
     local found=false
@@ -47,5 +46,13 @@ test("doctor retains provenance checks for chest and legacy ME scanners",functio
       end
     end
     ok(found); eq(w.moves,0)
+  end
+end)
+
+test("retired ME scanner layouts require reconfiguration before moving bees",function()
+  for _,mode in ipairs({"external","direct"}) do
+    local w=require("tests.mocks.me").new(); w.c.scanner.mode=mode
+    raises(function() w.scanner:validate() end,"layout retired")
+    raises(function() require("lib.config").validate(w.c) end,"layout retired"); eq(w.moves,0)
   end
 end)

@@ -415,14 +415,9 @@ test("reconfiguration refuses to migrate saved unresolved movements",function()
   end)
 end)
 
-test("public CLI completes startup and breeding with chest input and automatic ME scanner returns",function()
+test("public CLI completes startup and breeding with input/output chests and verified ME scanner deposits",function()
   local ME=require("tests.mocks.me"); local B=require("lib.bees"); local w=ME.new()
   w.c.confirmCycles=1; w.c.minDrones=2
-  local c=w.c.scanner; c.mode="external"; c.output=nil; c.outputSlots=nil; c.inputSlot=nil; c.isolatedVerified=nil
-  w.finishScan=function(self)
-    local s=assert(self.inventories.analyser[1]); self.inventories.analyser[1]=nil
-    self:addStock(ME.bee(s.label:match("^(.-) %w+$"),B.kind(s),s.size))
-  end
   w:addStock(ME.bee("Spirit","princess")); w:addStock(ME.bee("Spirit","drone",8,true))
   O.with(w,function(files)
     files["/project/data/config.lua"]="return "..U.encode(w.c)

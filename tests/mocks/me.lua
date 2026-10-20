@@ -14,12 +14,12 @@ function M.new()
     local ep={id=portId,transposer="tp"..n,side=0,address="if"..n,managed=true,princessSlot=1,droneSlot=2,returnSlot=9}
     a.storage=ep; w.c.storage.endpoints[n]=ep
   end
-  w:inventory("scan-port",9); w.filters["scan-port"]={}; w:inventory("analyser",5)
-  w:addTransposer("tp-scan",{[0]="scan-port",[1]="analyser"})
+  w:inventory("scan-port",9); w.filters["scan-port"]={}; w:inventory("analyser",5); w:inventory("scan-output",27)
+  w:addTransposer("tp-scan",{[0]="scan-port",[1]="analyser",[2]="scan-output"})
   local ep={id="scan-port",transposer="tp-scan",side=0,address="if-scan",managed=true,princessSlot=1,droneSlot=2,returnSlot=9}
   w.c.storage.endpoints[3]=ep
-  w.c.scanner={enabled=true,isolatedVerified=true,storage=ep,input={id="analyser",transposer="tp-scan",side=1},
-    output={id="analyser",transposer="tp-scan",side=1},inputSlot=1,outputSlots={2},timeout=10}
+  w.c.scanner={enabled=true,mode="buffered",storage=ep,input={id="analyser",transposer="tp-scan",side=1},
+    output={id="scan-output",transposer="tp-scan",side=2},timeout=600}
   function w:addStock(s)
     local k=B.identity(s); local old=self.cells[k]
     if old then old.size=old.size+s.size else self.cells[k]=U.copy(s) end
@@ -47,7 +47,7 @@ function M.new()
   function w:finishScan()
     local source=assert(self.inventories.analyser[1],"no scanner input")
     local species=source.label:match("^(.-) %w+$")
-    self.inventories.analyser[2]=M.bee(species,B.kind(source),source.size)
+    self.inventories["scan-output"][1]=M.bee(species,B.kind(source),source.size)
     self.inventories.analyser[1]=nil
   end
   for _,port in ipairs(w.c.storage.endpoints) do

@@ -22,8 +22,9 @@ for n,v in ipairs(environments) do
 end
 local scannerPort=port("scanner_port","REPLACE-SCANNER-TRANSPOSER","REPLACE-SCANNER-INTERFACE",0)
 c.storage.endpoints[#c.storage.endpoints+1]=scannerPort
--- Pipes pull bees from this chest through the analyser and return analysed bees
--- directly to an unconfigured Interface slot on the same ME network.
+-- Pipes feed the scanner from the input chest; analysed bees collect in the
+-- output chest for physical verification and transposer return to the Interface.
 local input={id="scanner_input",transposer=scannerPort.transposer,side=1}
-c.scanner={enabled=true,mode="external",storage=scannerPort,input=input,timeout=600}
+local output={id="scanner_output",transposer=scannerPort.transposer,side=2}
+c.scanner={enabled=true,mode="buffered",storage=scannerPort,input=input,output=output,timeout=600}
 return c

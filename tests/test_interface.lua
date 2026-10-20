@@ -170,43 +170,6 @@ test("Interface polling remains bounded and preserves requests when stock never 
   raises(function() w.storage:materialize(select(w,s),w.c.scanner.storage,"scanner",8) end,"timeout waiting for Interface stock")
   ok(waits>=10 and waits<=11); eq(w.time,1); ok(next(w.state.meRequests)); eq(w.moves,0)
 end)
-local function externalScanner()
-  local w=ME.new(); local c=w.c.scanner
-  c.mode="external"; c.output=nil; c.outputSlots=nil; c.inputSlot=nil; c.isolatedVerified=nil
-  function w:returnExternal(count,species,raw)
-    local source=assert(self.inventories.analyser[1],"no external input")
-    count=count or source.size
-    self:addStock(ME.bee(species or source.label:match("^(.-) %w+$"),B.kind(source),count,raw))
-    source.size=source.size-count; if source.size==0 then self.inventories.analyser[1]=nil end
-  end
-  return w
-end
-
-test("external scanner uses one chest transfer and verifies automatic AE returns",function()
-  local w=externalScanner(); w:addStock(ME.bee("Spirit","drone",8,true))
-  w.storage:validate(); w.scanner:validate(); require("lib.config").validate(w.c)
-  eq(w.scheduler:prepareStock(w.storage:scan()),false); eq(w.moves,1)
-  eq(w.state.scan.inputSlot,1); w:returnExternal()
-  eq(w.scheduler:prepareStock(w.storage:scan()),false)
-  eq(w.moves,1); eq(w.state.scan,nil); eq(next(w.state.meRequests),nil)
-  ok(w.scheduler:prepareStock(w.storage:scan())); eq(w.state.stockPhase,"READY")
-end)
-
-test("external scanner baseline excludes unrelated castes and releases it after return detection",function()
-  local w=externalScanner(); local raw=ME.bee("Spirit","drone",8,true)
-  w:addStock(raw); w:addStock(ME.bee("Forest","princess")); w:addStock(ME.bee("Forest","queen"))
-  w.scanner:step(w.storage:scan())
-  local count=0; for _ in pairs(w.state.scan.before) do count=count+1 end
-  eq(count,1); eq(w.state.scan.before[B.identity(raw)],8)
-  w:returnExternal()
-  local materialize=w.storage.materialize
-  w.storage.materialize=function(self,item,...)
-    if w.state.scan.phase=="VERIFYING" then eq(w.state.scan.before,nil) end
-    return materialize(self,item,...)
-  end
-  w.scanner:step({}); eq(w.state.scan,nil)
-end)
-
 test("ME stock drops obsolete cached genomes but retains recoverable request references",function()
   local w=ME.new(); local live=ME.bee("Spirit","drone",8); w:addStock(live)
   local B=require("lib.bees"); local old=ME.bee("Forest","drone",8)
@@ -219,23 +182,40 @@ test("ME stock drops obsolete cached genomes but retains recoverable request ref
   ok(w.state.aeCatalog.protected); ok(B.scanned(items[1].stack))
 end)
 
-test("external scanner drains every initial drone across multiple batches",function()
-  local w=externalScanner(); w:addStock(ME.bee("Spirit","drone",130,true)); local count=0
+local function bufferedScanner(count)
+  local w=ME.new(); w:addStock(ME.bee("Spirit","drone",count or 8,true)); return w
+end
+
+test("buffered scanner verifies output chest and requests AE stock only once",function()
+  local w=bufferedScanner(); w.storage:validate(); w.scanner:validate(); require("lib.config").validate(w.c)
+  local materialize=w.storage.materialize; local requests=0
+  w.storage.materialize=function(self,...) requests=requests+1; return materialize(self,...) end
+  eq(w.scheduler:prepareStock(w.storage:scan()),false); eq(w.moves,1)
+  w:finishScan()
+  -- No ME inventory or database queries are needed to verify and deposit output.
+  w.proxies.me.getItemsInNetwork=function() error("must inspect chest directly") end
+  w.proxies.me.store=function() error("must not request returned bees") end
+  w.scanner:step({}); eq(w.moves,2); eq(requests,1); eq(w.state.scan,nil)
+  eq(next(w.state.meRequests),nil); eq(w.cells[B.identity(ME.bee("Spirit","drone",8))].size,8)
+end)
+
+test("buffered scanner drains all initial drones across batches",function()
+  local w=bufferedScanner(130); local count=0
   for _=1,12 do
     if w.scheduler:prepareStock(w.storage:scan()) then break end
-    if w.inventories.analyser[1] then count=count+w.inventories.analyser[1].size; w:returnExternal() end
+    if w.inventories.analyser[1] then count=count+w.inventories.analyser[1].size; w:finishScan() end
   end
-  eq(count,130); eq(w.moves,3); eq(w.state.stockPhase,"READY")
+  eq(count,130); eq(w.moves,6); eq(w.state.stockPhase,"READY")
   eq(B.count(w.storage:scan(),"Spirit","drone",true),130)
 end)
 
-test("external returns preserve ownership when merging with existing analysed stock",function()
-  local w=externalScanner(); local s=ME.bee("Spirit","drone",8,true); w.inventories.a[8]=s
+test("buffered returns preserve ownership across batch splits and merged ME stock",function()
+  local w=ME.new(); local s=ME.bee("Spirit","drone",8,true); w.inventories.a[8]=s
   local receipt=w.storage:deposit({endpoint={id="a",transposer="tp1",side=3},slot=8,stack=s},w.c.alvearies[1].storage,"job")
   w:addStock(ME.bee("Spirit","drone",12)); w.c.scanner.batchSize=3
   for _=1,12 do
     if w.scanner:step(w.storage:scan()) then break end
-    if w.inventories.analyser[1] then w:returnExternal() end
+    if w.inventories.analyser[1] then w:finishScan() end
   end
   local owned,free=0,0
   for _,item in ipairs(w.storage:scan()) do
@@ -246,180 +226,65 @@ test("external returns preserve ownership when merging with existing analysed st
   eq(owned,8); eq(free,12)
 end)
 
-test("external scanner waits for all units of a split return and preserves timeout progress",function()
-  local w=externalScanner(); w:addStock(ME.bee("Spirit","drone",8,true))
-  w.scanner:step(w.storage:scan()); w:returnExternal(3)
-  eq(w.scanner:step(w.storage:scan()),false); eq(w.state.scan.phase,"PROCESSING")
-  w.time=601
-  raises(function() w.scanner:step(w.storage:scan()) end,"batch preserved")
-  eq(w.state.scan.count,8); w.scheduler:recover(); w:returnExternal()
-  w.scanner:step(w.storage:scan()); eq(w.state.scan,nil); eq(w.moves,1)
+test("buffered scanner waits for complete output and preserves timed out batch",function()
+  local w=bufferedScanner(); w.scanner:step(w.storage:scan()); w:finishScan()
+  w.inventories["scan-output"][1].size=3
+  eq(w.scanner:step({}),false); eq(w.moves,1)
+  w.time=601; raises(function() w.scanner:step({}) end,"batch preserved")
+  eq(w.state.scan.count,8); w.scheduler:recover(); w.inventories["scan-output"][1].size=8
+  w.scanner:step({}); eq(w.state.scan,nil); eq(w.moves,2)
 end)
 
-test("external scanner ignores a wrong-species return without granting readiness",function()
-  local w=externalScanner(); w:addStock(ME.bee("Spirit","drone",8,true))
-  w.scanner:step(w.storage:scan()); w:returnExternal(nil,"Forest")
-  eq(w.scanner:step(w.storage:scan()),false)
-  eq(w.state.scan.phase,"PROCESSING"); eq(w.state.stockReady,nil)
-  w.time=601
-  raises(function() w.scanner:step(w.storage:scan()) end,"batch preserved")
-end)
-
-test("external scanner refuses ambiguous return variants",function()
-  local w=externalScanner(); w:addStock(ME.bee("Spirit","drone",8,true))
-  w.scanner:step(w.storage:scan()); w:returnExternal()
-  w:addStock(ME.bee("Spirit","drone",1,nil,{fertility=4}))
-  raises(function() w.scanner:step(w.storage:scan()) end,"multiple possible scanner returns")
-  eq(w.state.scan.phase,"PROCESSING")
-end)
-
-test("analysed unrelated species cannot compete with the expected scanner return",function()
-  local w=externalScanner(); w:addStock(ME.bee("Common","drone",1,true))
-  w.scanner:step(w.storage:scan()); w:returnExternal()
-  local unrelated=ME.bee("Ocean","drone",32); w:addStock(unrelated)
-  w.scanner:step(w.storage:scan()); eq(w.state.scan,nil)
-  eq(B.count(w.storage:scan(),"Common","drone",true),1)
-  eq(w.cells[B.identity(unrelated)].size,32); eq(next(w.state.meRequests),nil)
-end)
-
-test("saved boolean return checks recover owned Common batch despite an Ocean candidate",function()
-  local w=externalScanner(); local raw=ME.bee("Common","drone",1,true)
-  w.inventories.a[8]=raw
-  local receipt=w.storage:deposit({endpoint={id="a",transposer="tp1",side=3},slot=8,stack=raw},
-    w.c.alvearies[1].storage,"job1")
-  w.scanner:step(w.storage:scan()); w:returnExternal()
-  local common=ME.bee("Common","drone",1); local ocean=ME.bee("Ocean","drone",1)
-  w:addStock(ocean); w.storage:catalogue(common); w.storage:catalogue(ocean)
-  w.state.scan.returnChecks={[B.identity(common)]=true,[B.identity(ocean)]=true}
-  w.scheduler:recover(); local moves=w.moves
-  w.scanner:step(w.storage:scan()); eq(w.state.scan,nil); eq(w.moves,moves)
-  local batch=w.state.meBatches[receipt.batchId]
-  eq(batch.owner,"job1"); eq(batch.count,1); eq(batch.identity,B.identity(common))
-  eq(w.cells[B.identity(ocean)].size,1); eq(next(w.state.meRequests),nil)
-end)
-
-test("unknown source species still requires an audit between different analysed returns",function()
-  local w=externalScanner(); w:addStock(ME.bee("Common","drone",1,true))
-  w.scanner:step(w.storage:scan()); w:returnExternal(); w.state.scan.ident=nil
-  w:addStock(ME.bee("Ocean","drone",1))
-  raises(function() w.scanner:step(w.storage:scan()) end,"multiple possible scanner returns")
-  eq(w.state.scan.phase,"PROCESSING")
-end)
-
-test("new raw bees larger than the scanner batch are queued without becoming returns",function()
-  local w=externalScanner(); w:addStock(ME.bee("Spirit","drone",8,true))
-  w.scanner:step(w.storage:scan())
-  local added=ME.bee("Forest","drone",32,true); w:addStock(added)
-  eq(w.scanner:step(w.storage:scan()),false)
-  eq(w.state.scan.phase,"PROCESSING"); eq(w.state.scan.returnChecks[B.identity(added)],false)
-  eq(next(w.state.meRequests),nil); eq(w.cells[B.identity(added)].size,32)
-  w:returnExternal(); w.scanner:step(w.storage:scan()); eq(w.state.scan,nil)
-  -- The ignored variant is still queued, and is analysed by the next batch.
-  w.scanner:step(w.storage:scan()); eq(w.state.scan.identity,B.identity(added))
-  w:returnExternal(); w.scanner:step(w.storage:scan()); eq(w.state.scan,nil)
-  eq(B.count(w.storage:scan(),"Spirit","drone",true),8)
-  eq(B.count(w.storage:scan(),"Forest","drone",true),32)
-end)
-
-test("new raw genotype of the same species does not contaminate a completed return",function()
-  local w=externalScanner(); w:addStock(ME.bee("Spirit","drone",8,true))
-  w.scanner:step(w.storage:scan()); w:returnExternal()
-  local added=ME.bee("Spirit","drone",20,true); added.tag=added.tag.."wild-genotype"
-  w:addStock(added); w.scanner:step(w.storage:scan()); eq(w.state.scan,nil)
-  eq(w.cells[B.identity(added)].size,20); eq(next(w.state.meRequests),nil)
-end)
-
-test("raw additions do not satisfy missing scanner returns or reset their timeout",function()
-  local w=externalScanner(); w:addStock(ME.bee("Spirit","drone",8,true))
-  w.scanner:step(w.storage:scan()); w:addStock(ME.bee("Forest","drone",32,true))
-  w.time=601
-  raises(function() w.scanner:step(w.storage:scan()) end,"batch preserved")
-  eq(w.state.scan.phase,"PROCESSING"); eq(w.state.scan.count,8)
-end)
-
-test("analysed excess returns still require an audit",function()
-  local w=externalScanner(); w:addStock(ME.bee("Spirit","drone",8,true))
-  w.scanner:step(w.storage:scan()); w:returnExternal()
-  w:addStock(ME.bee("Spirit","drone",1))
-  raises(function() w.scanner:step(w.storage:scan()) end,"return count exceeds")
-  eq(w.state.scan.phase,"PROCESSING"); eq(next(w.state.meRequests),nil)
-end)
-
-test("return candidate inspection resumes after a crash before probe cleanup",function()
-  local w=externalScanner(); w:addStock(ME.bee("Spirit","drone",8,true))
-  w.scanner:step(w.storage:scan()); local added=ME.bee("Forest","drone",32,true); w:addStock(added)
-  local save=w.scanner.save; local cut=false
-  w.scanner.save=function()
-    save()
-    if not cut and w.state.scan.returnProbe and w.state.scan.returnProbe.phase=="CLEANUP" then
-      cut=true; error("probe power cut")
-    end
+test("buffered scanner rejects raw wrong caste wrong species and excess output",function()
+  for _,s in ipairs({ME.bee("Spirit","drone",8,true),ME.bee("Spirit","princess",8),
+    ME.bee("Forest","drone",8),ME.bee("Spirit","drone",9)}) do
+    local w=bufferedScanner(); w.scanner:step(w.storage:scan()); w:finishScan(); w.inventories["scan-output"][1]=s
+    raises(function() w.scanner:step({}) end,"scanner")
+    eq(w.state.scan.phase,"PROCESSING"); eq(w.moves,1)
   end
-  raises(function() w.scanner:step(w.storage:scan()) end,"probe power cut")
-  w.scanner.save=save; w.scheduler:recover()
-  eq(w.scanner:step(w.storage:scan()),false); eq(w.state.scan.returnProbe,nil)
-  eq(next(w.state.meRequests),nil); eq(w.cells[B.identity(added)].size,32)
-  w:returnExternal(); w.scanner:step(w.storage:scan()); eq(w.state.scan,nil); eq(w.moves,1)
 end)
 
-test("external scanner restart after input acceptance never reinserts the batch",function()
-  local w=externalScanner(); w:addStock(ME.bee("Spirit","drone",8,true))
-  local save=w.inv.save; local cut=false
+test("buffered scanner rejects contaminated output and untracked startup stock",function()
+  local w=bufferedScanner(); w.scanner:step(w.storage:scan()); w:finishScan()
+  w.inventories["scan-output"][2]=ME.bee("Forest","drone",1)
+  raises(function() w.scanner:step({}) end,"contaminated"); eq(w.moves,1)
+  local other=bufferedScanner(); other.inventories["scan-output"][4]=ME.bee("Spirit","drone",1)
+  local _,status=other.scheduler:step(); eq(status,"BLOCKED"); eq(other.moves,0)
+end)
+
+test("unrelated AE changes cannot satisfy or contaminate buffered scanner output",function()
+  local w=bufferedScanner(); w.scanner:step(w.storage:scan())
+  w:addStock(ME.bee("Spirit","drone",9)); w:addStock(ME.bee("Forest","drone",32,true))
+  eq(w.scanner:step({}),false); eq(w.moves,1)
+  w:finishScan(); w.scanner:step({}); eq(w.state.scan,nil)
+  eq(B.count(w.storage:scan(),"Spirit","drone",true),17)
+  w.scanner:step(w.storage:scan()); eq(w.state.scan.name,ME.bee("Forest","drone").name)
+end)
+
+test("buffered scanner restarts after input acceptance without reinserting",function()
+  local w=bufferedScanner(); local save=w.inv.save; local cut=false
   w.inv.save=function()
-    save()
-    if w.state.scan and w.state.scan.inserted and not cut then cut=true; error("input power cut") end
+    save(); if w.state.scan and w.state.scan.inserted and not cut then cut=true; error("input power cut") end
   end
   raises(function() w.scanner:step(w.storage:scan()) end,"input power cut")
-  w.inv.save=save; w:returnExternal(); w.scheduler:recover()
+  w.inv.save=save; w:finishScan(); w.scheduler:recover()
   w.scanner:step(w.storage:scan()); w.scanner:step(w.storage:scan())
-  eq(w.moves,1); eq(w.state.scan,nil)
+  eq(w.moves,2); eq(w.state.scan,nil)
 end)
 
-test("external scanner restart after ownership conversion never converts twice",function()
-  local w=externalScanner(); local s=ME.bee("Spirit","drone",8,true); w.inventories.a[8]=s
-  local receipt=w.storage:deposit({endpoint={id="a",transposer="tp1",side=3},slot=8,stack=s},w.c.alvearies[1].storage,"job")
-  w.scanner:step(w.storage:scan()); w:returnExternal()
-  local save=w.scanner.save; local cut=false
-  w.scanner.save=function()
-    save()
-    if w.state.scan and w.state.scan.phase=="EXTERNAL_RETURNED" and not cut then cut=true; error("return power cut") end
-  end
-  raises(function() w.scanner:step(w.storage:scan()) end,"return power cut")
-  w.scanner.save=save; w.scheduler:recover(); w.scanner:step(w.storage:scan())
-  eq(w.state.scan,nil); eq(w.state.meBatches[receipt.batchId].count,8)
-  eq(w.moves,2); eq(next(w.state.meRequests),nil)
+test("buffered scanner can finish immediately after input extraction",function()
+  local w=bufferedScanner()
+  w.afterTransfer=function() if w.inventories.analyser[1] then w:finishScan() end; w:tick() end
+  w.scanner:step(w.storage:scan()); w.scanner:step({})
+  eq(w.moves,2); eq(w.state.scan,nil); eq(w.state.pending,nil)
 end)
 
-test("external input may be extracted and returned immediately during transfer",function()
-  local w=externalScanner(); w:addStock(ME.bee("Spirit","drone",8,true))
-  w.afterTransfer=function() w:returnExternal(); w:tick() end
-  w.scanner:step(w.storage:scan()); w.scanner:step(w.storage:scan())
-  eq(w.moves,1); eq(w.state.scan,nil); eq(w.state.pending,nil)
-  eq(B.count(w.storage:scan(),"Spirit","drone",true),8)
-end)
-
-test("external return inspection resumes its exact request after restart",function()
-  local w=externalScanner(); w:addStock(ME.bee("Spirit","drone",8,true))
-  w.scanner:step(w.storage:scan()); w:returnExternal()
-  local save=w.inv.save; local cut=false
-  w.inv.save=function()
-    save()
-    if w.state.scan and w.state.scan.phase=="VERIFYING" then
-      local request=w.state.meRequests["scan-port:2"]
-      if request and request.phase=="READY" and not cut then cut=true; error("inspection power cut") end
-    end
-  end
-  raises(function() w.scanner:step(w.storage:scan()) end,"inspection power cut")
-  w.inv.save=save; w.scheduler:recover(); w.scanner:step(w.storage:scan())
-  eq(w.moves,1); eq(w.state.scan,nil); eq(next(w.state.meRequests),nil)
-end)
-
-test("external chest slot is chosen automatically around unrelated non-bee contents",function()
-  local w=externalScanner(); w.inventories.analyser[1]={name="marker",size=1}
-  w:addStock(ME.bee("Spirit","drone",8,true))
+test("buffered scanner chooses an empty input slot automatically",function()
+  local w=bufferedScanner(); w.inventories.analyser[1]={name="marker",size=1}
   w.scanner:step(w.storage:scan()); eq(w.state.scan.inputSlot,2)
   eq(w.inventories.analyser[2].size,8); eq(w.inventories.analyser[1].name,"marker")
 end)
+
 test("Interface requests exact NBT and only the requested drone quantity",function()
   local w=ME.new(); local right=ME.bee("Spirit","drone",8); local wrong=ME.bee("Spirit","drone",7,nil,{fertility=4})
   w:addStock(wrong); w:addStock(right); w.storage:validate()
@@ -557,18 +422,18 @@ test("new external raw drone variants close dispatch until inspected",function()
 end)
 
 test("running alveary is monitored and collected while newly added bees scan in the background",function()
-  local w=externalScanner(); w.hideGenomes=false; w.c.minDrones=2; w.c.confirmCycles=1
+  local w=ME.new(); w.hideGenomes=false; w.c.minDrones=2; w.c.confirmCycles=1
   w:addStock(ME.bee("Spirit","princess")); w:addStock(ME.bee("Spirit","drone",8))
   local j=require("tests.mocks.world").job(w,"job","Spirit","populate")
   w.scheduler:step(); eq(j.state,"RUNNING"); local machine=j.machine
   w:addStock(ME.bee("Forest","drone",3,true)); w.scheduler:step()
   eq(j.state,"RUNNING"); eq(w.state.scan.phase,"PROCESSING"); eq(w.state.stockPhase,"SCANNING")
   w:addStock(ME.bee("Meadows","drone",32,true)); w.scheduler:step()
-  eq(j.state,"RUNNING"); eq(w.state.error,"Waiting for analysed bees to return through ME")
+  eq(j.state,"RUNNING"); eq(w.state.error,"Shared scanner processing reserved batch")
   w:finish(machine,ME.bee("Spirit","princess"),ME.bee("Spirit","drone",4,true))
   w.scheduler:step(); eq(j.state,"ASSESSING"); eq(w.state.pending,nil)
   for _=1,20 do
-    if w.inventories.analyser[1] then w:returnExternal() end
+    if w.inventories.analyser[1] then w:finishScan() end
     w.scheduler:step()
     if j.state=="DONE" and not w.state.scan then break end
   end
@@ -661,4 +526,29 @@ test("an unset failed stock intent can retry configuration without replaying a t
   eq(w.state.meRequests["port1:2"].phase,"INTENT"); eq(w.moves,0)
   w.failConfig=false; local p=w.storage:materialize(select(w,s),w.c.alvearies[1].storage,"job",1)
   eq(p.stack.size,1); eq(w.moves,0); eq(w.cells[B.identity(s)].size,7)
+end)
+
+test("partial scanner deposits recover remaining output and convert ownership once",function()
+  local w=ME.new(); local s=ME.bee("Spirit","drone",8,true); w.inventories.a[8]=s
+  w.storage:deposit({endpoint={id="a",transposer="tp1",side=3},slot=8,stack=s},w.c.alvearies[1].storage,"job")
+  w.scanner:step(w.storage:scan()); w:finishScan()
+  local proxy=w.proxies["tp-scan"]; local transfer=proxy.transferItem
+  proxy.transferItem=function(from,to,count,src,dst) return transfer(from,to,math.min(3,count),src,dst) end
+  raises(function() w.scanner:step({}) end,"uncertain")
+  proxy.transferItem=transfer; w.scheduler:recover()
+  eq(w.state.scan.returnedCount,3); ok(not w.state.scan.returned)
+  w.scanner:step({}); eq(w.state.scan,nil)
+  local count=0; for _,i in ipairs(w.storage:scan()) do eq(i.owner,"job"); ok(B.scanned(i.stack)); count=count+i.stack.size end
+  eq(count,8)
+end)
+
+test("scanner restart before output transfer resumes its saved verification",function()
+  local w=bufferedScanner(); w.scanner:step(w.storage:scan()); w:finishScan()
+  local save=w.scanner.save; local cut=false
+  w.scanner.save=function()
+    save(); if w.state.scan and w.state.scan.phase=="RETURNING" and not cut then cut=true; error("output power cut") end
+  end
+  raises(function() w.scanner:step({}) end,"output power cut")
+  eq(w.moves,1); w.scanner.save=save; w.scheduler:recover(); w.scanner:step({})
+  eq(w.moves,2); eq(w.state.scan,nil)
 end)

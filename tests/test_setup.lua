@@ -196,12 +196,12 @@ test("setup binds a local Interface to the known transposer without asking again
   wizard.address=function(_,_,methods) eq(methods,{"getInterfaceConfiguration","setInterfaceConfiguration"}); return "if1" end
   local selected=wizard:port("Local Interface",ep,"tp1"); eq(selected.managed,true); eq(selected.returnSlot,9)
 end)
-test("scanner setup asks only for Interface and input chest and discards old slot settings",function()
+test("scanner setup asks for Interface and both chests and discards old slot settings",function()
   local w=require("tests.mocks.me").new(); local wizard,out=picker(w,{})
   local s=w.c.scanner; w.inventories.analyser[3]={name="honey",size=64}
   wizard.port=function() return s.storage end
   wizard.endpoint=function(_,label,default,fixed) eq(fixed,"tp-scan"); return default end
-  wizard:scanner(); eq(s.mode,"external"); eq(s.output,nil); eq(s.outputSlots,nil); eq(s.inputSlot,nil)
+  wizard:scanner(); eq(s.mode,"buffered"); eq(s.output.side,2); eq(s.outputSlots,nil); eq(s.inputSlot,nil)
   eq(s.isolatedVerified,nil); eq(s.timeout,600)
   eq(w.inventories.analyser[3].size,64); eq(#w.c.storage.endpoints,3)
   local text=table.concat(out,"\n")
@@ -210,15 +210,15 @@ test("scanner setup asks only for Interface and input chest and discards old slo
   require("lib.config").validate(w.c); w.scanner:validate()
 end)
 
-test("ME scanner setup completes with four hardware choices and no slot or confirmation answers",function()
+test("ME scanner setup completes with five hardware choices and no slot or confirmation answers",function()
   local w=require("tests.mocks.me").new()
   for _,component in ipairs(w.components:discover()) do
     w.c.componentNames[component.address]={name=component.address,kind=component.kind}
   end
-  local wizard,out=picker(w,{"1","1","1","2"})
+  local wizard,out=picker(w,{"1","1","1","2","3"})
   wizard:scanner()
   eq(w.c.scanner.storage.address,"if-scan"); eq(w.c.scanner.input.side,1)
-  eq(w.c.scanner.mode,"external"); eq(w.c.scanner.output,nil)
+  eq(w.c.scanner.mode,"buffered"); eq(w.c.scanner.output.side,2)
   local text=table.concat(out,"\n")
   ok(not text:find("Witnessed",1,true)); ok(not text:find("Have you tested",1,true))
   w.scanner:validate(); require("lib.config").validate(w.c)

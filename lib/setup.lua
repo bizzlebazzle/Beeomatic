@@ -406,15 +406,17 @@ function M.new(config,components,inv,save,read,out)
     local s=self.c.scanner
     if self.c.storage.kind=="me_interface" then
       s.enabled=true
-      self.out("Scanner: ME Interface -> transposer -> input chest. Your pipes extract from the chest, analyse bees and return them directly to an unconfigured Interface slot on the same ME network.")
-      self.out("Keep the external scanner path empty before first use and dedicated to Beeomatic. Supply honey/power; do not insert or remove bees elsewhere while a scanner batch is outstanding.")
+      self.out("Scanner: ME Interface -> input chest -> scanner -> output chest -> ME Interface. One transposer touches both chests and the Interface; the scanner outputs to the chest, never directly to AE.")
+      self.out("Keep the input chest, scanner path and output chest dedicated to Beeomatic and empty of bees before first use. Supply honey/power separately.")
       s.storage=self:port("Shared scanner ME Interface",s.storage or {id="scanner_port"})
       s.input=self:endpoint("Scanner input chest",s.input,s.storage.transposer)
-      assert(s.storage.side~=s.input.side,"scanner input chest must be separate from the Interface")
-      s.mode="external"; s.output=nil; s.outputSlots=nil; s.inputSlot=nil; s.isolatedVerified=nil
+      s.output=self:endpoint("Scanner output chest",s.output,s.storage.transposer)
+      assert(s.storage.side~=s.input.side and s.storage.side~=s.output.side and s.input.side~=s.output.side,
+        "scanner input chest, output chest and Interface need separate sides")
+      s.mode="buffered"; s.outputSlots=nil; s.inputSlot=nil; s.isolatedVerified=nil
       s.timeout=600; s.batchSize=nil
       self:registerEndpoint(s.storage); self.save()
-      self.out("Scanner saved. Input slots are chosen automatically; analysed returns are verified through ME. All initial drones are scanned before breeding starts.")
+      self.out("Scanner saved. Input slots are chosen automatically; analysed returns are verified in the output chest before depositing into ME. All initial drones are scanned before breeding starts.")
       return
     end
     s.enabled=self:yes("Configure automated scanner? (Otherwise analyze bees manually)",s.enabled)
