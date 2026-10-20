@@ -149,21 +149,27 @@ function M:selectEntry(item)
   if cached and cached.identity==identity and B.identity(db.get(cached.slot))==identity then return cached.slot end
   self.databaseEntry=nil
   local filter={name=item.stack.name,damage=item.stack.damage,label=item.stack.label}
-  local matches=assert(self:network().getItemsInNetwork(filter),"ME unavailable")
-  local n,total=0,0
-  for _,s in pairs(matches) do n=n+1; if B.identity(s)==identity then total=total+s.size end end
-  assert(total>0,"selected ME variant is unavailable")
-  assert(n<=self.config.databaseSlots,"same-label variants exceed dedicated database capacity")
-  -- store fills empty slots starting at one. Only the n slots we read need
-  -- clearing; old entries above n are never considered for this request.
-  for slot=1,n do db.clear(slot) end
-  assert(self:network().store(filter,self.config.database,1,n),"ME database copy failed")
-  for slot=1,n do local entry=db.get(slot)
-    if entry and B.identity(entry)==identity then
-      self.databaseEntry={identity=identity,slot=slot}; return slot
+  local attempts=0
+  -- Rebuild scratch entries after a transient copy/read-back mismatch. This
+  -- happens before configuring a port, so retrying cannot extract another bee.
+  return self:poll(function()
+    attempts=attempts+1
+    local matches=assert(self:network().getItemsInNetwork(filter),"ME unavailable")
+    local n,total=0,0
+    for _,s in pairs(matches) do n=n+1; if B.identity(s)==identity then total=total+s.size end end
+    assert(total>0,"selected ME variant is unavailable")
+    assert(n<=self.config.databaseSlots,"same-label variants exceed dedicated database capacity")
+    -- store fills empty slots starting at one. Only the n slots we read need
+    -- clearing; old entries above n are never considered for this request.
+    for slot=1,n do db.clear(slot) end
+    assert(self:network().store(filter,self.config.database,1,n),"ME database copy failed")
+    for slot=1,n do local entry=db.get(slot)
+      if entry and B.identity(entry)==identity then
+        self.databaseEntry={identity=identity,slot=slot}; return slot
+      end
     end
-  end
-  error("database did not preserve exact bee NBT")
+    assert(attempts<3,"database did not preserve exact bee NBT after 3 automatic rebuilds; check dedicated database and OC NBT support, then resume")
+  end,"database did not preserve exact bee NBT during automatic rebuild")
 end
 function M:materialize(item,ep,owner,count)
   assert(not self.state.pending and not self.state.pendingExternal,"reconcile unresolved movement before an Interface request")

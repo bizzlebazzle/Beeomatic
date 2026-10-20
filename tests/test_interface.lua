@@ -3,6 +3,38 @@ local function select(w,s)
   return {network=true,endpoint={id="ME"},slot=B.identity(s),stack=U.copy(s)}
 end
 
+test("Interface automatically rebuilds a mismatched database before stocking",function()
+  local w=ME.new(); local s=ME.bee("Spirit","drone",8); w:addStock(s)
+  local store=w.proxies.me.store; local copies=0
+  w.proxies.me.store=function(...)
+    copies=copies+1; local result=store(...)
+    if copies<3 then w.database[1]=ME.bee("Spirit","drone",8,nil,{fertility=4}) end
+    return result
+  end
+  local p=w.storage:materialize(select(w,s),w.c.scanner.storage,"scanner",1)
+  eq(copies,3); eq(B.identity(p.stack),B.identity(s)); eq(p.stack.size,1)
+  eq(w.cells[B.identity(s)].size,7); eq(w.moves,0)
+end)
+
+test("persistent database mismatch stops bounded repair without configuring stock",function()
+  local w=ME.new(); local s=ME.bee("Spirit","drone",8); w:addStock(s)
+  local copies=0
+  w.proxies.me.store=function()
+    copies=copies+1; w.database[1]=ME.bee("Spirit","drone",8,nil,{fertility=4}); return true
+  end
+  raises(function() w.storage:materialize(select(w,s),w.c.scanner.storage,"scanner",1) end,"after 3 automatic rebuilds")
+  eq(copies,3); eq(w.storage.databaseEntry,nil); eq(next(w.state.meRequests),nil)
+  eq(next(w.filters["scan-port"]),nil); eq(w.moves,0); eq(w.cells[B.identity(s)].size,8)
+end)
+
+test("database repair honours interruption before another copy",function()
+  local w=ME.new(); local s=ME.bee("Spirit","drone",8); w:addStock(s); w.interrupt=true
+  local copies=0
+  w.proxies.me.store=function() copies=copies+1; return true end
+  raises(function() w.storage:materialize(select(w,s),w.c.scanner.storage,"scanner",1) end,"interrupted")
+  eq(copies,1); eq(next(w.state.meRequests),nil); eq(w.moves,0)
+end)
+
 test("Interface stocking and cleanup react within a tenth second of a ready grid",function()
   local w=ME.new(); local s=ME.bee("Spirit","drone",8); w:addStock(s)
   local started=w.time
