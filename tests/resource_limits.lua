@@ -6,6 +6,7 @@ elseif gcMode=="disabled" then collectgarbage=function() error("host collectgarb
 package.path="./?.lua;"..package.path
 local reserved=string.rep("O",384*1024) -- leave room for the host OS/runtime
 local baseOpen=io.open
+local journalStarted=false
 local function exists(path)
   local f=baseOpen(path,"rb"); if f then f:close(); return true end; return false
 end
@@ -16,6 +17,7 @@ fs.size=function(path)
 end
 fs.get=function() return {spaceTotal=function() return 4*1024*1024 end,spaceUsed=function() return disk_used() end} end
 io.open=function(path,mode)
+  if path==root.."/data/state.lua" and mode=="rb" then journalStarted=true end
   local f,why=baseOpen(path,mode); if not f or not mode or not mode:find("w",1,true) then return f,why end
   return {write=function(self,chunk)
       local yes,err=f:write(chunk); if not yes then return nil,err end
@@ -52,6 +54,7 @@ end
 local native=package.searchers[2]
 package.searchers[2]=function(name)
   if name:sub(1,4)~="lib." then return native(name) end
+  assert(not compact or not journalStarted,"worker module loaded after journal: "..name)
   local path=name:gsub("%.","/")..".lua"
   local f=assert(baseOpen(path,"rb")); local chunks={}
   while true do local chunk=f:read(1024); if not chunk then break end; chunks[#chunks+1]=chunk end

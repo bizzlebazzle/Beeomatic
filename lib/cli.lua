@@ -43,12 +43,21 @@ function M.main(root,args)
     ctl:save({action=cmd,id=a[2],requested=computer.uptime()})
     print("Requested "..cmd..(a[2] and " "..a[2] or "")); return
   end
-  local c=cp:load(Config.defaults()); local state=sp:load({jobs={},reservations={},transactions={},events={}})
-  U.collect()
+  local c=cp:load(Config.defaults())
   local Components=require("lib.components"); local Inventory=require("lib.inventory")
+  local Storage=require("lib.storage."..c.storage.kind)
+  if cmd=="resume" or cmd=="stop" or cmd=="breed" or cmd=="convert" or cmd=="populate" or cmd=="imprint" then
+    -- OpenOS concatenates module source while loading it. Compile worker code
+    -- before the large journal is resident, even when manual GC is unavailable.
+    require("lib.scanner"); if c.storage.kind=="me_interface" then require("lib.scanner_me") end
+    require("lib.scheduler"); require("lib.ui.status")
+    for _,machine in ipairs(c.alvearies) do require("lib.breeders."..(machine.backend or "alveary")) end
+  end
+  local state=sp:load({jobs={},reservations={},transactions={},events={}})
+  U.collect()
   local function save() sp:save(state) end
   local components=Components.new(); local inv=Inventory.new(components,state,save)
-  local Storage=require("lib.storage."..c.storage.kind); local storage=Storage.new(c.storage,inv,components)
+  local storage=Storage.new(c.storage,inv,components)
   local scannerInstance,schedulerInstance
   local function scanner()
     if not scannerInstance then
