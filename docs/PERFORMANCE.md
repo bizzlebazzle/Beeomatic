@@ -2,7 +2,33 @@
 
 This audit covers selection, ME requests, transposer movement, collection,
 scanner preparation/returns and recovery. Operation counts below come from Lua
-mocks; they are not measurements of elapsed time on an OpenComputer.
+mocks; the server profile discussed separately below measures in-game time.
+
+## Server profile diagnosis (20 October 2026)
+
+The supplied 605.4-second run spent 563.3 seconds in 137 state checkpoints
+(93% of elapsed time). Measuring encoded size cost 214.1 seconds; encoding
+consumed 320.15 seconds excluding nested I/O. The 12 transposer transfers
+themselves took 0.6 seconds combined. The state was 339,453 bytes and the report
+showed 1,360,217 bytes of free RAM. Scheduler steps reached 109.6 seconds,
+delaying the old end-of-step keyboard check.
+
+Checkpoints now count bytes while encoding and retain the encoded chunks when
+they fit the RAM budget: at most 512 KiB, and at most half the free memory
+remaining above a 512 KiB reserve. With the reported free RAM, that state fits.
+The same bytes are written and compared exactly, removing the separate size
+pass and second encoding. If a state exceeds the budget, its buffer is discarded
+and writing/verification stream as before. Unknown memory availability uses a
+16 KiB buffer. No checkpoint or recovery validation is removed.
+
+The foreground worker checks Ctrl+C and Q after each completed checkpoint.
+It suspends the operation stack at that boundary rather than throwing through
+recovery handlers. Ctrl+C retains the saved work; Q cancels it. A transfer
+interrupted at its INTENT or MOVED checkpoint retains its recovery evidence.
+Individual saves and component calls still need to finish before these checks.
+In-flight enclosing operations are absent from completed-call profile totals
+when the worker stops at a checkpoint; completed saves and calls remain recorded.
+Repeat the in-game profile to measure the actual improvement.
 
 ## Changes
 
@@ -65,8 +91,9 @@ five primitive arguments. Inventory contents, bee genomes and NBT are not logged
 
 - `ADDRESS.transferItem` measures the transposer callback itself.
 - `inventory.move` includes the checks and checkpoints around a transfer.
-- `checkpoint.state` includes the complete durable save. `checkpoint.measure`
-  measures its byte count; `serialize` measures encoding plus its streaming sink.
+- `checkpoint.state` includes the complete durable save. `serialize` measures
+  encoding plus its streaming sink. Older logs have a separate
+  `checkpoint.measure` row for the now-removed byte-count pass.
   `disk.read`, `disk.write`, `disk.flush`, `disk.close` and `filesystem.*` separate
   measured I/O from the enclosing operation. Untimed work, including file opens,
   remains in the enclosing row's `own_s`.

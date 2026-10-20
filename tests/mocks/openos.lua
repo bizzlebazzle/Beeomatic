@@ -49,7 +49,8 @@ function M.with(world,fn,quotas)
   package.loaded.filesystem=fs; package.loaded.component=world.components.api
   package.loaded.computer={uptime=function() return world.time end,address=function() return "test-computer" end}
   local pulls=0
-  package.loaded.event={pull=function()
+  package.loaded.event={pull=function(seconds)
+    if seconds==0 then return end
     pulls=pulls+1; assert(pulls<100,"foreground did not terminate")
     local data=files["/project/data/state.lua"]
     if data then local state=assert(load(data,"=teststate","t",{}))()

@@ -163,7 +163,8 @@ test("Ctrl+C saves a profile and restores event handling without cancelling bree
     local _,why=require("lib.cli").main("/project",{"resume","--profile"}); eq(why,nil,why)
     eq(event.pull,pull); eq(files["/project/data/worker.lock"],nil)
     local state=assert(load(files["/project/data/state.lua"]))(); ok(not state.cancelled)
-    ok(files["/project/data/profile.log"]:find("inventory.move",1,true))
+    ok(files["/project/data/profile.log"]:find("checkpoint.state",1,true))
+    eq(w.moves,0) -- stop at the first checkpoint, before any transfer
   end)
 end)
 
@@ -201,5 +202,63 @@ test("profiled ME breeding covers Interface waits scanner stock and transfers",f
     for _,label in ipairs({"storage.poll","storage.wait","storage.scan","scanner.step","storage.materialize","transferItem"}) do
       ok(report:find(label,1,true),"missing ME profiling operation: "..label)
     end
+  end)
+end)
+
+test("quit at transfer checkpoints preserves recovery evidence without another movement",function()
+  for _,phase in ipairs({"INTENT","MOVED","COMMITTED"}) do
+    for _,key in ipairs({"interrupted","q"}) do
+      local w=W.new(); w:addMachine("a"); w:build(); W.job(w,"job","Spirit")
+      w.inventories.hub[1]=W.bee("Spirit","princess"); w.inventories.hub[2]=W.bee("Spirit","drone",8)
+      O.with(w,function(files,_,fs)
+        files["/project/data/config.lua"]="return "..U.encode(w.c)
+        files["/project/data/state.lua"]="return "..U.encode(w.state)
+        local stopped=false; local moves
+        require("event").pull=function(seconds)
+          eq(seconds,0,"must stop before the scheduler's regular wait")
+          local state=assert(load(files["/project/data/state.lua"]))()
+          local current=state.pending and state.pending.phase or
+            ((state.transferSequence or 0)>0 and "COMMITTED")
+          if current==phase then
+            ok(not stopped); stopped=true; moves=w.moves
+            if key=="q" then return "key_down",nil,113 end
+            return "interrupted"
+          end
+        end
+        local _,why=require("lib.cli").main("/project",{"resume","--profile"}); eq(why,nil,why)
+        ok(stopped); eq(w.moves,moves); eq(moves,phase=="INTENT" and 0 or 1)
+        eq(files["/project/data/worker.lock"],nil); eq(files["/project/data/crash.log"],nil)
+        local state=assert(load(files["/project/data/state.lua"]))()
+        eq(not not state.cancelled,key=="q")
+        if phase~="COMMITTED" then eq(state.pending.phase,phase) else eq(state.pending,nil) end
+        local inv=require("lib.inventory").new(w.components,state,function() end)
+        local reconciled,err=inv:reconcile(); ok(reconciled,err); eq(w.moves,moves)
+        eq(state.pending,nil)
+      end)
+    end
+  end
+end)
+
+test("worker forwards host coroutine yields and their nil-containing results",function()
+  local w=W.new(); w:addMachine("a"); w:build(); W.job(w,"job","Spirit")
+  w.inventories.hub[1]=W.bee("Spirit","princess"); w.inventories.hub[2]=W.bee("Spirit","drone",8)
+  O.with(w,function(files)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    files["/project/data/state.lua"]="return "..U.encode(w.state)
+    local original=w.proxies.tp1.getInventorySize; local calls=0
+    w.proxies.tp1.getInventorySize=function(...)
+      calls=calls+1
+      local a,b,c=coroutine.yield("host call",nil,42)
+      eq(a,nil); eq(b,"host result"); eq(c,23)
+      return original(...)
+    end
+    local thread=coroutine.create(function() return require("lib.cli").main("/project",{"resume"}) end)
+    local result=table.pack(coroutine.resume(thread))
+    while coroutine.status(thread)~="dead" do
+      ok(result[1],result[2]); eq(result.n,4); eq(result[2],"host call"); eq(result[3],nil); eq(result[4],42)
+      result=table.pack(coroutine.resume(thread,nil,"host result",23))
+    end
+    ok(result[1],result[2]); eq(result[3],nil); ok(calls>0)
+    eq(files["/project/data/worker.lock"],nil)
   end)
 end)

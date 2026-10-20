@@ -28,7 +28,19 @@ function M:load(default)
 end
 function M:save(value)
   local tmp=self.path..".tmp"
-  local bytes=U.size(value)
+  -- Keep one encoded generation only when there is ample free RAM. Count
+  -- bytes during this pass; larger states fall back to bounded streaming.
+  local limit=16384
+  local computer=package.loaded.computer
+  if computer and computer.freeMemory then
+    limit=math.max(0,math.min(524288,math.floor((computer.freeMemory()-524288)/2)))
+  end
+  local chunks,bytes={},0
+  U.write(value,function(chunk)
+    bytes=bytes+#chunk
+    if bytes>limit then chunks=nil end
+    if chunks then chunks[#chunks+1]=chunk end
+  end)
   -- Check space for the complete new generation before opening the temporary
   -- file. Never sacrifice the only verified generation to make room.
   if self.fs.get then
@@ -47,12 +59,6 @@ function M:save(value)
       assert(free>=needed,
         "Not enough disk space for checkpoint ("..bytes.." bytes; "..free.." free). Saved files preserved.")
     end
-  end
-  -- Small checkpoints (including control/config files) fit a bounded buffer.
-  -- Serialize once, then write and compare the same bytes. Large states stream.
-  local chunks
-  if bytes<=16384 then
-    chunks={}; U.write(value,function(chunk) chunks[#chunks+1]=chunk end)
   end
   local function each(sink)
     if chunks then for _,chunk in ipairs(chunks) do sink(chunk) end

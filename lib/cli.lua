@@ -119,7 +119,14 @@ local function main(root,args,profile)
   end
   state=sp:load({jobs={},reservations={},transactions={},events={}})
   U.collect()
-  local function save() sp:save(state) end
+  local worker,pendingKey; local checkpoint={}
+  local function save()
+    sp:save(state)
+    -- Yield only after atomic replacement, with the complete operation stack
+    -- intact. Stopping here preserves the journal without throwing through
+    -- scheduler error handlers or interrupting a physical component call.
+    if worker and coroutine.running()==worker then coroutine.yield(checkpoint) end
+  end
   local components=Components.new(); local inv=Inventory.new(components,state,save)
   if profile then
     components.profile=profile
@@ -191,7 +198,7 @@ local function main(root,args,profile)
       assert(fs.remove(lock))
     end
     local lf=assert(io.open(lock,"w")); lf:write(tostring(computer.address())); lf:close()
-    local ok,err=xpcall(function()
+    worker=coroutine.create(function() return xpcall(function()
       if cancellationPending() then cancelWork(c); return end
       Config.validate(c); storage:validate()
       if storage.interface then scanner():validate() end
@@ -203,6 +210,11 @@ local function main(root,args,profile)
       else scheduler():resume(a[2] and cmd=="resume" and a[2] or nil) end
       local lastDisplay=""; local nextObservation=0
       while true do
+        if pendingKey then
+          local key=pendingKey; pendingKey=nil
+          if key==112 then state.paused=true else scheduler():resume() end
+          save()
+        end
         if applyControl() then break end
         local active,status
         if state.pendingRequest and not state.paused and not state.stopping then
@@ -252,7 +264,30 @@ local function main(root,args,profile)
           save()
         end
       end
+    end,debug.traceback) end)
+    local ok,err=xpcall(function()
+      local result=table.pack(coroutine.resume(worker))
+      while result[1] and coroutine.status(worker)~="dead" do
+        if result[2]==checkpoint then
+          if cancellationPending() then return end
+          local name,_,char=event.pull(0)
+          if name=="interrupted" then return end
+          if name=="key_down" then
+            if char==113 then state.cancelRequested=true; return
+            elseif char==112 or char==114 then pendingKey=char end
+          end
+          if cancellationPending() then return end
+          result=table.pack(coroutine.resume(worker))
+        else
+          -- OpenComputers also yields for synchronized calls and time slices.
+          -- Forward those to its runner, preserving every argument/result.
+          result=table.pack(coroutine.resume(worker,coroutine.yield(table.unpack(result,2,result.n))))
+        end
+      end
+      if not result[1] then error(result[2],0) end
+      if not result[2] then error(result[3],0) end
     end,debug.traceback)
+    worker=nil
     if cancellationPending() then cancelWork(c); ok=true; err=nil end
     fs.remove(lock)
     if not ok then

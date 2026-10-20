@@ -13,6 +13,23 @@ test("checkpoint byte count matches serialization for all bytes keys and scalar 
   raises(function() U.size({bad=math.huge}) end)
 end)
 
+test("checkpoint buffering adapts to free RAM and removes measurement and repeat encoding",function()
+  local w=W.new(); w:build()
+  O.with(w,function(files,_,fs)
+    for _,free in ipairs({1360217,524288}) do
+      require("computer").freeMemory=function() return free end
+      local data={tag=string.rep("x",339000)}
+      local write,size=U.write,U.size; local calls=0
+      U.write=function(...) calls=calls+1; return write(...) end
+      U.size=function() error("redundant size pass") end
+      local success,why=pcall(function() P.new("/state.lua",fs):save(data) end)
+      U.write,U.size=write,size
+      ok(success,why); eq(calls,free>524288 and 1 or 3)
+      eq(P.new("/state.lua",fs):load({}),data)
+    end
+  end)
+end)
+
 test("small checkpoints serialize once while large ones retain bounded streaming verification",function()
   local w=W.new(); w:build()
   O.with(w,function(files,_,fs)
@@ -21,7 +38,7 @@ test("small checkpoints serialize once while large ones retain bounded streaming
       U.write=function(...) calls=calls+1; return write(...) end
       local success,why=pcall(function() P.new("/state.lua",fs):save(data) end)
       U.write=write; ok(success,why)
-      eq(calls,U.size(data)<=16384 and 1 or 2)
+      eq(calls,U.size(data)<=16384 and 1 or 3)
       eq(P.new("/state.lua",fs):load({}),data)
     end
   end)

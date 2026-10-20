@@ -27,8 +27,9 @@ io.open=function(path,mode)
     end,flush=function() return f:flush() end,close=function() return f:close() end}
 end
 package.preload.filesystem=function() return fs end
-package.preload.computer=function() return {uptime=function() return 10 end,address=function() return "limited" end} end
-package.preload.event=function() return {pull=function() error("blocked resume must return to shell") end} end
+package.preload.computer=function() return {uptime=function() return 10 end,address=function() return "limited" end,
+  freeMemory=function() return 2*1024*1024-hostGC("count")*1024 end} end
+package.preload.event=function() return {pull=function(seconds) if seconds~=0 then error("blocked resume must return to shell") end end} end
 local devices={}
 for _,address in ipairs({"tp1","tp2","tp-scan"}) do
   devices[address]={address=address,getInventorySize=function(side) return side==0 and 9 or 11 end,

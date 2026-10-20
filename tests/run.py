@@ -45,4 +45,23 @@ for version, runtime in [('5.2', LuaRuntime), ('5.3', Lua53Runtime)]:
           end
         ''', str(pathlib.Path(folder) / 'state.lua'))
         print(f'Lua {version}: 1,600 records saved, verified and reloaded within 2 MiB; old encoder exhausted memory', flush=True)
+        buffered = runtime(max_memory=2 * 1024 * 1024, unpack_returned_tuples=True)
+        buffered.execute('''
+          local reserve=string.rep("O",384*1024)
+          local U=require("lib.util"); local P=require("lib.persistence")
+          package.loaded.computer={freeMemory=function()
+            return 2*1024*1024-collectgarbage("count")*1024
+          end}
+          local state={tag=string.rep("x",339000)}
+          collectgarbage("collect") -- release fixture-construction temporaries
+          local write=U.write; local calls=0
+          U.write=function(...) calls=calls+1; return write(...) end
+          local store=P.new(...,{exists=function() return false end,
+            rename=function(a,b) return os.rename(a,b) end})
+          store:save(state)
+          assert(calls==1,"server-sized checkpoint must encode only once")
+          assert(store:load({}).tag==state.tag)
+          assert(#reserve==384*1024)
+        ''', str(pathlib.Path(folder) / 'buffered.lua'))
+        print(f'Lua {version}: 339 KB buffered checkpoint encodes once within 2 MiB with 384 KiB host reserve', flush=True)
     check_startup(runtime, ROOT, version)

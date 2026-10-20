@@ -245,7 +245,7 @@ test("worker crashes save a traceback and keep the original error visible withou
   w.inventories.hub[2]=W.bee("Spirit","drone",8)
   O.with(w,function(files,out)
     files["/project/data/config.lua"]="return "..U.encode(w.c)
-    require("event").pull=function() error("simulated foreground failure") end
+    require("event").pull=function(seconds) if seconds~=0 then error("simulated foreground failure") end end
     local result,err=require("lib.cli").main("/project",{"breed","spirit"})
     eq(result,nil); ok(err:find("simulated foreground failure",1,true))
     local report=files["/project/data/crash.log"]
@@ -736,7 +736,8 @@ test("cancel interrupts Interface stock waits and permits a fresh request after 
   O.with(w,function(files,out)
     files["/project/data/config.lua"]="return "..U.encode(w.c)
     local event=require("event"); local pull=event.pull; local calls=0
-    event.pull=function()
+    event.pull=function(seconds)
+      if seconds==0 then return end -- target the stock wait, not startup checkpoints
       calls=calls+1; eq(calls,1)
       require("lib.cli").main("/project",{"cancel"}); return nil
     end
