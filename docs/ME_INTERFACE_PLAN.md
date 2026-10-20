@@ -1,9 +1,10 @@
 # ME Interface storage redesign (research and proposal)
 
-Scanner update: new setup uses a transposer-fed input chest, external analysis
-and automatic return directly to ME. It no longer asks for analyser output or
-slot maps. The direct-output design below is retained as implementation history
-and for compatibility with saved configurations; see [current hardware](HARDWARE.md).
+Scanner update: setup now requires transposer-fed input and output chests. The
+scanner outputs to the chest for verification before Beeomatic returns bees to
+the relocated Interface. It asks for no analyser slot maps. Old direct analyser
+and scanner-to-Interface return configurations are retired; see
+[current hardware](HARDWARE.md). The proposal below is implementation history.
 
 Research date: 2026-10-19. Target: GTNH 2.9.0 Beta 3, OpenComputers
 1.12.61-GTNH, AE2 rv3-beta-1050-GTNH.

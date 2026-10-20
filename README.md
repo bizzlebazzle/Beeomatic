@@ -8,8 +8,9 @@ and keeps jobs recoverable after interruptions.
 **ME Interface storage is the default.** Each alveary has a local Interface and
 transposer; bees and products live in real ME storage. One shared analyser station
 inspects/analyses bees. Its transposer inserts raw bees into an adjacent input
-chest; your pipes handle analysis and return directly to an ME Interface.
-Setup needs no analyser slot map or output inventory. No shared archive chest or
+chest; your pipes handle analysis and deliver analysed bees to an output chest.
+The same transposer reads that chest and deposits verified bees into the Interface.
+Setup selects both chests and needs no analyser slot map. No shared archive chest or
 export bus is required.
 
 On every start/resume, all initial drones must be verified analysed before breeding
@@ -17,14 +18,16 @@ begins. During operation, offspring may queue temporarily in AE, but pending bee
 cannot be selected for breeding. Already-analysed bees whose ME records omit genes
 are physically inspected and catalogued without unnecessary analysis.
 
-New raw bees added to ME during breeding queue for the shared scanner. Unknown
-return variants are physically inspected so raw additions cannot be mistaken for
-analysed returns. Running alvearies continue to be monitored and their finished
-offspring collected while scanning proceeds; new cycles and offspring assessment
-wait until scanning completes. Analysed bees of a different physically verified
-species are excluded from return detection when the source species is known.
-Avoid inserting analysed bees of the expected species during an external scanner
-batch: their stock increases can be indistinguishable from its returns.
+New raw bees added to ME during breeding queue for the shared scanner. Analysed
+returns are checked directly in its dedicated output chest before entering AE,
+so the program never fetches them again to verify analysis. Running alvearies
+continue to be monitored and their finished offspring collected while scanning
+proceeds; new cycles and offspring assessment wait until scanning completes.
+
+The former scanner-to-Interface output layout is retired. Resolve any outstanding
+scanner batch using the previous version before updating. Move the Interface
+beside the transposer (above its adapter), replace its old position next to the
+scanner with an output chest, then rerun setup after updating and rebooting.
 
 The implementation passes mocked Lua 5.2 and 5.3 tests. **The new Interface flow
 still requires in-game acceptance**; source verification and mocks cannot certify

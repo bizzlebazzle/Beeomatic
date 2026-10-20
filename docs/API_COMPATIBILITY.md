@@ -119,13 +119,12 @@ container 2. Input accepts genetic items; extraction is restricted to outputs.
 [TileAnalyzer](https://github.com/GTNewHorizons/ForestryMC/blob/4.11.37/src/main/java/forestry/core/tiles/TileAnalyzer.java)
 moves an input stack to its internal specimen slot and writes analysed NBT before
 returning the stack through its outputs. It uses honey and energy for analysis.
-These indices apply to saved direct-analyser setups. New ME scanner setup uses
-an adjacent input chest and external pipes; it asks for no analyser slots or
-output inventory. Pipes return analysed bees directly to an Interface on the same
-ME network. The scanner records pre-batch variant quantities, waits for the full
-return and physically inspects the exact returned variant through its Interface
-before committing the NBT/ownership change. Keep the external path empty before
-first use and exclusive to Beeomatic; the program cannot observe bees inside it.
+ME scanner setup does not access these indices. It selects separate input and
+output chests on the Interface's transposer. Pipes feed the scanner and deliver
+only analysed outputs to the output chest. Beeomatic verifies the physical stack
+there, then deposits it into the Interface; no second request through ME is needed.
+Keep this path empty before first use and exclusive to Beeomatic. Direct analyser
+and direct-to-Interface output configurations are retired.
 
 On every start/resume the shared station inspects uncatalogued exact identities
 and analyses unscanned initial drones before normal dispatch. ME records lacking

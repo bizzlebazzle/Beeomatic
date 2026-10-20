@@ -75,14 +75,15 @@ in place of ME Interface registration.
 2. Inventory number for Shared scanner ME Interface.
 3. Component number: Adapter at Shared scanner ME Interface.
 4. Inventory number for Scanner input chest.
+5. Inventory number for Scanner output chest.
 
-The scanner transposer is reused for input chest selection. New components add
-their friendly-name question. ME mode requires a scanner and does not ask whether
-to enable one. There are no analyser output, slot, timeout or test-confirmation
-questions. Setup chooses empty input slots automatically and uses a ten-minute
-timeout. Pipes extract from the chest, analyse bees and return them directly to
-an unconfigured Interface slot on the same ME network. Beeomatic watches returns
-and verifies the analysed result through the Interface.
+The scanner transposer is reused for both chest selections. All three inventories
+must occupy different sides. New components add their friendly-name question.
+ME mode requires a scanner and does not ask whether to enable one. There are no
+analyser slot, timeout or test-confirmation questions. Setup chooses empty input
+slots automatically and uses a ten-minute timeout. Pipes extract from the input
+chest, analyse bees and deliver outputs to the output chest. Beeomatic checks the
+complete analysed stack there, then moves it into the Interface.
 
 Chest storage mode first asks **Configure automated scanner? (Otherwise
 analyze bees manually)** and, if enabled, registers its archive/input/output

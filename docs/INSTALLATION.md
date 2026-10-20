@@ -118,9 +118,13 @@ heading markers. ME Interface setup asks for the network reader and dedicated
 database once, then binds a local Interface to each alveary's known transposer.
 Each port uses stock slots 1/2 and unconfigured return slot 9. The shared scanner
 has a separate Interface and transposer on the same ME network.
-The scanner transposer touches an input chest. Your pipes draw bees from the chest
-through the analyser and return analysed bees directly to an unconfigured Interface
-slot. Setup asks for no output inventory, analyser slots or scanner confirmation.
+The scanner transposer touches both an input and an output chest. Pipes draw
+bees from the input chest through the scanner and deliver analysed bees into the
+output chest. Beeomatic verifies them there and transfers them into the Interface.
+Setup selects both chests, with no analyser slots or scanner confirmation.
+The old scanner-to-Interface layout is retired. Finish outstanding scanner work
+with the previous version before upgrading, relocate the Interface beside the
+transposer, replace its old position with the output chest and rerun setup.
 After upgrading program files, reboot the OpenComputer before testing to clear
 OpenOS's cached application modules.
 

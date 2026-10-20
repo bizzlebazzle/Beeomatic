@@ -19,7 +19,7 @@ of those Interfaces or a controller adapter exposing `getItemsInNetwork`/`store`
 
 MAIN ME NETWORK -- [Scanner Interface] -- [Scanner transposer] -- [Input chest]
                          ^                                          |
-                         +--- return pipes --- [Analyser] <--- pipes+
+                         +-- transposer -- [Output chest] <- [Scanner] <-+
 ```
 
 OC cable connects all adapters, transposers and the database to the controller.
@@ -58,27 +58,32 @@ can observe blocks of the same multiblock.
 ## One shared scanner
 
 Give the scanner station its own Interface and transposer on the same ME and OC
-networks. The transposer touches that Interface and a normal input chest.
-Pipes extract bees from the chest into your analyser, then extract analysed bees
-directly into an unconfigured Interface slot on the same ME network. The analyser
-and its output do not need to touch the transposer or have OC adapters.
-Supply analyser honey/power separately. Configure pipes to extract only analysed
-outputs, without cycling unanalysed bees straight back to ME.
+networks. The transposer touches three separate inventories: the Interface, input
+chest and output chest. Pipes draw bees from the input chest into the scanner;
+only analysed outputs go into the output chest. The scanner needs no OC adapter.
+Supply honey/power separately. Nothing may extract from the output chest except
+Beeomatic's transposer; do not attach an AE storage/import bus to either chest.
 
-Setup selects only the Interface connection and input chest. Beeomatic chooses
-an empty chest slot automatically; it does not manage analyser slots or move
-outputs. It records ME quantities before sending one batch, waits for the full
-return, briefly requests the exact returned variant for physical analysis
-verification, then clears that request so the bees return to cells. Existing
-analysed stock can merge with returns without losing owned quantities.
+For the pictured build, replace the old Interface below the transposer with the
+output chest. Move the Interface above its adapter, beside the transposer. Keep
+the input chest above the scanner. Select actual world sides during setup; the
+whole build can be rotated.
 
-Before first use, empty the chest, pipes and analyser of bees. Keep this scanner
-path dedicated to Beeomatic, and do not manually add/remove bees or run another
-scanner into the same ME network while a batch is outstanding. Ambiguous return
-variants/counts pause for inspection; a missing return times out after ten minutes
-with the batch preserved. The program cannot inspect bees inside external pipes
-or the analyser. Previously saved direct-analyser configurations remain supported
-for recovery; new ME setup uses this chest-and-pipes flow.
+Setup selects the Interface connection and both chests on the same transposer.
+Input slots are chosen automatically. Beeomatic requests each raw batch once,
+waits for one complete analysed stack in the output chest, verifies analysis,
+caste, species and count there, then transfers it to the Interface's unconfigured
+return slot. The transfer receipt also records the new genome and converts owned
+quantities. No second AE request or network stock baseline is needed.
+
+Before first use, empty the chests, pipes and scanner of bees. Keep this path
+dedicated to Beeomatic. Partial output deliveries wait for the complete stack;
+wrong or contaminated outputs pause for inspection. Missing returns time out
+after ten minutes with progress preserved. The program cannot inspect pipe or
+scanner contents. Direct scanner-to-Interface returns and direct analyser slot
+configurations are retired: complete outstanding scanner work on the previous
+version, update/reboot, rebuild the station and rerun setup. Setup refuses to
+replace configuration while unresolved work remains.
 
 Startup enters `PREPARING_STOCK`: unknown exact variants are physically inspected,
 and all unanalysed drones are analysed before breeding starts. ME item records can

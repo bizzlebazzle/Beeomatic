@@ -35,7 +35,7 @@ materialised at the shared scanner port to read physical genetics. An analysed
 item whose ME conversion omits genomes is catalogued by exact NBT and returned
 without analysis. Unanalysed items go through the isolated analyser in bounded
 stack-sized batches. Readiness requires analysed initial drone stock, no unresolved
-batch and no untracked bees in the registered input chest. Initial raw drones
+batch and no untracked bees in either registered chest. Initial raw drones
 in idle housing outputs are collected; active jobs keep ownership of their results.
 
 Shared scanner phases:
@@ -43,19 +43,18 @@ Shared scanner phases:
 ```text
 REQUESTING -> INSPECTED -> return/rescan
      |
-     +-> INSERTING -> PROCESSING -> VERIFYING -> EXTERNAL_RETURNED -> rescan
+     +-> INSERTING -> PROCESSING -> RETURNING -> rescan
 ```
 
-Input acceptance updates scanner evidence with its transfer receipt. External
-pipes perform analysis and return to ME. Before insertion, the scanner saves exact
-variant quantities across cells and local Interface buffers. It waits for a single
-returned variant with the full batch's increase, then requests it through the
-Interface to verify analysis, caste and species. Ownership conversion and the
-returned phase are saved together before clearing the inspection request.
-Restart does not repeat insertion or ownership conversion. Partial deliveries
-wait for the full count; ambiguous variants/counts pause. This relies on a dedicated
-empty external path and no other bee insertions/removals during the batch.
-Legacy direct output polling/transfer remains supported for saved configurations.
+Input acceptance updates scanner evidence with its transfer receipt. Pipes perform
+analysis and deliver outputs into the dedicated output chest. Beeomatic verifies
+analysis, caste, species and the complete batch count directly in that chest.
+The return transfer receipt catalogues the genome and converts ownership in one
+checkpoint before the Interface drains to cells. Restart does not repeat insertion
+or ownership conversion; a partial deposit resumes only the remaining units.
+Split output deliveries wait for the full stack; contaminated outputs pause.
+Old direct analyser and automatic AE return layouts must be resolved with the
+previous version before reconfiguring the station.
 During operation, new raw offspring and external unknown variants are quarantined
 until inspection/analysis. Existing queens can keep running while the scanner is
 busy; new dispatch waits. A missing scanner or uncertain batch blocks readiness.

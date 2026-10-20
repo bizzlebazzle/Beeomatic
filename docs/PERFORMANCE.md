@@ -150,9 +150,9 @@ normal operation. No profiler hooks remain after the invocation returns.
   UI housing observations are limited to once per second. Movement, lifecycle,
   changed diagnostics and terminal flags retain their checkpoints. Component
   calls, disk writes and physical machines still add their own time.
-- The current external scanner still returns through ME. Unknown return variants
-  are requested for physical inspection and verified before use. The planned
-  output-chest layout is deliberately not implemented in this change.
+- The scanner now verifies analysed batches in a dedicated output chest and
+  deposits them into ME. Return detection no longer snapshots the ME network
+  or requests returned variants for another physical inspection.
 - Retained chest, routed-housing and AE2 export backends have reachable consumers:
   setup/configuration, diagnostics or saved-work recovery. Removing them would
   remove supported paths. Unreferenced breeder inspection/evacuation wrappers and
