@@ -53,8 +53,11 @@ Then use `resume` to retry blocked jobs.
 Temperature tolerance is directional: `ICY` with `UP_1` accepts `ICY` and `COLD`,
 but not `NORMAL`. Beeomatic checks both selected parents. An Icy/UP_1 princess
 and a Normal/NONE drone have no shared temperature under that check. Compatibility
-messages identify the rejected parent, its preference/tolerance, and the configured
-alveary climate. Changing a registration alone cannot change the physical climate
+messages name the selected princess and drone, then list each rejected alveary
+with its configured climate and the rejected bee's allowed temperature/humidity range.
+A `convert` job names the princess species being recovered; its selected donor
+princess can be a different species with different climate requirements. The
+requirements shown come from each selected bee's active genes. Changing a registration alone cannot change the physical climate
 or the bees' genes.
 
 `plan` reads runtime routes and actual storage. If bees lack verified genes, it asks

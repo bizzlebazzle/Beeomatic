@@ -49,7 +49,7 @@ local function reason(message)
     return "Waiting for stable parent population"
   end
   -- Strip Lua source locations from the overview; verbose retains the original.
-  return tostring(message):gsub("[^%s]+%.lua:%d+: ",""):gsub("[\r\n]+"," ")
+  return tostring(message):gsub("[^%s]+%.lua:%d+: ",""):gsub("\r\n","\n"):gsub("\r","\n")
 end
 local function parentWait(j)
   return j.state=="WAITING" and (j.error=="Waiting for stable parent population"
@@ -117,7 +117,7 @@ function M.render(state,c,verbose)
   end end
   if #warnings>0 then
     r[#r+1]="Attention:"
-    for _,warning in ipairs(warnings) do r[#r+1]="  "..warning end
+    for _,warning in ipairs(warnings) do r[#r+1]="  "..warning:gsub("\n","\n    ") end
     r[#r+1]="Details: Beeomatic status --verbose"
   end
   r[#r+1]="p pause | r resume | q stop after active work"
@@ -160,13 +160,13 @@ function M.details(state,c,verbose)
     end
     if verbose then
       local e=a.environment or {}
-      r[#r+1]="  "..tostring(e.temperature).." + "..tostring(e.humidity).." (configured/attested)"
+      r[#r+1]="  Configured climate: temperature "..tostring(e.temperature).."; humidity "..tostring(e.humidity)
       r[#r+1]="  last success: "..tostring(m.lastSuccess or "none")
     end
   end
   for _,j in ipairs(state.jobs or {}) do if j.state~="DONE" or verbose then
     r[#r+1]=j.id.." "..j.species.." "..j.mode.." "..j.state.." cycles="..j.cycles.." alleles="..(j.progress or 0).."/4 stable="..j.confirmed
-    if j.error then r[#r+1]="  "..j.error end
+    if j.error then r[#r+1]="  "..j.error:gsub("\n","\n  ") end
   end end
   if state.storageCounts then r[#r+1]="Storage: princesses="..state.storageCounts.princess.." drones="..state.storageCounts.drone end
   if state.error then r[#r+1]="Intervention: "..state.error end

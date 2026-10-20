@@ -37,5 +37,25 @@ test("Icy UP_1 accepts Cold and identifies the other parent rejecting it",functi
   local d=W.bee("Forest","drone")
   local candidates,why=E.select({{id="cold",environment=W.environment("COLD")}},nil,p,d,{})
   eq(#candidates,0)
-  ok(why:find("drone: temperature Normal tolerance NONE; configured alveary COLD",1,true),why)
+  ok(why:find("Forest drone needs temperature NORMAL (active genes: NORMAL, NONE)",1,true),why)
+end)
+
+
+test("housing diagnostics separate configured climate from the rejected bee range",function()
+  local p=W.bee("Wintry","princess",1,nil,{temperatureTolerance="UP_1"})
+  p.individual.active.species.temperature="Icy"
+  local d=W.bee("Attuned","drone")
+  local candidates,why=E.select({{id="alveary_1",name="Main",environment=W.environment("NORMAL")},
+    {id="alveary_2",environment=W.environment("COLD")}},nil,p,d,{})
+  eq(#candidates,0)
+  ok(why:find("alveary_1 (Main) [temp NORMAL, humidity NORMAL]:\n  Wintry princess needs temperature ICY/COLD (active genes: ICY, UP_1)",1,true),why)
+  ok(why:find("alveary_2 [temp COLD, humidity NORMAL]:\n  Attuned drone needs temperature NORMAL (active genes: NORMAL, NONE)",1,true),why)
+end)
+
+test("humidity diagnostics show the allowed humidity range",function()
+  local p=W.bee("Forest","princess",1,nil,{humidityTolerance="UP_1"})
+  local candidates,why=E.select({{id="dry",environment=W.environment("NORMAL","ARID")}},nil,p,nil,{})
+  eq(#candidates,0)
+  ok(why:find("humidity ARID",1,true),why)
+  ok(why:find("Forest princess needs humidity NORMAL/DAMP (active genes: NORMAL, UP_1)",1,true),why)
 end)

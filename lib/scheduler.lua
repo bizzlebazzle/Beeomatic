@@ -273,9 +273,15 @@ function M:dispatch(j)
   for _,a in ipairs(candidates) do
     local b=self:backend(a.id)
     local ok,ready,err=pcall(b.isReady,b)
-    if ok and ready then backend=b; break else reason=(reason or "").." | "..a.id..": "..tostring(ok and err or ready) end
+    if ok and ready then backend=b; break else reason=(reason~="" and reason.."\n" or "")..a.id..": "..tostring(ok and err or ready) end
   end
-  if not backend then j.error="No compatible available alveary. "..reason; return end
+  if not backend then
+    local goal=j.mode=="convert" and ("Recover "..B.displayName(j.species).." princess.\n") or ""
+    j.error=goal.."No available alveary accepts the selected pair.\n"..
+      "Selected parents: "..E.parent(p.stack,"princess").." + "..E.parent(d.stack,"drone")..".\n"..
+      (reason~="" and reason or "All registered alvearies are busy or disabled.")
+    return
+  end
   assert(j.cycles<self.c.maxCycles,"Cycle limit reached; inspect genetic progress and replan")
   local a=backend.config
   -- Materialization can export a stack; reserve logical ME stack before exporting.

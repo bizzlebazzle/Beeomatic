@@ -198,3 +198,29 @@ test("cycle limit bounds unsuccessful mutation attempts",function()
   w.inventories.hub[1]=W.bee("Forest","princess"); w.inventories.hub[3]=W.bee("Forest","princess")
   w.scheduler:step(); eq(j.state,"PAUSED"); eq(w.moves,0)
 end)
+
+
+test("blocked conversion identifies the donor instead of attributing its climate to the target",function()
+  local w=W.new(); w:addMachine("alveary_1","NORMAL"); w:addMachine("alveary_2","COLD"); w:build()
+  local p=W.bee("Wintry","princess",1,nil,{temperatureTolerance="UP_1"})
+  p.individual.active.species.temperature="Icy"
+  p.individual.inactive.species.temperature="Icy"
+  w.inventories.hub[1]=p; w.inventories.hub[2]=require("lib.util").copy(p)
+  w.inventories.hub[3]=W.bee("Attuned","drone",8)
+  local j=W.job(w,"recover","Attuned","convert")
+  w.scheduler:dispatch(j)
+  eq(j.state,"WAITING"); eq(w.moves,0)
+  ok(j.error:find("Recover Attuned princess.",1,true),j.error)
+  ok(j.error:find("Selected parents: Wintry princess + Attuned drone.",1,true),j.error)
+  ok(j.error:find("alveary_1 [temp NORMAL, humidity NORMAL]",1,true),j.error)
+  ok(j.error:find("Wintry princess needs temperature ICY/COLD",1,true),j.error)
+  ok(j.error:find("alveary_2 [temp COLD, humidity NORMAL]",1,true),j.error)
+  ok(j.error:find("Attuned drone needs temperature NORMAL",1,true),j.error)
+  local Status=require("lib.ui.status")
+  for _,verbose in ipairs({false,true}) do
+    local text=Status.render(w.state,w.c,verbose)
+    ok(text:find("Selected parents: Wintry princess + Attuned drone.",1,true),text)
+    ok(text:find("\n",text:find("Selected parents:",1,true),true),text)
+    ok(text:find("\n",text:find("alveary_1 [temp NORMAL",1,true),true),text)
+  end
+end)

@@ -101,3 +101,16 @@ test("a failing terminal refresh cannot abort foreground breeding output",functi
   end)
   print=original; package.loaded.term=previous; assert(success,err)
 end)
+
+
+test("climate diagnostics remain indented on separate lines in both status views",function()
+  local state=sample()
+  state.jobs[2].mode="convert"
+  state.jobs[2].error="Recover Charmed princess.\nSelected parents: Wintry princess + Charmed drone.\nalveary_1 [temp NORMAL, humidity NORMAL]:\n  Wintry princess needs temperature ICY/COLD"
+  local text=Status.render(state,config,false)
+  ok(text:find("Charmed: Recover Charmed princess.\n    Selected parents:",1,true),text)
+  ok(text:find("\n    alveary_1 [temp NORMAL, humidity NORMAL]:\n      Wintry princess",1,true),text)
+  text=Status.render(state,{alvearies={{id="alveary_1",environment={temperature="NORMAL",humidity="NORMAL"}}}},true)
+  ok(text:find("Configured climate: temperature NORMAL; humidity NORMAL",1,true),text)
+  ok(text:find("\n  Selected parents:",1,true),text)
+end)
