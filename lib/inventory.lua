@@ -8,8 +8,11 @@ end
 function M:proxy(ep) return self.components:proxy(ep.transposer,{"getInventorySize","getStackInSlot","transferItem"}) end
 function M:size(ep) return assert(self:proxy(ep).getInventorySize(ep.side),"inventory unavailable: "..ep.id) end
 function M:get(ep,slot)
-  local p=self:proxy(ep); assert(p.getInventorySize(ep.side),"inventory unavailable: "..ep.id)
-  return p.getStackInSlot(ep.side,slot)
+  -- OC distinguishes an empty slot (nil) from an unavailable inventory
+  -- (nil, reason). A separate synchronized size call adds no validation.
+  local stack,why=self:proxy(ep).getStackInSlot(ep.side,slot)
+  assert(not why,"inventory unavailable: "..ep.id..": "..tostring(why))
+  return stack
 end
 -- One availability check for a group of fresh reads, never cached item contents.
 function M:readSlots(ep,slots)

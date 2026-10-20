@@ -39,6 +39,48 @@ test("transfer saves reservation with intent and keeps movement and receipt chec
   eq(snapshots[3].transactions[1].phase,"COMMITTED")
 end)
 
+test("transfer uses four fresh slot reads and no redundant size callbacks",function()
+  local w=W.new(); w:addMachine("a"); w:build()
+  local ep=w.c.storage.endpoints[1]; local stack=W.bee("Forest","drone",8)
+  w.inventories.hub[1]=stack
+  local p=w.proxies.tp1; local read=p.getStackInSlot; local reads=0
+  p.getInventorySize=function() error("redundant synchronized size callback") end
+  p.getStackInSlot=function(...) reads=reads+1; return read(...) end
+  w.inv:move({endpoint=ep,slot=1,stack=stack},{id="a",transposer="tp1",side=3},10,2,"job")
+  eq(reads,4); eq(w.moves,1)
+  eq(w.inventories.hub[1].size,6)
+end)
+
+test("slot reads distinguish empty inventory slots from OC error returns",function()
+  local w=W.new(); w:addMachine("a"); w:build(); local ep=w.c.storage.endpoints[1]
+  eq(w.inv:get(ep,1),nil)
+  for _,reason in ipairs({"no inventory","not enabled in config"}) do
+    w.proxies.tp1.getStackInSlot=function() return nil,reason end
+    raises(function() w.inv:get(ep,1) end,reason)
+    raises(function()
+      w.inv:move({endpoint=ep,slot=1,stack=W.bee("Forest","drone",8)},
+        {id="a",transposer="tp1",side=3},10,2,"job")
+    end,reason)
+    eq(w.moves,0); eq(w.state.pending,nil)
+  end
+end)
+
+test("failed destination read after movement preserves the saved recovery receipt",function()
+  local w=W.new(); w:addMachine("a"); w:build()
+  local ep=w.c.storage.endpoints[1]; local stack=W.bee("Forest","drone",8)
+  w.inventories.hub[1]=stack
+  local p=w.proxies.tp1; local read=p.getStackInSlot
+  p.getStackInSlot=function(side,slot)
+    if side==3 and w.moves>0 then return nil,"no inventory" end
+    return read(side,slot)
+  end
+  raises(function()
+    w.inv:move({endpoint=ep,slot=1,stack=stack},{id="a",transposer="tp1",side=3},10,2,"job")
+  end,"no inventory")
+  eq(w.moves,1); eq(w.state.pending.phase,"MOVED"); eq(w.state.pending.returned,2)
+  p.getStackInSlot=read; ok(w.inv:reconcile()); eq(w.state.pending,nil); eq(w.moves,1)
+end)
+
 test("power failure at combined transfer intent moves nothing and reconciles",function()
   local w=W.new(); w:addMachine("a"); w:build()
   w.inventories.hub[1]=W.bee("Forest","drone",8)
