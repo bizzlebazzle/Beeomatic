@@ -71,7 +71,7 @@ function M.main(root,args)
     elseif x.action=="stop" then state.paused=false; state.stopping=true end
     save()
   end
-  local function run()
+  local function run(draining)
     Config.validate(c); storage:validate()
     if storage.interface then scanner:validate() end
     if fs.exists(lock) then
@@ -81,7 +81,9 @@ function M.main(root,args)
     local lf=assert(io.open(lock,"w")); lf:write(tostring(computer.address())); lf:close()
     local ok,err=xpcall(function()
       scheduler:recover()
-      if state.pendingRequest then
+      if draining then
+        state.paused=false; state.stopped=false; state.stopping=true; save()
+      elseif state.pendingRequest then
         -- This request already passed the admission checks. Prepare its stock
         -- without resuming jobs from the previously drained plan.
         state.paused=false; state.stopped=false; state.stopping=false; save()
@@ -90,7 +92,7 @@ function M.main(root,args)
       while true do
         applyControl()
         local active,status
-        if state.pendingRequest and not state.paused then
+        if state.pendingRequest and not state.paused and not state.stopping then
           -- The saved batch carries its own exact source and return baseline.
           -- Its scanner phase checks returns directly; refresh global stock
           -- only when selecting a new batch, as in the standalone plan scanner.
@@ -152,15 +154,27 @@ function M.main(root,args)
   if cmd=="" or cmd=="help" then print(help); return end
   if cmd=="cancel" then
     local function refused(message) print(message); return nil,message end
-    if fs.exists(lock) then return refused("A worker lock exists. Exit the running worker with Ctrl+C before cancelling its pending request.") end
-    if not state.pendingRequest then print("No pending request to cancel. Saved jobs remain; use stop to drain active work."); return end
+    if fs.exists(lock) then return refused("A worker lock exists. Exit the running worker with Ctrl+C before cancelling saved work.") end
     for _,m in pairs(state.machines or {}) do
-      if m.job then return refused("A machine is still assigned; recover/drain existing work before cancelling the pending request.") end
+      if m.job then return refused("A machine is still assigned; use Beeomatic stop to drain it before cancelling.") end
     end
     for _,j in ipairs(state.jobs) do
       if j.machine or j.state=="RUNNING" or j.state=="COLLECTING" or j.state=="ASSESSING" or j.state=="PREPARING" then
-        return refused("A job still has active work; recover/drain it before cancelling the pending request.")
+        return refused("A job still has active work; use Beeomatic stop to drain it before cancelling.")
       end
+    end
+    if not state.pendingRequest then
+      if #state.jobs==0 then print("No saved work to cancel."); return end
+      -- Physical requests must be reconciled before their owning jobs disappear.
+      if state.pending or state.pendingExternal or next(state.meRequests or {}) then
+        return refused("Unresolved transfers/Interface requests remain; run Beeomatic resume or doctor to reconcile them before cancelling.")
+      end
+      local owners={}; for _,j in ipairs(state.jobs) do owners[j.id]=true end
+      for key,r in pairs(state.reservations or {}) do if owners[r.owner] then state.reservations[key]=nil end end
+      for key,b in pairs(state.meBatches or {}) do if owners[b.owner] then state.meBatches[key]=nil end end
+      state.jobs={}; state.machines={}; state.target=nil; state.error=nil
+      state.finished=false; state.paused=false; state.stopping=false; state.stopped=true
+      save(); print("Cancelled saved breeding plan. You can start a new request."); return
     end
     local target=state.pendingRequest.target
     -- The pending request passed admission after the previous plan was drained.
@@ -181,7 +195,9 @@ function M.main(root,args)
     if fs.exists(lock) then sendControl(cmd,a[2])
     else if cmd=="pause" then
       if a[2] then scheduler:pause(assert(Jobs.find(state,a[2]),"unknown job"),"Paused by user") else state.paused=true end
-    else state.stopping=true; state.paused=false end; save(); print("Saved "..cmd.." request") end
+    else state.stopping=true; state.paused=false end; save()
+      if cmd=="stop" then return run(true) end
+      print("Saved "..cmd.." request") end
     return
   end
   if cmd=="resume" then

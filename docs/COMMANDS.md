@@ -147,8 +147,11 @@ with Ctrl+C if it is running, then use `Beeomatic cancel`. This also clears requ
 stranded by the old stopped-plan replacement bug. It preserves the old drained
 jobs and all scanner/transfer/ownership records; a new request reconciles those
 records before breeding. It refuses cancellation while a worker lock or active
-machine/job assignment remains. Once the request has become a plan, `cancel`
-leaves that plan intact; use `stop` to drain it.
+machine/job assignment remains. For an existing idle or blocked plan, `cancel`
+removes its jobs and releases their logical stock ownership. Unresolved physical
+transfers or Interface requests must be reconciled first. Use `stop` to drain
+assigned work before cancelling. At the shell, `stop` runs the foreground worker
+to complete the drain; with another worker running, it sends that worker a request.
 
 Recovery tools for a reserved job:
 

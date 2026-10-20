@@ -64,14 +64,40 @@ test("cancel refuses a running worker or live job assignment without rewriting s
   end
 end)
 
-test("cancel with no pending request keeps the existing breeding plan",function()
+test("cancel discards an idle blocked plan and releases its logical ownership",function()
   local w=W.new(); w:addMachine("a"); w:build(); W.job(w,"old","Forest")
+  w.state.reservations={slot={owner="old"},scan={owner="scanner"}}
+  w.state.meBatches={batch={owner="old"},scan={owner="scanner"}}
   O.with(w,function(files,out)
     files["/project/data/config.lua"]="return "..U.encode(w.c)
-    local before="return "..U.encode(w.state); files["/project/data/state.lua"]=before
+    files["/project/data/state.lua"]="return "..U.encode(w.state)
     require("lib.cli").main("/project",{"cancel"})
-    eq(files["/project/data/state.lua"],before); eq(w.moves,0)
-    ok(table.concat(out,"\n"):find("No pending request to cancel",1,true))
+    local state=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
+    eq(#state.jobs,0); ok(state.stopped); eq(state.reservations.slot,nil)
+    ok(state.reservations.scan); eq(w.moves,0)
+    ok(table.concat(out,"\n"):find("Cancelled saved breeding plan",1,true))
+  end)
+end)
+
+test("offline stop actually drains a blocked idle plan without dispatching it",function()
+  local w=W.new(); w:addMachine("a"); w:build(); W.job(w,"old","Forest")
+  O.with(w,function(files)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    files["/project/data/state.lua"]="return "..U.encode(w.state)
+    local _,err=require("lib.cli").main("/project",{"stop"}); eq(err,nil,err)
+    local state=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
+    ok(state.stopped); eq(w.moves,0); eq(files["/project/data/worker.lock"],nil)
+  end)
+end)
+
+test("cancel refuses unresolved transfers in an existing plan",function()
+  local w=W.new(); w:addMachine("a"); w:build(); W.job(w,"old","Forest")
+  w.state.pending={owner="old",phase="INTENT"}
+  O.with(w,function(files)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    local before="return "..U.encode(w.state); files["/project/data/state.lua"]=before
+    local _,err=require("lib.cli").main("/project",{"cancel"})
+    ok(err); eq(files["/project/data/state.lua"],before); eq(w.moves,0)
   end)
 end)
 
