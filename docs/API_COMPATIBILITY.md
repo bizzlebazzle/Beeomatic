@@ -60,6 +60,26 @@ NONE is not treated as a valid operating climate. UP/DOWN/BOTH tolerance directi
 matters. Active traits determine current operation; both species alleles determine
 purity. Every selected princess is rechecked before another cycle.
 
+## Mating, queen climate and inheritance
+
+Rechecked 2026-10-20 against Forestry **4.11.37**:
+
+- [BeekeepingLogic.canWork / tickBreed](https://github.com/GTNewHorizons/ForestryMC/blob/4.11.37/src/main/java/forestry/apiculture/BeekeepingLogic.java#L146-L195)
+  checks for a drone while a princess is mating, without applying a parent climate
+  intersection. `tickBreed` mates the princess and writes her as a queen.
+- [Bee.mate](https://github.com/GTNewHorizons/ForestryMC/blob/4.11.37/src/main/java/forestry/apiculture/genetics/Bee.java#L151-L159)
+  stores the drone genome in `mate`; it leaves the princess's own `genome` unchanged.
+  [Bee.getCanWork](https://github.com/GTNewHorizons/ForestryMC/blob/4.11.37/src/main/java/forestry/apiculture/genetics/Bee.java#L275-L301)
+  tests that genome's active species and temperature/humidity tolerances.
+- [Bee.createOffspring](https://github.com/GTNewHorizons/ForestryMC/blob/4.11.37/src/main/java/forestry/apiculture/genetics/Bee.java#L613-L637)
+  combines the maternal and stored paternal chromosomes, including possible mutation.
+
+Beeomatic selects a climate where the princess-derived queen can work for the full
+cycle, even though mating itself can happen outside that climate. The drone's
+climate does not gate dispatch. Newly observed offspring princess genes determine
+the next cycle's climate. Both parents still require analysed genes for selection,
+and independently confirmed mutation conditions remain enforced.
+
 ## ME Interface backend
 
 The default backend is now `storage.kind="me_interface"`. The pinned

@@ -59,10 +59,11 @@ function M.select(alvearies,route,p,d,busy)
       ok,why=M.bee(p,a.environment)
       if not ok then why=M.parent(p,"princess").." "..tostring(why) end
     end
-    -- Drone genome matters for future offspring; revalidate each actual princess every cycle.
-    if ok and d then
-      ok,why=M.bee(d,a.environment)
-      if not ok then why=M.parent(d,"drone").." "..tostring(why) end
+    -- Forestry 4.11.37 Bee.mate stores the mate separately, leaving the
+    -- princess genome unchanged. Only her active traits govern this queen's
+    -- climate; inherited offspring are checked when selected for a later cycle.
+    if ok and d and not B.scanned(d) then
+      ok=false; why="analyse the selected drone to obtain its genes"
     end
     if ok then candidates[#candidates+1]=a else
       local e=a.environment or {}

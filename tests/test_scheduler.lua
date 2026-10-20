@@ -200,27 +200,41 @@ test("cycle limit bounds unsuccessful mutation attempts",function()
 end)
 
 
-test("blocked conversion identifies the donor instead of attributing its climate to the target",function()
-  local w=W.new(); w:addMachine("alveary_1","NORMAL"); w:addMachine("alveary_2","COLD"); w:build()
+test("cross-climate conversion uses the princess climate then rechecks inherited offspring",function()
+  for _,target in ipairs({"Attuned","Cultivated"}) do
+    local w=W.new(); w:addMachine("alveary_1","NORMAL"); w:addMachine("alveary_2","COLD"); w:build()
+    local p=W.bee("Wintry","princess",1,nil,{temperatureTolerance="UP_1"})
+    p.individual.active.species.temperature="Icy"
+    p.individual.inactive.species.temperature="Icy"
+    w.inventories.hub[1]=p; w.inventories.hub[2]=require("lib.util").copy(p)
+    w.inventories.hub[3]=W.bee(target,"drone",8)
+    local j=W.job(w,"recover",target,"convert")
+    w.scheduler:dispatch(j)
+    eq(j.state,"RUNNING"); eq(j.machine,"alveary_2"); eq(j.error,nil)
+    local queen=w.inventories.alveary_2[4]
+    eq(require("lib.bees").kind(queen),"queen")
+    eq(queen.individual.active.species.name,"Wintry")
+    eq(queen.individual.active.temperatureTolerance,"UP_1")
+    -- A possible inherited result now has Normal active genes. The following
+    -- cycle must be dispatched from these observed genes, not the donor's.
+    w:finish("alveary_2",W.bee(target,"princess"),W.bee(target,"drone",4))
+    w.scheduler:advance(j); eq(j.state,"WAITING")
+    w.scheduler:dispatch(j)
+    eq(j.state,"RUNNING"); eq(j.machine,"alveary_1"); eq(j.error,nil)
+    eq(w.inventories.alveary_1[4].individual.active.species.name,target)
+  end
+end)
+
+test("blocked conversion explains the princess climate without rejecting its drone",function()
+  local w=W.new(); w:addMachine("normal","NORMAL"); w:build()
   local p=W.bee("Wintry","princess",1,nil,{temperatureTolerance="UP_1"})
-  p.individual.active.species.temperature="Icy"
-  p.individual.inactive.species.temperature="Icy"
+  p.individual.active.species.temperature="Icy"; p.individual.inactive.species.temperature="Icy"
   w.inventories.hub[1]=p; w.inventories.hub[2]=require("lib.util").copy(p)
   w.inventories.hub[3]=W.bee("Attuned","drone",8)
-  local j=W.job(w,"recover","Attuned","convert")
-  w.scheduler:dispatch(j)
+  local j=W.job(w,"recover","Attuned","convert"); w.scheduler:dispatch(j)
   eq(j.state,"WAITING"); eq(w.moves,0)
-  ok(j.error:find("Recover Attuned princess.",1,true),j.error)
+  ok(j.error:find("No available alveary can run the selected princess/queen.",1,true),j.error)
   ok(j.error:find("Selected parents: Wintry princess + Attuned drone.",1,true),j.error)
-  ok(j.error:find("alveary_1 [temp NORMAL, humidity NORMAL]",1,true),j.error)
   ok(j.error:find("Wintry princess needs temperature ICY/COLD",1,true),j.error)
-  ok(j.error:find("alveary_2 [temp COLD, humidity NORMAL]",1,true),j.error)
-  ok(j.error:find("Attuned drone needs temperature NORMAL",1,true),j.error)
-  local Status=require("lib.ui.status")
-  for _,verbose in ipairs({false,true}) do
-    local text=Status.render(w.state,w.c,verbose)
-    ok(text:find("Selected parents: Wintry princess + Attuned drone.",1,true),text)
-    ok(text:find("\n",text:find("Selected parents:",1,true),true),text)
-    ok(text:find("\n",text:find("alveary_1 [temp NORMAL",1,true),true),text)
-  end
+  ok(not j.error:find("drone needs",1,true),j.error)
 end)

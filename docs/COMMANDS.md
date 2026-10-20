@@ -51,14 +51,18 @@ alveary's mutation-condition confirmations; verify them again with `doctor --con
 Then use `resume` to retry blocked jobs.
 
 Temperature tolerance is directional: `ICY` with `UP_1` accepts `ICY` and `COLD`,
-but not `NORMAL`. Beeomatic checks both selected parents. An Icy/UP_1 princess
-and a Normal/NONE drone have no shared temperature under that check. Compatibility
-messages name the selected princess and drone, then list each rejected alveary
-with its configured climate and the rejected bee's allowed temperature/humidity range.
-A `convert` job names the princess species being recovered; its selected donor
-princess can be a different species with different climate requirements. The
-requirements shown come from each selected bee's active genes. Changing a registration alone cannot change the physical climate
-or the bees' genes.
+but not `NORMAL`. The queen retains the selected princess's genome; the drone's
+genome is stored separately for offspring inheritance. Beeomatic therefore checks
+only the princess's active temperature/humidity genes for the current cycle.
+A Wintry Icy/UP_1 princess can run at Cold with an Attuned or Cultivated Normal/NONE
+drone. Each collected offspring princess is analysed and checked again before
+her next cycle, so an inherited Normal requirement can select a different alveary.
+
+Compatibility messages name the selected parents, then list rejected alvearies
+with their configured climates and the princess's allowed range. A `convert` job
+names the princess species being recovered; its selected donor princess can be
+another species. Mutation-specific environment conditions still apply separately.
+Changing a registration alone cannot change the physical climate or the bees' genes.
 
 `plan` reads runtime routes and actual storage. If bees lack verified genes, it asks
 `Would you like to scan all unscanned bees now? [y/N]`. Answer `y` or `yes` to

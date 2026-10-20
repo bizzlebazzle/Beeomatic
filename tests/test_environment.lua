@@ -28,7 +28,7 @@ test("flower, day/night, rain and sky declarations do not gate scheduling",funct
 end)
 
 
-test("Icy UP_1 accepts Cold and identifies the other parent rejecting it",function()
+test("Icy UP_1 queen accepts Cold regardless of the drone climate",function()
   local p=W.bee("Wintry","princess",1,nil,{temperatureTolerance="UP_1"})
   p.individual.active.species.temperature="Icy"
   ok(E.bee(p,W.environment("COLD")))
@@ -36,8 +36,7 @@ test("Icy UP_1 accepts Cold and identifies the other parent rejecting it",functi
   ok(not E.bee(p,W.environment("NORMAL")))
   local d=W.bee("Forest","drone")
   local candidates,why=E.select({{id="cold",environment=W.environment("COLD")}},nil,p,d,{})
-  eq(#candidates,0)
-  ok(why:find("Forest drone needs temperature NORMAL (active genes: NORMAL, NONE)",1,true),why)
+  eq(#candidates,1); eq(candidates[1].id,"cold"); eq(why,"")
 end)
 
 
@@ -47,9 +46,9 @@ test("housing diagnostics separate configured climate from the rejected bee rang
   local d=W.bee("Attuned","drone")
   local candidates,why=E.select({{id="alveary_1",name="Main",environment=W.environment("NORMAL")},
     {id="alveary_2",environment=W.environment("COLD")}},nil,p,d,{})
-  eq(#candidates,0)
+  eq(#candidates,1); eq(candidates[1].id,"alveary_2")
   ok(why:find("alveary_1 (Main) [temp NORMAL, humidity NORMAL]:\n  Wintry princess needs temperature ICY/COLD (active genes: ICY, UP_1)",1,true),why)
-  ok(why:find("alveary_2 [temp COLD, humidity NORMAL]:\n  Attuned drone needs temperature NORMAL (active genes: NORMAL, NONE)",1,true),why)
+  ok(not why:find("drone needs",1,true),why)
 end)
 
 test("humidity diagnostics show the allowed humidity range",function()
@@ -58,4 +57,34 @@ test("humidity diagnostics show the allowed humidity range",function()
   eq(#candidates,0)
   ok(why:find("humidity ARID",1,true),why)
   ok(why:find("Forest princess needs humidity NORMAL/DAMP (active genes: NORMAL, UP_1)",1,true),why)
+end)
+
+
+test("only the princess active genome determines queen temperature and humidity",function()
+  local p=W.bee("Wintry","princess",1,"Attuned",{temperatureTolerance="UP_1"})
+  p.individual.active.species.temperature="Icy"
+  local d=W.bee("Attuned","drone")
+  d.individual.active.species.humidity="Arid"
+  local housings={{id="normal",environment=W.environment("NORMAL")},{id="cold",environment=W.environment("COLD")}}
+  local candidates=E.select(housings,nil,p,d,{})
+  eq(#candidates,1); eq(candidates[1].id,"cold")
+  candidates=E.select(housings,nil,d,p,{})
+  eq(#candidates,0) -- the reversed princess now needs ARID humidity
+  d.individual.active.species.humidity="Normal"
+  candidates=E.select(housings,nil,d,p,{})
+  eq(#candidates,1); eq(candidates[1].id,"normal")
+end)
+
+test("drone analysis and mutation conditions remain required independently of climate",function()
+  local p=W.bee("Forest","princess"); local d=W.bee("Wintry","drone")
+  d.individual.isAnalyzed=false
+  local a={id="normal",environment=W.environment(),confirmed={}}
+  local candidates,why=E.select({a},nil,p,d,{})
+  eq(#candidates,0); ok(why:find("analyse the selected drone",1,true),why)
+  d.individual.isAnalyzed=true; d.individual.active.species.temperature="Icy"
+  candidates=E.select({a},W.route("Forest","Wintry",10,{"Requires foundation"}),p,d,{})
+  eq(#candidates,0)
+  a.confirmed["Requires foundation"]=true
+  candidates=E.select({a},W.route("Forest","Wintry",10,{"Requires foundation"}),p,d,{})
+  eq(#candidates,1)
 end)
