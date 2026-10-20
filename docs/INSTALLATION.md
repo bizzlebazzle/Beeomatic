@@ -142,9 +142,11 @@ Setup saves completed sections and each alveary registration stage. Type `back`
 to revisit the previous stage/section. If interrupted, run `setup` again; an
 unfinished `alveary add` also resumes its saved registration.
 Use `setup --reconfigure` to repeat the stages while retaining existing machines;
-use `alveary add` to add a machine independently. To correct a registered machine's
-slot or climate mapping, stop the worker and edit `data/config.lua`, or remove its
-idle registration and register it again. Back up the data directory before edits.
+use `alveary add` to add a machine independently. Use `alveary rename ID NAME`
+to change a friendly name, or `alveary configure ID` to update name, climate,
+priority and enabled status for an idle registration with the worker exited.
+For slot/connection mappings, edit `data/config.lua` with the worker exited, or
+remove the idle registration and register it again. Back up data before manual edits.
 The sample `config.example.lua` is deliberately unverified and is not installed as
 a working configuration.
 

@@ -74,7 +74,7 @@ test("cancel discards an idle blocked plan and releases its logical ownership",f
     require("lib.cli").main("/project",{"cancel"})
     local state=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
     eq(#state.jobs,0); ok(state.stopped); eq(state.reservations.slot,nil)
-    ok(state.reservations.scan); eq(w.moves,0)
+    ok(state.reservations.scan); eq(state.meBatches.batch,nil); ok(state.meBatches.scan); eq(w.moves,0)
     ok(table.concat(out,"\n"):find("Cancelled saved breeding plan",1,true))
   end)
 end)
@@ -514,4 +514,75 @@ test("pending-request scanner polls do not rescan global ME stock for an existin
     end)
   end)
   Storage.scan=scan; assert(success,why)
+end)
+
+
+test("alveary rename and list expose the saved name and climate",function()
+  local w=W.new(); w:addMachine("a"); w:build()
+  local id=w.c.alvearies[1].id
+  O.with(w,function(files,out)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    require("lib.cli").main("/project",{"alveary","rename",id,"Cold","room"})
+    local c=assert(load(files["/project/data/config.lua"],"=config","t",{}))()
+    eq(c.alvearies[1].name,"Cold room"); eq(c.alvearies[1].address,w.c.alvearies[1].address)
+    require("lib.cli").main("/project",{"alveary","list"})
+    local text=table.concat(out,"\n")
+    ok(text:find("Cold room",1,true)); ok(text:find("NORMAL / NORMAL",1,true))
+  end)
+end)
+
+test("alveary configure refuses an assigned machine or running worker",function()
+  for _,blocked in ipairs({"job","machine","worker"}) do
+    local w=W.new(); w:addMachine("a"); w:build()
+    local id=w.c.alvearies[1].id
+    if blocked=="job" then W.job(w,"old","Forest").machine=id end
+    if blocked=="machine" then w.state.machines[id]={job="old"} end
+    O.with(w,function(files)
+      local before="return "..U.encode(w.c); files["/project/data/config.lua"]=before
+      files["/project/data/state.lua"]="return "..U.encode(w.state)
+      if blocked=="worker" then files["/project/data/worker.lock"]="running" end
+      raises(function() require("lib.cli").main("/project",{"alveary","configure",id}) end,blocked=="worker" and "worker lock" or "machine has saved work")
+      eq(files["/project/data/config.lua"],before); eq(w.moves,0)
+    end)
+  end
+end)
+
+
+test("alveary configure persists changed climate and resume uses it",function()
+  local w=W.new(); w:addMachine("a","HOT"); w:build(); w.c.confirmCycles=1; w.c.minDrones=2
+  local id=w.c.alvearies[1].id
+  W.job(w,"old","Spirit","populate")
+  w.inventories.hub[1]=W.bee("Spirit","princess")
+  w.inventories.hub[2]=W.bee("Spirit","drone",8)
+  O.with(w,function(files)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    files["/project/data/state.lua"]="return "..U.encode(w.state)
+    local answers={"Working room","NORMAL","","",""}; local n=0; local read=io.read
+    io.read=function() n=n+1; return answers[n] end
+    local success,why=pcall(require("lib.cli").main,"/project",{"alveary","configure",id})
+    io.read=read; assert(success,why)
+    local c=assert(load(files["/project/data/config.lua"],"=config","t",{}))()
+    eq(c.alvearies[1].name,"Working room"); eq(c.alvearies[1].environment.temperature,"NORMAL")
+    local _,err=require("lib.cli").main("/project",{"resume"}); eq(err,nil,err)
+    local state=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
+    ok(state.finished)
+  end)
+end)
+
+test("offline stop collects an active cycle without starting another one",function()
+  local w=W.new(); w:addMachine("a"); w:build()
+  w.inventories.hub[1]=W.bee("Spirit","princess")
+  w.inventories.hub[2]=W.bee("Spirit","drone",8)
+  local j=W.job(w,"old","Spirit","populate"); j.count=64
+  w.scheduler:dispatch(j); eq(j.state,"RUNNING")
+  O.with(w,function(files)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    files["/project/data/state.lua"]="return "..U.encode(w.state)
+    local _,err=require("lib.cli").main("/project",{"stop"}); eq(err,nil,err)
+    local state=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
+    ok(state.stopped); eq(state.jobs[1].cycles,1); eq(state.jobs[1].machine,nil)
+    require("lib.cli").main("/project",{"cancel"})
+    state=assert(load(files["/project/data/state.lua"],"=state","t",{}))()
+    eq(#state.jobs,0)
+  end)
 end)

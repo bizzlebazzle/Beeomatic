@@ -14,8 +14,8 @@ function M.bee(s,e)
   if not B.scanned(s) then return false,"scan bee to obtain active/inactive genes" end
   if not e or not e.verified then return false,"verify configured operating environment" end
   local g=s.individual.active; local species=g.species
-  if not M.tolerance(species.temperature,e.temperature,g.temperatureTolerance,temps) then return false,"temperature "..tostring(species.temperature).." tolerance "..tostring(g.temperatureTolerance) end
-  if not M.tolerance(species.humidity,e.humidity,g.humidityTolerance,hums) then return false,"humidity "..tostring(species.humidity).." tolerance "..tostring(g.humidityTolerance) end
+  if not M.tolerance(species.temperature,e.temperature,g.temperatureTolerance,temps) then return false,"temperature "..tostring(species.temperature).." tolerance "..tostring(g.temperatureTolerance).."; configured alveary "..tostring(e.temperature) end
+  if not M.tolerance(species.humidity,e.humidity,g.humidityTolerance,hums) then return false,"humidity "..tostring(species.humidity).." tolerance "..tostring(g.humidityTolerance).."; configured alveary "..tostring(e.humidity) end
   -- Day/night, rain and sky workability are observed through the housing. Lighting
   -- and rain shields are installed in-world and need no setup declarations.
   -- Flower requirements come from bee genetics and are displayed with the live
@@ -36,9 +36,15 @@ function M.select(alvearies,route,p,d,busy)
   local candidates,errors={},{}
   for _,a in ipairs(alvearies) do if a.enabled~=false and not (busy or {})[a.id] then
     local ok,why=M.mutation(route,a)
-    if ok then ok,why=M.bee(p,a.environment) end
+    if ok then
+      ok,why=M.bee(p,a.environment)
+      if not ok then why="princess: "..tostring(why) end
+    end
     -- Drone genome matters for future offspring; revalidate each actual princess every cycle.
-    if ok and d then ok,why=M.bee(d,a.environment) end
+    if ok and d then
+      ok,why=M.bee(d,a.environment)
+      if not ok then why="drone: "..tostring(why) end
+    end
     if ok then candidates[#candidates+1]=a else errors[#errors+1]=a.id..": "..tostring(why) end
   end end
   table.sort(candidates,function(a,b) return (a.priority or 99)<(b.priority or 99) end)

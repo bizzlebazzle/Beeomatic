@@ -295,6 +295,33 @@ function M.new(config,components,inv,save,read,out)
     end
     self.save()
   end
+  function w:climate(a)
+    self.out("Enter this alveary's working temperature and humidity, including any heaters/fans.")
+    local function choice(label,values,default)
+      while true do
+        local value=self:ask(label,default):upper():match("^%s*(.-)%s*$")
+        if values[value] then return value end
+        self.out("Choose one of the listed climate values.")
+      end
+    end
+    local e=U.copy(a.environment or {})
+    e.temperature=choice("Temperature: ICY COLD NORMAL WARM HOT HELLISH",{ICY=true,COLD=true,NORMAL=true,WARM=true,HOT=true,HELLISH=true},e.temperature)
+    e.humidity=choice("Humidity: ARID NORMAL DAMP",{ARID=true,NORMAL=true,DAMP=true},e.humidity)
+    e.verified=true; e.provenance="setup-entered climate"
+    if not a.environment or e.temperature~=a.environment.temperature or e.humidity~=a.environment.humidity then a.confirmed={} end
+    a.environment=e
+    self.out("Each bee's required flower type is shown in alveary status. Supply those flowers in-world.")
+  end
+  function w:editAlveary(a)
+    local draft=U.copy(a)
+    self.out("Configure "..a.id..". Enter keeps the current value. Change heaters/fans in-world before recording their climate here.")
+    repeat draft.name=self:ask("Friendly alveary name",draft.name):match("^%s*(.-)%s*$") until draft.name~=""
+    self:climate(draft)
+    draft.priority=self:number("Scheduling priority (lower runs first)",1,100000,draft.priority or 99)
+    draft.enabled=self:yes("Enabled for scheduling?",draft.enabled~=false)
+    for key,value in pairs(draft) do a[key]=value end
+    self.save(); self.out("Saved settings for "..a.id..". Run Beeomatic resume to retry blocked work.")
+  end
   function w:addAlveary()
     local draft=self.c.alvearyDraft or {stage=1,machine={enabled=true,priority=#self.c.alvearies+1}}
     self.c.alvearyDraft=draft; local a=draft.machine; self.save()
@@ -360,14 +387,7 @@ function M.new(config,components,inv,save,read,out)
           else slots.verified=true end
           a.slots=slots
         else
-          self.out("Enter this alveary's working temperature and humidity, including any heaters/fans.")
-          local previous=a.environment or {}
-          a.environment={temperature=self:ask("Temperature: ICY COLD NORMAL WARM HOT HELLISH"):upper(),
-            humidity=self:ask("Humidity: ARID NORMAL DAMP"):upper(),biome=previous.biome,dimension=previous.dimension}
-          local e=a.environment
-          self.out("Each bee's required flower type is shown in alveary status. Supply those flowers in-world.")
-          e.verified=true
-          e.provenance="setup-entered climate"; a.confirmed={}
+          self:climate(a)
         end
       end)
       if success then draft.stage=draft.stage+1

@@ -426,3 +426,33 @@ test("optional setup completes without a robot configuration",function()
   wizard:optional(); eq(w.c.robot,nil)
   ok(table.concat(out,"\n"):find("Offspring and products are retained",1,true))
 end)
+
+
+test("alveary settings edit keeps connections and validates climate before saving",function()
+  local w=W.new(); w:addMachine("a"); w:build()
+  local a=w.c.alvearies[1]; local connection=U.copy(a)
+  a.confirmed={foundation=true}
+  local wizard,out,saved=picker(w,{"Cold room","typo","cold","damp","2","no"})
+  wizard:editAlveary(a)
+  eq(a.name,"Cold room"); eq(a.environment.temperature,"COLD"); eq(a.environment.humidity,"DAMP")
+  eq(a.priority,2); eq(a.enabled,false); eq(a.confirmed,{})
+  for _,key in ipairs({"id","address","transposer","side","storage","slots"}) do eq(a[key],connection[key],key) end
+  eq(#saved,1); eq(w.moves,0)
+  ok(table.concat(out,"\n"):find("Choose one of the listed climate values",1,true))
+end)
+
+test("interrupted alveary settings edit leaves the registered settings intact",function()
+  local w=W.new(); w:addMachine("a"); w:build()
+  local a=w.c.alvearies[1]; local original=U.copy(a)
+  local wizard,_,saved=picker(w,{"Changed name","HOT"})
+  raises(function() wizard:editAlveary(a) end,"Setup interrupted")
+  eq(a,original); eq(#saved,0)
+end)
+
+test("keeping the climate preserves existing mutation confirmations",function()
+  local w=W.new(); w:addMachine("a"); w:build()
+  local a=w.c.alvearies[1]; a.confirmed={foundation=true}
+  local wizard=picker(w,{"","","","",""})
+  wizard:editAlveary(a)
+  ok(a.confirmed.foundation)
+end)

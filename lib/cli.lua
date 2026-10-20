@@ -8,7 +8,7 @@ Beeomatic breed SPECIES [--noFinalImprint | --onlyFinalImprint]
 Beeomatic convert SPECIES | populate SPECIES COUNT | imprint SPECIES
 Beeomatic status [--verbose] | logs [--crash]
 Beeomatic pause [JOB] | resume [JOB] [--recover] | stop | cancel
-Beeomatic alveary list | add | remove ID
+Beeomatic alveary list | add | remove ID | configure ID | rename ID NAME
 Beeomatic storage scan | bees list | bees inspect SPECIES
 Beeomatic help
 
@@ -218,13 +218,30 @@ function M.main(root,args)
     if cmd=="setup" then w:run(f.reconfigure) else w:addAlveary() end; return
   end
   if cmd=="alveary" then
-    if sub=="list" then for _,x in ipairs(c.alvearies) do print(x.id.." "..x.name.." "..x.address) end
+    if sub=="list" then for _,x in ipairs(c.alvearies) do
+      local e=x.environment or {}
+      print(x.id.." "..x.name.." "..x.address.." | "..tostring(e.temperature).." / "..tostring(e.humidity)..
+        " | priority "..tostring(x.priority or 99)..(x.enabled==false and " | disabled" or ""))
+    end
+    elseif sub=="configure" or sub=="edit" or sub=="rename" then
+      unlocked()
+      local machine; for _,x in ipairs(c.alvearies) do if x.id==a[3] then machine=x end end
+      assert(machine,"unknown alveary ID; use Beeomatic alveary list")
+      if sub=="rename" then
+        local name=table.concat(a," ",4):match("^%s*(.-)%s*$")
+        assert(name~="","Use alveary rename ID NAME")
+        machine.name=name; cp:save(c); print("Renamed "..machine.id.." to "..name)
+      else
+        assert(not (state.machines and state.machines[machine.id] and state.machines[machine.id].job),"machine has saved work; drain it before reconfiguring")
+        for _,j in ipairs(state.jobs) do assert(j.machine~=machine.id,"machine has saved work; drain it before reconfiguring") end
+        require("lib.setup").new(c,components,inv,function() cp:save(c) end):editAlveary(machine)
+      end
     elseif sub=="remove" then unlocked()
       for _,j in ipairs(state.jobs) do assert(j.machine~=a[3],"machine has saved work") end
       local found=false
       for n,x in ipairs(c.alvearies) do if x.id==a[3] then table.remove(c.alvearies,n); found=true; break end end
       assert(found,"unknown alveary ID"); Config.prunePorts(c); cp:save(c)
-    else error("Use alveary list, add, or remove ID") end; return
+    else error("Use alveary list, add, remove ID, configure ID, or rename ID NAME") end; return
   end
   if cmd=="doctor" then
     if f.interface then

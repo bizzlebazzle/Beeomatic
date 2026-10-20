@@ -26,3 +26,16 @@ test("flower, day/night, rain and sky declarations do not gate scheduling",funct
   e.skyAccess=true; e.rainProtected=false; e.daylightManaged=false; ok(E.bee(p,e))
   e.rainProtected=nil; e.daylightManaged=nil; e.skyAccess=nil; ok(E.bee(p,e))
 end)
+
+
+test("Icy UP_1 accepts Cold and identifies the other parent rejecting it",function()
+  local p=W.bee("Wintry","princess",1,nil,{temperatureTolerance="UP_1"})
+  p.individual.active.species.temperature="Icy"
+  ok(E.bee(p,W.environment("COLD")))
+  ok(E.bee(p,W.environment("ICY")))
+  ok(not E.bee(p,W.environment("NORMAL")))
+  local d=W.bee("Forest","drone")
+  local candidates,why=E.select({{id="cold",environment=W.environment("COLD")}},nil,p,d,{})
+  eq(#candidates,0)
+  ok(why:find("drone: temperature Normal tolerance NONE; configured alveary COLD",1,true),why)
+end)

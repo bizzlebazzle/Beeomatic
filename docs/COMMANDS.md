@@ -28,6 +28,8 @@ Beeomatic stop
 Beeomatic cancel
 Beeomatic alveary list
 Beeomatic alveary add
+Beeomatic alveary rename alveary_2 "Cold room"
+Beeomatic alveary configure alveary_2
 Beeomatic alveary remove hot_dry_1
 Beeomatic storage scan
 Beeomatic bees list
@@ -36,6 +38,24 @@ Beeomatic logs
 Beeomatic logs --crash
 Beeomatic help
 ```
+
+`alveary list` shows IDs, friendly names, saved climates, priorities and disabled
+registrations. `alveary rename ID NAME` changes a friendly name without changing
+its stable ID or connections. `alveary configure ID` (also `edit ID`) prompts for
+name, temperature, humidity, scheduling priority and enabled status; Enter keeps
+current values. It saves only after all answers are complete. Exit the worker
+before editing; configuration changes require the selected machine to have no
+assigned job. Change heaters/fans in-world first: the command records the resulting
+climate, rather than controlling those blocks. Changing climate clears that
+alveary's mutation-condition confirmations; verify them again with `doctor --confirm ID`.
+Then use `resume` to retry blocked jobs.
+
+Temperature tolerance is directional: `ICY` with `UP_1` accepts `ICY` and `COLD`,
+but not `NORMAL`. Beeomatic checks both selected parents. An Icy/UP_1 princess
+and a Normal/NONE drone have no shared temperature under that check. Compatibility
+messages identify the rejected parent, its preference/tolerance, and the configured
+alveary climate. Changing a registration alone cannot change the physical climate
+or the bees' genes.
 
 `plan` reads runtime routes and actual storage. If bees lack verified genes, it asks
 `Would you like to scan all unscanned bees now? [y/N]`. Answer `y` or `yes` to
