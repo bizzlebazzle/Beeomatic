@@ -10,7 +10,7 @@ function raises(fn,needle)
   local yes,e=pcall(fn); assert(not yes,"expected failure")
   if needle then assert(tostring(e):find(needle,1,true),"wrong diagnostic: "..tostring(e)) end
 end
-for _,suite in ipairs({"nbt","planner","plan_output","genetics","environment","persistence","storage","interface","scheduler","recovery","scanner","setup","integration","cli","status","download","performance","profile"}) do
+for _,suite in ipairs({"nbt","planner","plan_output","genetics","environment","persistence","storage","interface","scheduler","recovery","scanner","setup","integration","cli","status","download","performance","profile","benchmark"}) do
   require("tests.test_"..suite)
 end
 print(string.format("%d tests, %d failures",count,failed)); assert(failed==0,"test suite failed")

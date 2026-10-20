@@ -44,6 +44,7 @@ function M:items(owner,snapshot)
   return items
 end
 function M:template(j,items)
+  if j.mode=="benchmark" then return nil end
   local enabled=self.c.templates.enabled
   if j.mode=="imprint" then assert(enabled,"Register an analyzed reference drone with setup first") end
   if not enabled then return nil end
@@ -124,6 +125,19 @@ function M:stockJob(species,mode,count,parent)
   self.state.jobs[#self.state.jobs+1]=j; self.save(); return j
 end
 function M:select(j,items,template)
+  if j.mode=="benchmark" then
+    for _,p in ipairs(items) do if B.kind(p.stack)=="princess" and not self:protected(p) then
+      for _,d in ipairs(items) do if B.kind(d.stack)=="drone" and not self:protected(d) and G.equivalent(p.stack,d.stack) then
+        local candidates=E.select(self.c.alvearies,nil,p.stack,d.stack)
+        if #candidates>0 then
+          j.species=B.species(p.stack.individual.active.species)
+          self.state.target=j.species
+          return p,d,nil,j.species
+        end
+      end end
+    end end
+    return nil,nil,"Benchmark needs a stable princess/drone pair with identical homozygous genes, compatible with a registered housing"
+  end
   local target=j.species; local genes=template and template.stack.individual.active
   -- Only this immutable selection snapshot uses these totals. A later dispatch
   -- scans again so a committed withdrawal cannot be spent a second time.
@@ -219,6 +233,7 @@ function M:select(j,items,template)
   return nil,nil,"Waiting for parent stock/reserves or a spare princess for automatic conversion"
 end
 function M:completion(j,items,template)
+  if j.mode=="benchmark" then return j.cycles>=1 end
   -- No stock combination can complete before its stable-cycle requirement.
   if j.confirmed<self.c.confirmCycles then return false end
   local minimum=j.count or self:populationMinimum(items,j.species)
@@ -284,6 +299,7 @@ function M:dispatch(j)
   end
   assert(j.cycles<self.c.maxCycles,"Cycle limit reached; inspect genetic progress and replan")
   local a=backend.config
+  if j.mode=="benchmark" then print("Benchmark: one "..B.displayName(j.species).." cycle in "..a.name) end
   -- Materialization can export a stack; reserve logical ME stack before exporting.
   for _,i in ipairs({p,d}) do
     if i.network then
@@ -357,6 +373,7 @@ function M:advance(j)
     local p=self:best(own,"princess",j.species)
     local d=self:best(own,"drone",j.species)
     assert(p,"No analyzed princess in this job's collected offspring; inspect archive")
+    if j.mode=="benchmark" then assert(d,"No analyzed drone in benchmark offspring; inspect archive") end
     j.lineage={endpoint=p.endpoint,slot=p.slot,identity=B.identity(p.stack)}
     if self.storage.releaseBatches then self.storage:releaseBatches(j.id,p.batchId) end
     if p and d and G.complete(p.stack,d.stack,j.species,self.c,template and template.stack.individual.active) then

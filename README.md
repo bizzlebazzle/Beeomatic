@@ -53,6 +53,10 @@ storage/scanner setup. Each housing retains its own slot map and climate.
 See the [movement performance audit](docs/PERFORMANCE.md) for resource costs and optimizations.
 For in-game timings, stop the worker with Ctrl+C, run `Beeomatic resume --profile`,
 let it move several bees, then stop with Ctrl+C and read `Beeomatic logs --profile`.
+For an automatic test, run `Beeomatic benchmark`: it selects a stable matching
+princess/drone pair, breeds one cycle, scans the offspring back into storage,
+then exits with a profile. Configure the automated scanner and finish or cancel
+existing work first. No species argument is needed.
 
 See [installation and migration](docs/INSTALLATION.md), [hardware](docs/HARDWARE.md),
 [commands](docs/COMMANDS.md), [architecture](docs/ARCHITECTURE.md),

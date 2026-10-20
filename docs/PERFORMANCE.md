@@ -74,6 +74,15 @@ once, including empty gaps. One unowned ME stack uses two full stack copies
 
 ## In-game profiling
 
+For a complete automatic sample, use `Beeomatic benchmark`. It profiles stock
+preparation, selects a matching homozygous princess/drone pair, breeds exactly
+one cycle, and scans the collected offspring back into storage before exiting.
+It uses the normal journal and scanner recovery paths. It requires configured
+automated scanning and no unfinished jobs; species, population targets, template
+imprinting and confirmation-cycle counts do not extend this single-cycle test.
+The queen's lifespan and scanner processing time remain part of elapsed time.
+Read the result using `Beeomatic logs --profile --no-pager`.
+
 Stop the current worker with Ctrl+C (which preserves breeding progress), then:
 
 ```sh

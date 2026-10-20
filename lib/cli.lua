@@ -6,6 +6,7 @@ Beeomatic doctor [--nbt | --probe | --interface PORT | --adopt JOB | --retry JOB
 Beeomatic plan SPECIES [--verbose] [--no-pager]
 Beeomatic breed SPECIES [--noFinalImprint | --onlyFinalImprint]
 Beeomatic convert SPECIES | populate SPECIES COUNT | imprint SPECIES
+Beeomatic benchmark
 Beeomatic status [--verbose] | logs [--crash | --profile]
 Beeomatic pause [JOB] | resume [JOB] [--recover] [--profile] | cancel
 Beeomatic alveary list | add | remove ID | configure ID | rename ID NAME
@@ -14,6 +15,7 @@ Beeomatic help
 
 Jobs run in the foreground. p pauses, r resumes, q cancels all work immediately.
 Add --profile to breed/convert/populate/imprint/resume/plan to record timings.
+benchmark automatically profiles one stable-pair cycle, scanning and storage return.
 Species names may contain spaces, with or without quotes. populate takes COUNT last.
 cancel abandons the entire process; stop is an alias. Bees remain in place.
 Ctrl+C exits with state preserved. Run resume after repairing a blocked job.
@@ -110,7 +112,7 @@ local function main(root,args,profile)
   B.migrateIdentities(c)
   local Components=require("lib.components"); local Inventory=require("lib.inventory")
   local Storage=require("lib.storage."..c.storage.kind)
-  if cmd=="resume" or cmd=="breed" or cmd=="convert" or cmd=="populate" or cmd=="imprint" then
+  if cmd=="resume" or cmd=="breed" or cmd=="convert" or cmd=="populate" or cmd=="imprint" or cmd=="benchmark" then
     -- OpenOS concatenates module source while loading it. Compile worker code
     -- before the large journal is resident, even when manual GC is unavailable.
     require("lib.nbt"); require("lib.scanner"); if c.storage.kind=="me_interface" then require("lib.scanner_me") end
@@ -241,8 +243,13 @@ local function main(root,args,profile)
               state.error=nil
               Jobs.releaseCancelled(state)
               items=storage:scan()
-              local req=state.pendingRequest; local m=mutations(items)
-              local plan,e=require("lib.planner").plan(req.target,m,items,c); assert(plan,e)
+              local req=state.pendingRequest; local m,plan,e
+              if req.mode=="benchmark" then
+                plan={target="benchmark",order={{species="benchmark",children={}}}}
+              else
+                m=mutations(items)
+                plan,e=require("lib.planner").plan(req.target,m,items,c); assert(plan,e)
+              end
               Jobs.create(state,plan,req.mode,req.count,req.flags,req); state.pendingRequest=nil; save()
               -- Planning is finished. Its graph/index and code need not compete
               -- with live storage/scanner snapshots for the rest of this run.
@@ -487,20 +494,25 @@ local function main(root,args,profile)
     end
     require("lib.ui.pager").show(require("lib.planner").render(plan,{verbose=f.verbose}),{enabled=not f["no-pager"]}); return
   end
-  if cmd=="breed" or cmd=="convert" or cmd=="populate" or cmd=="imprint" then
-    unlocked(); assert(a[2],"Specify a species")
+  if cmd=="breed" or cmd=="convert" or cmd=="populate" or cmd=="imprint" or cmd=="benchmark" then
+    unlocked()
+    if cmd=="benchmark" then
+      assert(not a[2],"Use Beeomatic benchmark without a species; a stable pair is selected automatically")
+      assert(c.scanner.enabled,"Configure the automated scanner before running a benchmark")
+    else assert(a[2],"Specify a species") end
     assert(not state.pendingRequest,"Saved request exists; use resume")
     assert(#state.jobs==0 or state.finished or state.stopped,"Existing work is preserved; use resume, or cancel to abandon it")
     local count=cmd=="populate" and U.assertNumber(a[3],1,1000000) or nil
-    state.pendingRequest={target=a[2],mode=cmd,count=count,flags=f}; state.cancelled=nil; save(); return run()
+    state.pendingRequest={target=a[2] or "benchmark",mode=cmd,count=count,flags=f}; state.cancelled=nil; save(); return run()
   end
   error("Unknown command. Run Beeomatic help")
 end
 function M.main(root,args)
   local a,f=M.parse(args)
+  if U.lower(a[1])=="benchmark" then f.profile=true end
   if not f.profile or U.lower(a[1])=="logs" then return main(root,args) end
   local cmd=U.lower(a[1])
-  assert(cmd=="resume" or cmd=="breed" or cmd=="convert" or cmd=="populate" or cmd=="imprint" or cmd=="plan",
+  assert(cmd=="resume" or cmd=="breed" or cmd=="convert" or cmd=="populate" or cmd=="imprint" or cmd=="plan" or cmd=="benchmark",
     "Use --profile with breed/convert/populate/imprint/resume/plan, or logs.")
   local computer=require("computer"); local fs=require("filesystem")
   assert(not fs.exists(root.."/data/worker.lock") or f.recover,"Stop the running worker with Ctrl+C before enabling profiling.")
@@ -512,7 +524,7 @@ function M.main(root,args)
     profile:wrap(require("lib.nbt"),"canonical","nbt.canonical")
     profile:wrap(require("event"),"pull","event.wait")
     for _,key in ipairs({"exists","get","size","remove","rename"}) do profile:wrap(fs,key,"filesystem."..key) end
-    print("Profiling enabled. Read timings with Beeomatic logs --profile after stopping with Ctrl+C.")
+    print("Profiling enabled. Read timings with Beeomatic logs --profile after the command exits.")
     return main(root,args,profile)
   end))
   profile.outcome=result[1] and not result[3] and "returned" or "failed (see crash log / command error)"

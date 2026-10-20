@@ -20,6 +20,7 @@ Beeomatic breed spirit --onlyFinalImprint
 Beeomatic convert spirit
 Beeomatic populate spirit 32
 Beeomatic imprint spirit
+Beeomatic benchmark
 Beeomatic status
 Beeomatic status --verbose
 Beeomatic pause
@@ -43,6 +44,18 @@ Beeomatic logs --profile
 Beeomatic logs --profile --no-pager
 Beeomatic help
 ```
+
+`Beeomatic benchmark` enables profiling automatically and selects an analyzed
+princess and drone with identical active and inactive genes, compatible with a
+registered housing. It breeds exactly one cycle, collects and analyzes the
+offspring, returns them to storage, then exits. An automated scanner is required.
+Stock inspection and any initial analysis run automatically and are included in
+the report. Templates are protected; the selected pair may use its last drone
+because this is a single same-genome cycle. No species is hard-coded or required.
+Existing unfinished work must be completed or cancelled first. Missing suitable
+stock or a blocked machine pauses the benchmark with a diagnostic. After Ctrl+C
+or a repair, `Beeomatic resume --profile` continues the saved benchmark.
+Read the completed report with `Beeomatic logs --profile --no-pager`.
 
 For performance diagnosis, stop an existing worker with Ctrl+C, then run
 `Beeomatic resume --profile`. New breed/convert/populate/imprint commands and
