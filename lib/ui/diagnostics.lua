@@ -43,6 +43,16 @@ function M.nbt(storage,out)
     if entry then
       out("  name="..tostring(entry.name==s.name).." damage="..tostring(entry.damage==s.damage)..
         " NBT="..tostring(entry.tag==s.tag).." identity="..tostring(B.identity(entry)==B.identity(s)))
+      if entry.tag~=s.tag and B.identity(entry)==B.identity(s) then
+        out("  Complete NBT contents match; only serialization/compression differs.")
+      elseif type(entry.tag)=="string" and type(s.tag)=="string" and entry.tag:sub(1,2)=="\31\139" and s.tag:sub(1,2)=="\31\139" then
+        local path,left,right=require("lib.nbt").difference(s.tag,entry.tag)
+        if path then
+          local function preview(value) return value and U.encode(value:sub(1,48)) or "MISSING" end
+          out("  NBT content differs at "..path)
+          out("  requested value="..preview(left).." copied value="..preview(right))
+        end
+      end
       local again=db.get(slot)
       out("  stable read="..tostring(B.identity(entry)==B.identity(again)))
       if type(entry.tag)=="string" and type(s.tag)=="string" and entry.tag~=s.tag then

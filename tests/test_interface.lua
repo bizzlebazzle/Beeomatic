@@ -3,6 +3,45 @@ local function select(w,s)
   return {network=true,endpoint={id="ME"},slot=B.identity(s),stack=U.copy(s)}
 end
 
+test("Interface stocks the exact bee when database and physical NBT use different compound order",function()
+  local F=require("tests.fixtures.nbt"); local w=ME.new(); local s=ME.bee("End","queen",1); s.tag=F.a; w:addStock(s)
+  local store=w.proxies.me.store
+  w.proxies.me.store=function(...) local yes=store(...); w.database[1].tag=F.b; return yes end
+  local read=w.proxies["tp-scan"].getStackInSlot
+  w.proxies["tp-scan"].getStackInSlot=function(...)
+    local stack=read(...); if stack and stack.tag==F.a then stack=U.copy(stack); stack.tag=F.b end; return stack
+  end
+  local p=w.storage:materialize(select(w,s),w.c.scanner.storage,"scanner",1)
+  eq(B.identity(p.stack),B.identity(s)); eq(p.stack.tag,F.b)
+  eq(w.state.meRequests["scan-port:2"].phase,"READY"); eq(w.moves,0)
+  w.storage:cancel("scanner"); eq(w.cells[B.identity(s)].size,1)
+end)
+
+test("Interface still blocks a genuinely different complete NBT payload",function()
+  local F=require("tests.fixtures.nbt"); local w=ME.new(); local s=ME.bee("End","queen",1); s.tag=F.a; w:addStock(s)
+  local store=w.proxies.me.store
+  w.proxies.me.store=function(...) local yes=store(...); w.database[1].tag=F.changed; return yes end
+  raises(function() w.storage:materialize(select(w,s),w.c.scanner.storage,"scanner",1) end,"after 3 automatic rebuilds")
+  eq(next(w.state.meRequests),nil); eq(w.moves,0); eq(w.cells[B.identity(s)].size,1)
+end)
+
+test("an old compressed-byte stock request resumes after migration without another configuration",function()
+  local F=require("tests.fixtures.nbt"); local w=ME.new(); local s=ME.bee("End","queen",1); s.tag=F.a; w:addStock(s)
+  local item=select(w,s)
+  w.storage:materialize(item,w.c.scanner.storage,"scanner",1)
+  local old=U.encode({name=s.name,damage=s.damage,tag=s.tag})
+  w.state.meRequests["scan-port:2"].identity=old
+  w.state.aeCatalog={[old]=U.copy(s.individual)}
+  w.state.scan={phase="REQUESTING",identity=old,item=item,count=1}
+  w.filters["scan-port"][2].tag=F.b; w.inventories["scan-port"][2].tag=F.b
+  require("lib.inventory").new(w.components,w.state,w.save)
+  w.proxies["if-scan"].setInterfaceConfiguration=function() error("must reuse saved request") end
+  w.storage:validate()
+  local p=w.storage:materialize(item,w.c.scanner.storage,"scanner",1)
+  eq(p.stack.tag,F.b); eq(w.state.scan.identity,B.identity(s)); eq(w.state.meRequests["scan-port:2"].identity,B.identity(s))
+  eq(w.cells[B.identity(s)],nil); eq(w.moves,0)
+end)
+
 test("NBT diagnostic inspects the blocked scanner selection without moving bees or saving",function()
   local w=ME.new(); local s=ME.bee("Spirit","drone",8); w:addStock(s)
   w.state.scan={phase="REQUESTING",item=select(w,s)}

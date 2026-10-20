@@ -81,12 +81,13 @@ function M.main(root,args)
     cancelWork(); return
   end
   local c=cp:load(Config.defaults())
+  B.migrateIdentities(c)
   local Components=require("lib.components"); local Inventory=require("lib.inventory")
   local Storage=require("lib.storage."..c.storage.kind)
   if cmd=="resume" or cmd=="breed" or cmd=="convert" or cmd=="populate" or cmd=="imprint" then
     -- OpenOS concatenates module source while loading it. Compile worker code
     -- before the large journal is resident, even when manual GC is unavailable.
-    require("lib.scanner"); if c.storage.kind=="me_interface" then require("lib.scanner_me") end
+    require("lib.nbt"); require("lib.scanner"); if c.storage.kind=="me_interface" then require("lib.scanner_me") end
     require("lib.scheduler"); require("lib.ui.status")
     for _,machine in ipairs(c.alvearies) do require("lib.breeders."..(machine.backend or "alveary")) end
   end

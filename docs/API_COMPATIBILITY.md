@@ -82,6 +82,18 @@ and independently confirmed mutation conditions remain enforced.
 
 ## ME Interface backend
 
+Bee identity now uses the complete decoded, typed NBT with compound fields sorted,
+rather than compressed-byte equality. The user's database diagnostic showed a
+stable 419-byte queen tag against a 416-byte network tag, with the first difference
+inside the deflate payload. This establishes a representation difference, not by
+itself whether the NBT values changed. The Lua decoder verifies gzip CRC/length,
+preserves all NBT types, scalar bytes, arrays and list order, and rejects malformed
+or oversized data. Equivalent encodings compare equal; changed values remain
+blocked. `doctor --nbt` now identifies a changed field when contents differ.
+Existing identity references, catalogue keys and scanner count baselines migrate
+in memory before reconciliation, then persist with the next ordinary checkpoint.
+Raw stack tags remain available unchanged for OC calls. No Data Card is required.
+
 The default backend is now `storage.kind="me_interface"`. The pinned
 [DriverBlockInterface](https://github.com/GTNewHorizons/OpenComputers/blob/1.12.61-GTNH/src/main/scala/li/cil/oc/integration/appeng/DriverBlockInterface.scala)
 exposes `getInterfaceConfiguration(slot)` and

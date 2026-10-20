@@ -43,6 +43,7 @@ local lengths={3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115
 local lengthBits={0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0}
 local distances={1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577}
 local distanceBits={0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13}
+local widths={[1]=1,[2]=2,[3]=4,[4]=8,[5]=4,[6]=8}
 function M.gunzip(s)
   assert(type(s)=="string" and #s>=18 and #s<=LIMIT,"invalid gzip size")
   assert(s:sub(1,3)=="\31\139\8","expected gzip NBT")
@@ -142,7 +143,7 @@ function M.gunzip(s)
   assert(bxor(crc,4294967295)==little(#s-7),"gzip checksum mismatch")
   return raw
 end
-function M.sort(raw)
+function M.sort(raw,fields)
   assert(#raw<=LIMIT,"NBT exceeds size limit")
   local pos,nodes=1,0
   local function take(n)
@@ -158,46 +159,61 @@ function M.sort(raw)
     local n,prefix=number(2); local value=take(n); return value,prefix..value
   end
   local payload
-  payload=function(kind,depth)
+  payload=function(kind,depth,path)
     nodes=nodes+1; assert(nodes<=LIMIT and depth<=64,"NBT nesting/element limit exceeded")
-    local widths={[1]=1,[2]=2,[3]=4,[4]=8,[5]=4,[6]=8}
-    if widths[kind] then return take(widths[kind]) end
-    if kind==8 then local _,value=name(); return value end
+    local function leaf(value)
+      if fields then fields[path]=string.char(kind)..value end
+      return value
+    end
+    if widths[kind] then return leaf(take(widths[kind])) end
+    if kind==8 then local _,value=name(); return leaf(value) end
     if kind==7 or kind==11 or kind==12 then
       local count,prefix=number(4); assert(count<=LIMIT,"invalid NBT array length")
-      return prefix..take(count*(kind==7 and 1 or kind==11 and 4 or 8))
+      return leaf(prefix..take(count*(kind==7 and 1 or kind==11 and 4 or 8)))
     end
     if kind==9 then
       local element=number(1); local count,prefix=number(4)
       assert(count<=LIMIT and (element>=1 and element<=12 or count==0 and element==0),"invalid NBT list")
       local parts={string.char(element),prefix}
-      for _=1,count do parts[#parts+1]=payload(element,depth+1) end
+      if fields then fields[path.."<list>"]=parts[1]..prefix end
+      for i=1,count do parts[#parts+1]=payload(element,depth+1,fields and path.."["..i.."]") end
       return table.concat(parts)
     end
     assert(kind==10,"unknown NBT type")
-    local fields,keys={},{}
+    if fields then fields[path.."<compound>"]="\10" end
+    local members,keys={},{}
     while true do
       local ty=number(1); if ty==0 then break end
-      local key,encoded=name(); assert(not fields[key],"duplicate NBT compound field")
-      fields[key]=string.char(ty)..encoded..payload(ty,depth+1); keys[#keys+1]=key
+      local key,encoded=name(); assert(not members[key],"duplicate NBT compound field")
+      members[key]=string.char(ty)..encoded..payload(ty,depth+1,path and path..string.format("[%q]",key)); keys[#keys+1]=key
     end
     table.sort(keys)
-    local parts={}; for _,key in ipairs(keys) do parts[#parts+1]=fields[key] end
+    local parts={}; for _,key in ipairs(keys) do parts[#parts+1]=members[key] end
     parts[#parts+1]="\0"; return table.concat(parts)
   end
   assert(number(1)==10,"NBT root must be a compound")
-  local _,root=name(); local value="\10"..root..payload(10,0)
+  local _,root=name(); if fields then fields["<root name>"]=root end
+  local value="\10"..root..payload(10,0,fields and "root")
   assert(pos==#raw+1,"trailing NBT data")
   return value
 end
 -- Bounded cache avoids decompressing unchanged network/receipt tags each poll.
-local cache,queue={},{}
+local cache,queue,cacheBytes={},{},0
 function M.canonical(tag)
   if type(tag)~="string" or tag:sub(1,2)~="\31\139" then return nil end
   if cache[tag] then return cache[tag] end
   local value=M.sort(M.gunzip(tag))
-  if #queue>=16 then cache[table.remove(queue,1)]=nil end
-  queue[#queue+1]=tag; cache[tag]=value
+  while #queue>0 and (#queue>=16 or cacheBytes+#tag+#value>LIMIT) do
+    local old=table.remove(queue,1); cacheBytes=cacheBytes-#old-#cache[old]; cache[old]=nil
+  end
+  if #tag+#value<=LIMIT then queue[#queue+1]=tag; cache[tag]=value; cacheBytes=cacheBytes+#tag+#value end
   return value
+end
+function M.difference(a,b)
+  local left,right={},{}
+  M.sort(M.gunzip(a),left); M.sort(M.gunzip(b),right)
+  local keys={}; for key in pairs(left) do keys[key]=true end; for key in pairs(right) do keys[key]=true end
+  local ordered={}; for key in pairs(keys) do ordered[#ordered+1]=key end; table.sort(ordered)
+  for _,key in ipairs(ordered) do if left[key]~=right[key] then return key,left[key],right[key] end end
 end
 return M

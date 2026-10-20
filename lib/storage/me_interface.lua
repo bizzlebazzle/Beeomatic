@@ -168,7 +168,7 @@ function M:selectEntry(item)
         self.databaseEntry={identity=identity,slot=slot}; return slot
       end
     end
-    assert(attempts<3,"database did not preserve exact bee NBT after 3 automatic rebuilds; check dedicated database and OC NBT support, then resume")
+    assert(attempts<3,"database did not preserve exact bee NBT after 3 automatic rebuilds; run Beeomatic doctor --nbt, then resume")
   end,"database did not preserve exact bee NBT during automatic rebuild")
 end
 function M:materialize(item,ep,owner,count)

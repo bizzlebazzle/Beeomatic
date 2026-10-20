@@ -105,7 +105,8 @@ while the component proxy is unchanged; actual item contents are read fresh.
 moving bees or rewriting saved progress. Stop the worker first. It checks the
 saved scanner selection (or a network bee when no scanner selection exists),
 rebuilds only its scratch database entries, and reports missing entries, field
-types, NBT lengths, byte differences and repeated-read stability. Share that
+types, NBT lengths, byte differences and repeated-read stability. It also checks
+complete decoded NBT and names the first changed field when values differ. Share that
 output before changing hardware or disabling identity checks. It does not run
 the usual doctor's transfer reconciliation.
 

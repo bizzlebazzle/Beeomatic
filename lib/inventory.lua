@@ -1,6 +1,7 @@
 local U=require("lib.util"); local B=require("lib.bees"); local Receipts=require("lib.storage.receipts")
 local M={}; M.__index=M
 function M.new(components,state,save)
+  B.migrateIdentities(state)
   state.transactions=state.transactions or {}; state.reservations=state.reservations or {}
   return setmetatable({components=components,state=state,save=save},M)
 end
