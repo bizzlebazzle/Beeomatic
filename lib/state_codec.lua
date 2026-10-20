@@ -2,7 +2,19 @@
 -- File reads run in Lua, outside load()'s non-yieldable C parser callback.
 local M={}
 local escapes={a="\a",b="\b",f="\f",n="\n",r="\r",t="\t",v="\v",['\\']='\\',['"']='"',["'"]="'"}
-function M.read(reader,onTable)
+-- Avoid table.concat's extra C buffer for long NBT identities. Balanced Lua
+-- concatenations also avoid quadratic copying and use the VM's allocator.
+local function join(parts)
+  local n=#parts
+  while n>1 do
+    local target=1
+    for i=1,n,2 do parts[target]=parts[i]..(parts[i+1] or ""); target=target+1 end
+    for i=target,n do parts[i]=nil end
+    n=target-1
+  end
+  return parts[1] or ""
+end
+function M.read(reader,onTable,skipField)
   local buffer,pos,offset="",1,0
   local strings={}
   local function intern(s)
@@ -25,11 +37,13 @@ function M.read(reader,onTable)
     while peek()~="" and peek():match("[%w_]") do result[#result+1]=take() end
     return table.concat(result)
   end
-  local function quoted(shared)
-    local quote=take(); local pieces,blocks={},{}
+  local function quoted(shared,discard)
+    local quote=take(); local pieces,blocks
+    if not discard then pieces,blocks={},{} end
     local function piece(s)
+      if discard then return end
       pieces[#pieces+1]=s
-      if #pieces>=128 then blocks[#blocks+1]=table.concat(pieces); pieces={} end
+      if #pieces>=128 then blocks[#blocks+1]=join(pieces); pieces={} end
     end
     while true do
       if peek()=="" then fail("unfinished string") end
@@ -45,8 +59,9 @@ function M.read(reader,onTable)
         pos=last
         local ch=take()
         if ch==quote then
-          blocks[#blocks+1]=table.concat(pieces)
-          local result=table.concat(blocks)
+          if discard then return true end
+          blocks[#blocks+1]=join(pieces)
+          local result=join(blocks)
           return shared and intern(result) or result
         end
         if ch~="\\" then fail("unescaped newline in string") end
@@ -73,33 +88,38 @@ function M.read(reader,onTable)
     if name=="true" then return true elseif name=="false" then return false elseif name=="nil" then return nil end
     fail("unsupported value "..name)
   end
-  local function object(depth,field,parent)
+  local function object(depth,field,parent,discard)
     if depth>128 then fail("table nesting limit exceeded") end
-    expect("{"); local result,index={},1
+    expect("{"); local result,index=not discard and {} or nil,1
+    local function child(key)
+      local drop=discard or (skipField and skipField(key,field,parent))
+      return value(depth,key,field,drop),drop
+    end
     space()
     while peek()~="}" do
       if peek()=="" then fail("unfinished table") end
-      local key,item,explicit
+      local key,item,explicit,skipped
       if peek()=="[" then
-        take(); key=value(depth); expect("]"); expect("="); item=value(depth,key,field); explicit=true
+        take(); key=value(depth,nil,nil,discard); expect("]"); expect("="); item,skipped=child(key); explicit=true
       elseif peek():match("[%a_]") then
         local name=word(); space()
-        if peek()=="=" then take(); key=name; item=value(depth,key,field); explicit=true
+        if peek()=="=" then take(); key=name; item,skipped=child(key); explicit=true
         else item=keyword(name) end
-      else item=value(depth,index,field) end
+      else item,skipped=child(index) end
       if not explicit then key=index; index=index+1 end
       if key==nil then fail("nil table key") end
-      result[key]=item; space()
+      if not discard and not skipped then result[key]=item end; space()
       if peek()=="," or peek()==";" then take(); space()
       elseif peek()~="}" then fail("expected comma or closing brace") end
     end
-    take(); if onTable then onTable(result,field,parent) end; return result
+    take(); if not discard and onTable then onTable(result,field,parent) end
+    return discard and true or result
   end
-  value=function(depth,field,parent)
+  value=function(depth,field,parent,discard)
     space(); local ch=peek()
-    if ch=="{" then return object(depth+1,field,parent)
+    if ch=="{" then return object(depth+1,field,parent,discard)
     elseif ch=='"' or ch=="'" then
-      return quoted(field==nil or field=="identity" or field=="original" or field=="slot")
+      return quoted(field==nil or field=="identity" or field=="original" or field=="slot",discard)
     elseif ch:match("[%a_]") then return keyword(word())
     else
       local token={}

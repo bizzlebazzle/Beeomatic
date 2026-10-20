@@ -320,3 +320,15 @@ test("scheduler releases its observation inventory before obtaining a dispatch s
   end
   w.scheduler:step(); ok(scans>=2)
 end)
+
+
+test("optional memory collection tolerates missing and disabled host APIs",function()
+  local native=collectgarbage
+  local success,why=pcall(function()
+    collectgarbage=nil; U.collect()
+    collectgarbage=function() error("host collectgarbage unavailable") end; U.collect()
+    local calls=0; collectgarbage=function(mode) eq(mode,"collect"); calls=calls+1 end
+    U.collect(); eq(calls,1)
+  end)
+  collectgarbage=native; assert(success,why)
+end)

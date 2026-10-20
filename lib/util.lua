@@ -1,4 +1,8 @@
 local M = {}
+function M.collect()
+  -- OpenOS may omit this function or expose a wrapper whose host API is absent.
+  if type(collectgarbage)=="function" then pcall(collectgarbage,"collect") end
+end
 function M.lower(s) return tostring(s or ""):lower() end
 function M.copy(v)
   if type(v) ~= "table" then return v end

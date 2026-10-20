@@ -1,6 +1,11 @@
 -- Apply logical ME ownership in the same save as a verified physical receipt.
 local B=require("lib.bees"); local U=require("lib.util")
 local M={}
+function M.skipField(key,field,parent)
+  -- Consume obsolete payloads without building them. This does not depend on
+  -- manual garbage collection being available in the host sandbox.
+  return parent=="transactions" and type(field)=="number" and (key=="stack" or key=="transform")
+end
 function M.compact(tx)
   -- Completed receipt consumers use identity/count/endpoints, never the full
   -- bee genome or the already-applied ownership transform. Pending intent keeps both.
@@ -12,7 +17,7 @@ function M.decoded(value,field,parent)
     M.compact(value)
     -- Large legacy NBT strings otherwise survive until the next collector cycle,
     -- colliding with the following record's string-concatenation buffer.
-    if bulky then bulky=nil; collectgarbage("collect") end
+    if bulky then bulky=nil; U.collect() end
   elseif parent=="jobs" and type(field)=="number" and not value.machine and
     (value.state=="WAITING" or value.state=="DONE") then
     value.expectedPrincess=nil; value.preparedPrincess=nil; value.preparedDrone=nil

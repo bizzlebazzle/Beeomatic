@@ -38,20 +38,25 @@ def check(runtime, root, version):
             pass
         else:
             raise AssertionError("legacy receipt fixture must exceed 2 MiB")
-        limited = runtime(max_memory=2 * 1024 * 1024, unpack_returned_tuples=True)
         installed = sum((root / p).stat().st_size for p in seed.eval('assert(loadfile("manifest.lua"))()').values())
-        peak_disk = 0
-        def disk_used():
-            nonlocal peak_disk
-            used = sum(p.stat().st_size for p in path.rglob("*") if p.is_file()) + 2 * installed + 256 * 1024
-            peak_disk = max(peak_disk, used)
-            return used
-        limited.globals().disk_used = disk_used
-        _, live_kib = limited.execute(source, str(path).replace("\\", "/"), True)
-        current = (path / "data/state.lua").stat().st_size
-        assert current < len(legacy) / 2, (current, len(legacy))
-        # Include installer files and their previous generation in the disk budget.
-        assert peak_disk < 4 * 1024 * 1024, peak_disk
-        print(f"Lua {version}: full ME resume fits 2 MiB with 384 KiB host reserve; "
-              f"live {live_kib:.0f} KiB; checkpoint {len(legacy):,} -> {current:,} bytes; "
-              f"disk fixture peak {peak_disk:,}/4,194,304 bytes", flush=True)
+        for mode in ("missing", "disabled"):
+            for file in (path / "data").iterdir():
+                if file.name != "config.lua":
+                    file.unlink()
+            (path / "data/state.lua").write_bytes(legacy)
+            limited = runtime(max_memory=2 * 1024 * 1024, unpack_returned_tuples=True)
+            peak_disk = 0
+            def disk_used():
+                nonlocal peak_disk
+                used = sum(p.stat().st_size for p in path.rglob("*") if p.is_file()) + 2 * installed + 256 * 1024
+                peak_disk = max(peak_disk, used)
+                return used
+            limited.globals().disk_used = disk_used
+            _, live_kib = limited.execute(source, path.as_posix(), True, mode)
+            current = (path / "data/state.lua").stat().st_size
+            assert current < len(legacy) / 2, (current, len(legacy))
+            assert peak_disk < 4 * 1024 * 1024, peak_disk
+            print(f"Lua {version}: full ME resume with collectgarbage {mode} fits 2 MiB "
+                  f"with 384 KiB host reserve; live {live_kib:.0f} KiB; "
+                  f"checkpoint {len(legacy):,} -> {current:,} bytes; "
+                  f"disk fixture peak {peak_disk:,}/4,194,304 bytes", flush=True)

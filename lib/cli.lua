@@ -36,14 +36,15 @@ function M.main(root,args)
     require("lib.ui.pager").show(text,{enabled=not f["no-pager"]}); return
   end
   local cp=P.new(data.."/config.lua",fs)
-  local sp=P.new(data.."/state.lua",fs,require("lib.storage.receipts").decoded)
+  local receipts=require("lib.storage.receipts")
+  local sp=P.new(data.."/state.lua",fs,receipts.decoded,receipts.skipField)
   local ctl=P.new(data.."/control.lua",fs); local lock=data.."/worker.lock"
   if fs.exists(lock) and (cmd=="pause" or cmd=="stop" or (cmd=="resume" and not f.recover)) then
     ctl:save({action=cmd,id=a[2],requested=computer.uptime()})
     print("Requested "..cmd..(a[2] and " "..a[2] or "")); return
   end
   local c=cp:load(Config.defaults()); local state=sp:load({jobs={},reservations={},transactions={},events={}})
-  collectgarbage("collect")
+  U.collect()
   local Components=require("lib.components"); local Inventory=require("lib.inventory")
   local function save() sp:save(state) end
   local components=Components.new(); local inv=Inventory.new(components,state,save)
@@ -51,14 +52,14 @@ function M.main(root,args)
   local scannerInstance,schedulerInstance
   local function scanner()
     if not scannerInstance then
-      collectgarbage("collect")
+      U.collect()
       scannerInstance=require("lib.scanner").new(c.scanner,inv,state,save,computer.uptime,storage)
     end
     return scannerInstance
   end
   local function scheduler()
     if not schedulerInstance then
-      collectgarbage("collect")
+      U.collect()
       schedulerInstance=require("lib.scheduler").new(c,state,components,inv,storage,scanner(),save,computer.uptime)
     end
     return schedulerInstance
@@ -129,7 +130,7 @@ function M.main(root,args)
               -- with live storage/scanner snapshots for the rest of this run.
               m=nil; plan=nil; items=nil
               package.loaded["lib.planner"]=nil; package.loaded["lib.mutations"]=nil
-              collectgarbage("collect")
+              U.collect()
             end
           end
         else active,status=scheduler():step() end

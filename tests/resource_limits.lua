@@ -1,5 +1,8 @@
 -- Fresh VM: no test framework or preloaded Beeomatic modules hide startup costs.
-local root,compact=...
+local root,compact,gcMode=...
+local hostGC=collectgarbage
+if gcMode=="missing" then collectgarbage=nil
+elseif gcMode=="disabled" then collectgarbage=function() error("host collectgarbage unavailable") end end
 package.path="./?.lua;"..package.path
 local reserved=string.rep("O",384*1024) -- leave room for the host OS/runtime
 local baseOpen=io.open
@@ -72,6 +75,6 @@ for _,name in ipairs({"lib.planner","lib.mutations","lib.setup","lib.ui.diagnost
   assert(not package.loaded[name],"resume eagerly loaded "..name)
 end
 assert(not exists(root.."/data/worker.lock"))
-collectgarbage("collect")
-local live=collectgarbage("count")
+hostGC("collect")
+local live=hostGC("count")
 return #reserved,live

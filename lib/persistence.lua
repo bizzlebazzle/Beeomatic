@@ -1,13 +1,13 @@
 local U=require("lib.util")
 local M={}; M.__index=M
-function M.new(path,fs,onTable)
-  return setmetatable({path=path,fs=fs or require("filesystem"),onTable=onTable},M)
+function M.new(path,fs,onTable,skipField)
+  return setmetatable({path=path,fs=fs or require("filesystem"),onTable=onTable,skipField=skipField},M)
 end
 function M:readFile(path)
   local f,why=io.open(path,"rb"); if not f then return nil,why or "cannot open file" end
   local ok,v=pcall(require("lib.state_codec").read,function()
     local chunk,err=f:read(4096); assert(not err,err); return chunk
-  end,self.onTable)
+  end,self.onTable,self.skipField)
   f:close()
   if ok then return v end
   return nil,tostring(v)
@@ -15,7 +15,7 @@ end
 function M:load(default)
   local v,primaryError=self:readFile(self.path)
   if v then self.primaryVerified=true; return v end
-  collectgarbage("collect") -- release a partial parse before trying the backup
+  U.collect() -- release a partial parse before trying the backup when supported
   local backupError
   v,backupError=self:readFile(self.path..".bak")
   if v then self.primaryVerified=false; v.recoveredBackup=true; return v end

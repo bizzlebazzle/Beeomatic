@@ -8,18 +8,20 @@ flow still requires in-game acceptance.**
 
 ## Automated checks
 
-Current result: **285 tests, zero failures on each of Lua 5.2 and Lua 5.3**.
+Current result: **288 tests, zero failures on each of Lua 5.2 and Lua 5.3**.
 Run `python tests/run.py` in the development workspace. It syntax-checks every
 project Lua file, then runs the suite on both engines using local Lupa runtimes.
 Alternatively run `lua tests/run.lua` with a compatible runtime. These dependencies
 stay on the development PC and are not installed on the OpenComputer.
 
 Resource checks run in fresh VMs with a hard **2 MiB allocator ceiling** and
-384 KiB reserved to represent host overhead. They model OpenOS module loading
+384 KiB reserved to represent host overhead. Both an absent `collectgarbage` and
+a host wrapper that throws are tested; neither is required for resume. They model OpenOS module loading
 (chunks plus a concatenated source buffer), load a roughly 1.96 MB legacy journal,
 and run the public ME `resume` path through recovery, checkpoints and a stock wait.
 The same legacy fixture fails when full completed-receipt stacks are retained.
-Completed receipts are compacted during decoding, while pending transfer/scanner
+Obsolete completed-receipt payloads are skipped without constructing their tables
+during decoding, while pending transfer/scanner
 records retain their recovery data. The resulting checkpoint is roughly 0.87 MB.
 
 Every checkpoint write in this fixture is also checked against a **4 MiB disk

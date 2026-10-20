@@ -149,3 +149,28 @@ test("checkpoint reclaims an oversized backup only when the primary is verified"
     end)
   end
 end)
+
+
+test("state decoder skips obsolete receipt payloads without materializing their tables",function()
+  local receipts=require("lib.storage.receipts"); local codec=require("lib.state_codec")
+  local value={transactions={{id=1,identity="exact",stack={individual={active={species={name="Forest"}}}},transform={batchId="old"}}},
+    pending={stack={individual={active={species={name="Forest"}}}}}}
+  local source="return "..U.encode(value); local pos=1; local visited={}
+  local state=codec.read(function()
+    if pos>#source then return nil end
+    local chunk=source:sub(pos,pos+16); pos=pos+17; return chunk
+  end,function(_,field,parent) visited[#visited+1]={field=field,parent=parent} end,receipts.skipField)
+  eq(state.transactions[1].stack,nil); eq(state.transactions[1].transform,nil)
+  eq(state.transactions[1].identity,"exact"); eq(state.pending,value.pending)
+  local forests=0
+  for _,entry in ipairs(visited) do if entry.field=="species" then forests=forests+1 end end
+  eq(forests,1,"only the pending recovery genome should be materialized")
+end)
+
+test("discarded receipt payloads still reject malformed data",function()
+  local source='return {transactions={{stack={tag="bad\\999"}}}}'
+  local supplied=false
+  raises(function() require("lib.state_codec").read(function()
+    if supplied then return nil end; supplied=true; return source
+  end,nil,require("lib.storage.receipts").skipField) end,"invalid byte escape")
+end)
