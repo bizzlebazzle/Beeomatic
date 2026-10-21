@@ -16,7 +16,7 @@ function M:get(ep,slot)
 end
 -- One availability check for a group of fresh reads, never cached item contents.
 function M:readSlots(ep,slots)
-  if #slots>2 and self:proxy(ep).getAllStacks then
+  if #slots>1 and self:proxy(ep).getAllStacks then
     local result={}; local wanted={}
     for _,slot in ipairs(slots) do wanted[slot]=true end
     for _,item in ipairs(self:scan(ep)) do if wanted[item.slot] then result[item.slot]=item.stack end end

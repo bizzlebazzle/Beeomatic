@@ -4,6 +4,37 @@ This audit covers selection, ME requests, transposer movement, collection,
 scanner preparation/returns and recovery. Operation counts below come from Lua
 mocks; the server profile discussed separately below measures in-game time.
 
+## Fewer checkpoints and repeated observations (21 October 2026)
+
+The third in-game benchmark took 162 seconds. Its 74 checkpoints consumed
+84 seconds, including 62.3 seconds of serialization work excluding children.
+The eight transfer callbacks together took only 0.4 seconds.
+
+Dispatch now saves reservations with PREPARING and the prepared inputs, rather
+than in separate saves. RUNNING and its event log share a checkpoint. Completion
+and assessment save ME batch releases with the associated job transition. The
+scheduler compares a small lifecycle/diagnostic summary with the last successful
+checkpoint, including saves inside inventory/scanner/storage calls, before writing
+at the end of a step. Changed errors and terminal flags still get saved; unchanged
+startup scanning messages no longer write the state every waiting iteration.
+Physical transfer intent, moved-count and committed-receipt saves remain.
+
+Two-slot input reads now use bulk snapshots too. Foreground status can consume
+the housing observation made by the scheduler in the same iteration; a new
+dispatch discards it, and the next iteration starts fresh. Standalone status
+commands still read live hardware. Initial housing/scanner-emptiness checks run
+once at startup/resume instead of every ready poll. New ME bees still queue for
+analysis. While an Interface scanner batch is active, its saved source and expected
+return suffice for polling; whole-network stock and display counts refresh after
+the batch finishes, before parent selection. Assessment also waits for that
+iteration's scanner result instead of polling the same batch a second time.
+
+A delayed mock benchmark (six breeding wait polls, three analysis polls per
+batch) kept all eight transfers and reduced checkpoints from 97 to 90, network
+scans from 28 to 18, and individual slot callbacks from 161 to 79. These are
+operation counts, not an in-game speed prediction. Rerun `Beeomatic benchmark`
+to measure this update. P2P routing and the NBT cache are unchanged.
+
 ## Smaller receipt history and bulk output reads (21 October 2026)
 
 The next in-game benchmark took 257.3 seconds, down from 565.3 seconds (54%).
@@ -24,7 +55,7 @@ The same 64-receipt/16-catalogue synthetic fixture below shrinks from 359,852 to
 CPU time was about 22 ms before versus 5 ms after; in-game timing remains to be
 measured. This change does not introduce a new persistence format or cache.
 
-Reads of three or more specified slots now use one fresh bulk inventory snapshot
+The initial bulk-read change used one fresh snapshot for three or more slots
 when supported. Only requested slots are returned, including correct gaps; old
 components keep the per-slot fallback. This reduces housing-output polling from
 one size call plus a call per output slot to one bulk callback. Stock is never

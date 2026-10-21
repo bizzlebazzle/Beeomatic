@@ -238,7 +238,9 @@ local function main(root,args,profile)
           do
             local success,ready,why=pcall(scheduler().prepareStock,scheduler(),items)
             if not success then status="BLOCKED"; state.error=tostring(ready); save()
-            elseif not ready then status="SCANNING"; state.error=why; save()
+            elseif not ready then
+              status="SCANNING"
+              if state.error~=why then state.error=why; save() end
             else
               state.error=nil
               Jobs.releaseCancelled(state)
@@ -264,7 +266,7 @@ local function main(root,args,profile)
         -- housing or write a full recovery checkpoint just to redraw the UI.
         local now=computer.uptime()
         if now>=nextObservation or status=="DONE" or status=="STOPPED" or status=="BLOCKED" then
-          require("lib.ui.status").observe(state,c,components,inv,now); nextObservation=now+1
+          require("lib.ui.status").observe(state,c,components,inv,now,scheduler().observations); nextObservation=now+1
         end
         local display=require("lib.ui.status").render(state,c,false)
         if display~=lastDisplay then require("lib.ui.status").show(display); lastDisplay=display end

@@ -2,10 +2,24 @@ local U=require("lib.util"); local B=require("lib.bees"); local G=require("lib.g
 local E=require("lib.environment"); local J=require("lib.jobs"); local T=require("lib.templates")
 local Backend=require("lib.breeders.factory")
 local M={}; M.__index=M
+-- Only lifecycle and diagnostic fields need an end-of-step checkpoint.
+local function saveStatus(state)
+  local jobs={}
+  for n,j in ipairs(state.jobs) do jobs[n]={id=j.id,state=j.state,cycles=j.cycles,confirmed=j.confirmed,error=j.error} end
+  return {jobs=jobs,sequence=state.transferSequence or 0,error=state.error,
+    finished=not not state.finished,stopped=not not state.stopped}
+end
 function M.new(c,state,components,inv,storage,scanner,save,now)
   state.jobs=state.jobs or {}; state.machines=state.machines or {}; state.events=state.events or {}
-  return setmetatable({c=c,state=state,components=components,inv=inv,storage=storage,
-    scanner=scanner,save=save,now=now,backends={}},M)
+  state.parentStock=state.parentStock or {}
+  local self=setmetatable({c=c,state=state,components=components,inv=inv,storage=storage,
+    scanner=scanner,now=now,backends={}},M)
+  self.save=function()
+    local snapshot=saveStatus(state); save(); self.savedStatus=snapshot
+  end
+  -- Include checkpoints made inside scanner, storage and inventory operations.
+  inv.save=self.save; scanner.save=self.save
+  return self
 end
 function M:log(s)
   self.state.events[#self.state.events+1]={time=self.now(),message=s}
@@ -271,7 +285,7 @@ function M:dispatch(j)
   local items=self:items(j.id); local template=self:template(j,items)
   if self:completion(j,items,template) then
     j.state="DONE"; j.error=nil
-    if self.storage.releaseBatches then self.storage:releaseBatches(j.id) end
+    if self.storage.releaseBatches then self.storage:releaseBatches(j.id,nil,true) end
     self:log(j.species.." complete; stable stock archived"); return
   end
   if j.mode=="convert" and j.baseline==nil then j.baseline=self:count(items,j.species,"princess"); self.save() end
@@ -299,18 +313,19 @@ function M:dispatch(j)
   end
   assert(j.cycles<self.c.maxCycles,"Cycle limit reached; inspect genetic progress and replan")
   local a=backend.config
+  if self.observations then self.observations[a.id]=nil end
   if j.mode=="benchmark" then print("Benchmark: one "..B.displayName(j.species).." cycle in "..a.name) end
   -- Materialization can export a stack; reserve logical ME stack before exporting.
   for _,i in ipairs({p,d}) do
     if i.network then
       local k=U.location(i.endpoint,i.slot); assert(not self.state.reservations[k],"ME stack already leased")
       self.state.reservations[k]={owner=j.id,identity=B.identity(i.stack)}
-    else self.inv:reserve(i,j.id) end
+    else self.inv:reserve(i,j.id,true) end
   end
   j.machine=a.id; j.state="PREPARING"; j.expectedPrincess=U.copy(p.stack); j.cycleTarget=cycleTarget
   self.state.machines[a.id]={job=j.id,state="PREPARING",lastInteraction=self.now()}; self.save()
-  p=self.storage:materialize(p,a.storage,j.id,1); self.inv:reserve(p,j.id)
-  d=self.storage:materialize(d,a.storage,j.id,1); self.inv:reserve(d,j.id)
+  p=self.storage:materialize(p,a.storage,j.id,1); self.inv:reserve(p,j.id,true)
+  d=self.storage:materialize(d,a.storage,j.id,1); self.inv:reserve(d,j.id,true)
   -- Persist selection before insertion. Recovery never repeats PREPARING blindly.
   j.preparedPrincess={endpoint=p.endpoint,slot=p.slot,identity=B.identity(p.stack)}
   j.preparedDrone={endpoint=d.endpoint,slot=d.slot,identity=B.identity(d.stack)}; self.save()
@@ -318,14 +333,15 @@ function M:dispatch(j)
   if self.storage.releasePort then self.storage:releasePort(a.storage); self.inv:release(j.id) end
   if backend.start then backend:start() end
   j.state="RUNNING"; j.started=self.now(); j.cycles=j.cycles+1; j.error=nil
-  self.state.machines[a.id].state="RUNNING"; self.save()
+  self.state.machines[a.id].state="RUNNING"
   self:log(j.id..": cycle "..j.cycles.." in "..a.name)
 end
-function M:advance(j)
+function M:advance(j,stockReady,stockReason)
   local b=self:backend(j.machine); b:validate()
   local machine=self.state.machines[j.machine]
   if j.state=="RUNNING" then
-    local status,why=b:getCycleState(); machine.lastInteraction=self.now()
+    local status,why,observation=b:getCycleState(); machine.lastInteraction=self.now()
+    if self.observations then self.observations[j.machine]=observation end
     if status=="FINISHED" then
       j.state="COLLECTING"; j.collectionAfter=self.state.transferSequence or 0; j.resultLocations={}; self.save()
     elseif status=="UNCERTAIN" then error(why)
@@ -359,6 +375,7 @@ function M:advance(j)
     j.state="ASSESSING"; j.lastCycle=self.now(); self.state.lastCycle=j.lastCycle; self.save()
   end
   if j.state=="ASSESSING" then
+    if stockReady==false then j.error=stockReason; return end
     local all=self.storage:scan(); local scanned,why=self.scanner:step(all)
     if not scanned then j.error=why; return end
     self.inv:release(j.id)
@@ -375,7 +392,7 @@ function M:advance(j)
     assert(p,"No analyzed princess in this job's collected offspring; inspect archive")
     if j.mode=="benchmark" then assert(d,"No analyzed drone in benchmark offspring; inspect archive") end
     j.lineage={endpoint=p.endpoint,slot=p.slot,identity=B.identity(p.stack)}
-    if self.storage.releaseBatches then self.storage:releaseBatches(j.id,p.batchId) end
+    if self.storage.releaseBatches then self.storage:releaseBatches(j.id,p.batchId,true) end
     if p and d and G.complete(p.stack,d.stack,j.species,self.c,template and template.stack.individual.active) then
       j.confirmed=j.confirmed+1
     else j.confirmed=0 end
@@ -479,8 +496,9 @@ function M:prepareStock(items)
     for _,i in ipairs(items) do if B.kind(i.stack)=="drone" and not B.scanned(i.stack) then remaining=remaining+i.stack.size end end
     if self.state.scan then remaining=math.max(remaining,self.state.scan.count or 0) end
     self.state.stockRemaining=remaining
-    if ready then
-      -- Offspring left in registered housings must not bypass the initial gate.
+    if ready and not self.state.stockReady then
+      -- Check housing leftovers once at startup/resume. Later offspring are
+      -- collected by their jobs; new network stock still passes scanner:step.
       for _,a in ipairs(self.c.alvearies) do
         local backend=self:backend(a.id)
         local output=a.routing and a.routing.output or backend.endpoint
@@ -506,6 +524,7 @@ function M:prepareStock(items)
   return ready,why
 end
 function M:step()
+  self.observations={}
   if self.state.paused then return false,"PAUSED" end
   local function progress()
     local pieces={tostring(#self.state.jobs),tostring(self.state.transferSequence or 0)}
@@ -513,19 +532,23 @@ function M:step()
     return table.concat(pieces,"|")
   end
   local before=progress()
-  local oldError,oldFinished,oldStopped=self.state.error,self.state.finished,self.state.stopped
-  local oldErrors={}; for _,j in ipairs(self.state.jobs) do oldErrors[j.id]=j.error end
-  local ok,items=pcall(self.storage.scan,self.storage)
+  self.savedStatus=saveStatus(self.state)
+  -- A saved Interface scanner batch already knows its source and expected
+  -- return. Refresh whole-network stock after it finishes, before selection.
+  local ok,items=true,nil
+  if not (self.storage.interface and self.state.scan) then ok,items=pcall(self.storage.scan,self.storage) end
   if not ok then self.state.error=tostring(items); self.save(); return false,"BLOCKED" end
   self.state.error=nil
-  self.state.storageCounts={princess=0,drone=0}
-  for _,i in ipairs(items) do local kind=B.kind(i.stack)
-    if self.state.storageCounts[kind] then self.state.storageCounts[kind]=self.state.storageCounts[kind]+i.stack.size end
+  if items then
+    self.state.storageCounts={princess=0,drone=0}
+    for _,i in ipairs(items) do local kind=B.kind(i.stack)
+      if self.state.storageCounts[kind] then self.state.storageCounts[kind]=self.state.storageCounts[kind]+i.stack.size end
+    end
+    self:observeParentStock(items,true)
   end
-  local scanOk,scanned,reason=pcall(self.prepareStock,self,items)
+  local scanOk,scanned,reason=pcall(self.prepareStock,self,items or {})
   if not scanOk then self.state.error=tostring(scanned); scanned=false; self.save()
   elseif not scanned then self.state.error=reason end
-  self:observeParentStock(items,true)
   -- Only small counts are needed for display. Do not retain this whole-network
   -- snapshot while assessment/dispatch obtain fresh stock after movements.
   items=nil
@@ -533,7 +556,8 @@ function M:step()
   for _,j in ipairs(self.state.jobs) do
     if self.state.cancelRequested then break end
     if j.state=="RUNNING" or j.state=="COLLECTING" or j.state=="ASSESSING" then
-      local success,err=pcall(self.advance,self,j); if not success then self:pause(j,err); self:log(j.id..": "..tostring(err)) end
+      local success,err=pcall(self.advance,self,j,scanned,reason or self.state.error)
+      if not success then self:pause(j,err); self:log(j.id..": "..tostring(err)) end
     end
   end
   if scanned and not self.state.stopping and not self.state.pending and not self.state.pendingExternal then
@@ -571,9 +595,7 @@ function M:step()
   -- recomputed after restart. Idle polls need no disk write. Physical/lifecycle
   -- transitions retain their own durable checkpoints; persist new diagnostics
   -- and terminal flags here as well.
-  local changed=progress()~=before or oldError~=self.state.error or oldFinished~=self.state.finished or oldStopped~=self.state.stopped
-  for _,j in ipairs(self.state.jobs) do if oldErrors[j.id]~=j.error then changed=true end end
-  if changed then self.save() end
+  if not U.equal(saveStatus(self.state),self.savedStatus) then self.save() end
   return active,complete and "DONE" or self.state.stopped and "STOPPED" or active and "RUNNING" or
     (scanOk and not scanned and "SCANNING") or (progress()~=before and "PROGRESS") or "BLOCKED"
 end

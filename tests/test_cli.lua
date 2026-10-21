@@ -1,4 +1,35 @@
 local W=require("tests.mocks.world"); local O=require("tests.mocks.openos"); local U=require("lib.util")
+
+test("startup analysis waits do not repeatedly checkpoint an unchanged progress message",function()
+  local ME=require("tests.mocks.me"); local w=ME.new()
+  w:addStock(ME.bee("Spirit","drone",8,true))
+  O.with(w,function(files)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    local P=require("lib.persistence"); local save=P.save; local writes,waits,lastWrites=0,0
+    P.save=function(self,...)
+      if self.path=="/project/data/state.lua" then writes=writes+1 end
+      return save(self,...)
+    end
+    require("event").pull=function(seconds)
+      if seconds==0 then return end
+      local source=files["/project/data/state.lua"]
+      local state=source and assert(load(source))()
+      if state and state.scan and state.scan.phase=="PROCESSING" and not next(state.meRequests)
+        and state.error=="Shared scanner processing reserved batch" then
+        waits=waits+1
+        if waits>1 then eq(writes,lastWrites,"unchanged analysis wait wrote another checkpoint") end
+        lastWrites=writes
+        if waits==4 then return "interrupted" end
+      end
+      w:tick(); w.time=w.time+0.1
+    end
+    local success,_,why=pcall(require("lib.cli").main,"/project",{"benchmark"})
+    P.save=save
+    ok(success,why); eq(why,nil); eq(waits,4)
+    local state=assert(load(files["/project/data/state.lua"]))()
+    eq(state.scan.phase,"PROCESSING"); ok(state.pendingRequest)
+  end)
+end)
 local function withAnswer(answer,fn)
   local read=io.read; io.read=function() return answer end
   local success,err=xpcall(fn,debug.traceback); io.read=read

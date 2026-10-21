@@ -48,17 +48,18 @@ function M:getCycleState()
   local inputs=self.inv:readSlots(self.endpoint,{s.princess,s.drone})
   local input,drone=inputs[s.princess],inputs[s.drone]
   local queen=h.getQueen(); local hd=h.getDrone()
+  local observation={queen=queen,drone=hd,princessStack=input,droneStack=drone}
   if input or drone or queen or hd then
-    if h.canBreed() then return "RUNNING" end
-    return "RUNNING","housing reports it cannot work; check climate, flowers, outputs and special conditions"
+    if h.canBreed() then return "RUNNING",nil,observation end
+    return "RUNNING","housing reports it cannot work; check climate, flowers, outputs and special conditions",observation
   end
   local p,d=0,0
   for _,stack in pairs(self.inv:readSlots(self.endpoint,s.outputs)) do
     if B.kind(stack)=="princess" then p=p+stack.size end
     if B.kind(stack)=="drone" then d=d+stack.size end
   end
-  if p>0 and d>0 then return "FINISHED" end
-  return "UNCERTAIN","no live inputs and no complete offspring pair; inspect mapped outputs"
+  if p>0 and d>0 then return "FINISHED",nil,observation end
+  return "UNCERTAIN","no live inputs and no complete offspring pair; inspect mapped outputs",observation
 end
 function M:collectResults(storage,owner,onReceipt)
   local r={}

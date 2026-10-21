@@ -39,8 +39,115 @@ test("grouped output reads use one fresh bulk snapshot with exact slot positions
   local slots=w.inv:readSlots(ep,{8,5,1,2})
   eq(calls,1); eq(slots[2].size,4); eq(B.kind(slots[5]),"princess")
   eq(slots[1],nil); eq(slots[8],nil); eq(slots[9],nil)
+  eq(w.inv:readSlots(ep,{2,5})[2].size,4); eq(calls,2)
   w.inventories.hub[2]=nil
-  eq(w.inv:readSlots(ep,{1,2,5})[2],nil); eq(calls,2)
+  eq(w.inv:readSlots(ep,{1,2,5})[2],nil); eq(calls,3)
+end)
+
+test("dispatch saves both reservations before insertion and commits RUNNING with its log once",function()
+  local w=W.new(); local a=w:addMachine("a"); w:build()
+  w.inventories.hub[1]=W.bee("Spirit","princess"); w.inventories.hub[2]=W.bee("Spirit","drone",8)
+  local job=W.job(w,"job","Spirit","populate"); job.count=32
+  local saved={}
+  w.scheduler=require("lib.scheduler").new(w.c,w.state,w.components,w.inv,w.storage,w.scanner,
+    function() saved[#saved+1]=U.copy(w.state) end,function() return w.time end)
+  w.scheduler:step(); eq(job.state,"RUNNING")
+  eq(saved[1].jobs[1].state,"PREPARING")
+  eq(saved[1].reservations["hub:1"].owner,job.id); eq(saved[1].reservations["hub:2"].owner,job.id)
+  local running=0
+  for _,state in ipairs(saved) do if state.jobs[1].state=="RUNNING" then
+    running=running+1; eq(state.machines[a.id].state,"RUNNING")
+    ok(state.events[#state.events].message:find("cycle 1",1,true))
+  end end
+  eq(running,1); eq(#saved,9)
+end)
+
+test("completion saves batch release with the completed job and its log",function()
+  local w=ME.new(); w.hideGenomes=false; w.c.minDrones=2; w.c.confirmCycles=1
+  local drone=ME.bee("Spirit","drone",8)
+  w:addStock(ME.bee("Spirit","princess")); w:addStock(drone)
+  local job=W.job(w,"job","Spirit","populate"); job.confirmed=1; job.count=2
+  w.state.meBatches.owned={root="owned",owner=job.id,count=1,identity=B.identity(drone),stack=U.copy(drone)}
+  local saved={}
+  w.scheduler=require("lib.scheduler").new(w.c,w.state,w.components,w.inv,w.storage,w.scanner,
+    function() saved[#saved+1]=U.copy(w.state) end,function() return w.time end)
+  w.scheduler:dispatch(job)
+  eq(#saved,1); eq(saved[1].jobs[1].state,"DONE"); eq(next(saved[1].meBatches),nil)
+  ok(saved[1].events[#saved[1].events].message:find("complete",1,true))
+end)
+
+test("a diagnostic changed after scanner checkpoints is still saved at the end of the step",function()
+  local w=ME.new(); w.hideGenomes=false; w.c.minDrones=2; w.state.stockReady=true
+  w:addStock(ME.bee("Spirit","princess")); w:addStock(ME.bee("Spirit","drone",8))
+  local job=W.job(w,"job","Spirit","populate"); job.count=32
+  local saved={}
+  w.scheduler=require("lib.scheduler").new(w.c,w.state,w.components,w.inv,w.storage,w.scanner,
+    function() saved[#saved+1]=U.copy(w.state) end,function() return w.time end)
+  w.scheduler:step(); eq(job.state,"RUNNING")
+  w:addStock(ME.bee("Forest","drone",3,true)); w.obstructed=true
+  w.scheduler:step(); ok(w.state.scan); ok(job.error)
+  eq(saved[#saved].jobs[1].error,job.error)
+  ok(job.error:find("cannot work",1,true))
+end)
+
+test("initial housing and scanner checks run once per startup while new network bees still queue",function()
+  local w=ME.new(); local reads,empty=0,0
+  local readSlots,scannerEmpty=w.inv.readSlots,w.scanner.empty
+  w.inv.readSlots=function(self,ep,slots) reads=reads+1; return readSlots(self,ep,slots) end
+  w.scanner.empty=function(self) empty=empty+1; return scannerEmpty(self) end
+  ok(w.scheduler:prepareStock(w.storage:scan())); eq(reads,2); eq(empty,1)
+  for _=1,4 do ok(w.scheduler:prepareStock(w.storage:scan())) end
+  eq(reads,2); eq(empty,1)
+  w.scheduler:recover(); eq(w.state.stockReady,false)
+  ok(w.scheduler:prepareStock(w.storage:scan())); eq(reads,4); eq(empty,2)
+  w:addStock(ME.bee("Forest","drone",8,true))
+  eq(w.scheduler:prepareStock(w.storage:scan()),false); ok(w.state.scan)
+end)
+
+test("assessment waits for the scanner already polled this iteration without another stock scan",function()
+  local w=ME.new(); w.hideGenomes=false; w.c.minDrones=2
+  w.state.stockReady=true
+  w:addStock(ME.bee("Spirit","princess")); w:addStock(ME.bee("Spirit","drone",8))
+  local job=W.job(w,"job","Spirit","populate"); job.count=32
+  w.scheduler:dispatch(job)
+  w:finish(job.machine,ME.bee("Spirit","princess",1,true),ME.bee("Spirit","drone",4,true))
+  w.scheduler:step(); eq(job.state,"ASSESSING"); ok(w.state.scan)
+  -- A restored batch may predate any parent-stock observation.
+  w.state.parentStock=nil
+  w.scheduler=require("lib.scheduler").new(w.c,w.state,w.components,w.inv,w.storage,w.scanner,w.save,function() return w.time end)
+  local scans,steps=0,0; local scan=w.storage.scan
+  w.storage.scan=function(self) scans=scans+1; return scan(self) end
+  w.scanner.step=function() steps=steps+1; return false,"waiting for analysis" end
+  local moves=w.moves; w.scheduler:step()
+  eq(scans,0); eq(steps,1); eq(w.moves,moves); eq(job.error,"waiting for analysis")
+end)
+
+test("foreground status reuses the current running observation and refreshes on the next iteration",function()
+  local w=W.new(); w:addMachine("a"); w:build(); w.c.minDrones=2
+  w.inventories.hub[1]=W.bee("Spirit","princess"); w.inventories.hub[2]=W.bee("Spirit","drone",8)
+  local job=W.job(w,"job","Spirit","populate"); job.count=32
+  w.scheduler:step(); eq(job.state,"RUNNING")
+  local queen,bulk=w.proxies.housing1.getQueen,w.proxies.tp1.getAllStacks
+  local queens,snapshots=0,0
+  w.proxies.housing1.getQueen=function() queens=queens+1; return queen() end
+  w.proxies.tp1.getAllStacks=function(...) snapshots=snapshots+1; return bulk(...) end
+  w.scheduler:step(); eq(queens,1); local reads=snapshots
+  require("lib.ui.status").observe(w.state,w.c,w.components,w.inv,w.time,w.scheduler.observations)
+  eq(queens,1); eq(snapshots,reads); eq(w.state.housings.a.queen.name,"Spirit")
+  w.inventories.a[4].individual.active.flowerProvider="snow"
+  w.scheduler:step(); eq(queens,2)
+  require("lib.ui.status").observe(w.state,w.c,w.components,w.inv,w.time,w.scheduler.observations)
+  eq(queens,2); eq(w.state.housings.a.queen.flowerProvider,"snow")
+end)
+
+test("new dispatch discards an earlier observation before foreground status reads the new queen",function()
+  local w=W.new(); w:addMachine("a"); w:build()
+  w.inventories.hub[1]=W.bee("Spirit","princess"); w.inventories.hub[2]=W.bee("Spirit","drone",8)
+  local job=W.job(w,"job","Spirit","populate"); job.count=32
+  w.scheduler.observations={a={}}
+  w.scheduler:dispatch(job); eq(w.scheduler.observations.a,nil)
+  require("lib.ui.status").observe(w.state,w.c,w.components,w.inv,w.time,w.scheduler.observations)
+  eq(w.state.housings.a.queen.name,"Spirit")
 end)
 
 test("transfer saves reservation with intent and keeps movement and receipt checkpoints",function()

@@ -252,9 +252,9 @@ function M:reconcile()
   end
   return true
 end
-function M:releaseBatches(owner,keep)
+function M:releaseBatches(owner,keep,deferSave)
   for id,batch in pairs(self.state.meBatches) do if batch.owner==owner and id~=keep then self.state.meBatches[id]=nil end end
-  self.inv.save()
+  if not deferSave then self.inv.save() end
 end
 function M:probe(ep)
   self:validate()

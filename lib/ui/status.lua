@@ -9,10 +9,13 @@ local function beeInfo(individual,stack,role)
   return {kind=stack and B.kind(stack) or role,name=name or (stack and stack.label) or ind.ident or "unknown species",
     flowerProvider=ind.active and ind.active.flowerProvider,analysed=B.scanned({individual=ind})}
 end
-function M.observe(state,c,components,inv,now)
+function M.observe(state,c,components,inv,now,observations)
   state.housings={}
   for _,a in ipairs(c.alvearies) do
     local ok,snapshot=pcall(function()
+      local seen=observations and observations[a.id]
+      if seen then return {queen=beeInfo(seen.queen,seen.princessStack,"princess/queen"),
+        drone=beeInfo(seen.drone,seen.droneStack,"drone")} end
       local h=components:proxy(a.address,{"getQueen","getDrone"})
       local queen,qe=h.getQueen(); assert(not qe,tostring(qe))
       local drone,de=h.getDrone(); assert(not de,tostring(de))
