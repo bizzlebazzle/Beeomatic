@@ -447,6 +447,8 @@ test("running alveary is monitored and collected while newly added bees scan in 
   local j=require("tests.mocks.world").job(w,"job","Spirit","populate")
   w.scheduler:step(); eq(j.state,"RUNNING"); local machine=j.machine
   w:addStock(ME.bee("Forest","drone",3,true)); w.scheduler:step()
+  eq(w.state.scan,nil); eq(j.state,"RUNNING")
+  w.time=w.scheduler.nextStockScan; w.scheduler:step()
   eq(j.state,"RUNNING"); eq(w.state.scan.phase,"PROCESSING"); eq(w.state.stockPhase,"SCANNING")
   w:addStock(ME.bee("Meadows","drone",32,true)); w.scheduler:step()
   eq(j.state,"RUNNING"); eq(w.state.error,"Shared scanner processing reserved batch")

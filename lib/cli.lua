@@ -114,14 +114,14 @@ local function main(root,args,profile)
   local c=cp:load(Config.defaults())
   B.migrateIdentities(c)
   local Components=require("lib.components"); local Inventory=require("lib.inventory")
-  local Storage=require("lib.storage."..c.storage.kind)
   if cmd=="resume" or cmd=="breed" or cmd=="convert" or cmd=="populate" or cmd=="imprint" or cmd=="benchmark" then
     -- OpenOS concatenates module source while loading it. Compile worker code
-    -- before the large journal is resident, even when manual GC is unavailable.
+    -- before storage backends and the large journal, even without manual GC.
     require("lib.nbt"); require("lib.scanner"); if c.storage.kind=="me_interface" then require("lib.scanner_me") end
     require("lib.scheduler"); require("lib.ui.status")
     for _,machine in ipairs(c.alvearies) do require("lib.breeders."..(machine.backend or "alveary")) end
   end
+  local Storage=require("lib.storage."..c.storage.kind)
   state=sp:load({jobs={},reservations={},transactions={},events={}})
   U.collect()
   local worker,pendingKey; local checkpoint={}
@@ -269,7 +269,8 @@ local function main(root,args,profile)
         -- housing or write a full recovery checkpoint just to redraw the UI.
         local now=computer.uptime()
         if now>=nextObservation or status=="DONE" or status=="STOPPED" or status=="BLOCKED" then
-          require("lib.ui.status").observe(state,c,components,inv,now,scheduler().observations); nextObservation=now+1
+          local idleSeconds=(status=="DONE" or status=="STOPPED" or status=="BLOCKED") and 0 or 5
+          require("lib.ui.status").observe(state,c,components,inv,now,scheduler().observations,idleSeconds); nextObservation=now+1
         end
         local display=require("lib.ui.status").render(state,c,false)
         if display~=lastDisplay then require("lib.ui.status").show(display); lastDisplay=display end

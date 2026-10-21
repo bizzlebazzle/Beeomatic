@@ -9,25 +9,33 @@ local function beeInfo(individual,stack,role)
   return {kind=stack and B.kind(stack) or role,name=name or (stack and stack.label) or ind.ident or "unknown species",
     flowerProvider=ind.active and ind.active.flowerProvider,analysed=B.scanned({individual=ind})}
 end
-function M.observe(state,c,components,inv,now,observations)
+function M.observe(state,c,components,inv,now,observations,idleSeconds)
+  local previous=state.housings or {}
   state.housings={}
   for _,a in ipairs(c.alvearies) do
-    local ok,snapshot=pcall(function()
-      local seen=observations and observations[a.id]
-      if seen then return {queen=beeInfo(seen.queen,seen.princessStack,"princess/queen"),
-        drone=beeInfo(seen.drone,seen.droneStack,"drone")} end
-      local h=components:proxy(a.address,{"getQueen","getDrone"})
-      local queen,qe=h.getQueen(); assert(not qe,tostring(qe))
-      local drone,de=h.getDrone(); assert(not de,tostring(de))
-      local qs,ds
-      if not a.routing and a.backend~="routed" then
-        local ep={id="breeder/"..a.id,transposer=a.transposer,side=a.side}
-        local ps,dsSlot=a.slots and a.slots.princess or 1,a.slots and a.slots.drone or 2
-        local inputs=inv:readSlots(ep,{ps,dsSlot}); qs=inputs[ps]; ds=inputs[dsSlot]
-      end
-      return {queen=beeInfo(queen,qs,"princess/queen"),drone=beeInfo(drone,ds,"drone")}
-    end)
-    state.housings[a.id]=ok and snapshot or {error=tostring(snapshot)}
+    local seen=observations and observations[a.id]
+    local old=previous[a.id]; local machine=(state.machines or {})[a.id]
+    local age=old and old.observedAt and now-old.observedAt
+    if idleSeconds and not seen and not (machine and machine.job) and age and age>=0 and age<idleSeconds then
+      state.housings[a.id]=old
+    else
+      local ok,snapshot=pcall(function()
+        if seen then return {queen=beeInfo(seen.queen,seen.princessStack,"princess/queen"),
+          drone=beeInfo(seen.drone,seen.droneStack,"drone")} end
+        local h=components:proxy(a.address,{"getQueen","getDrone"})
+        local queen,qe=h.getQueen(); assert(not qe,tostring(qe))
+        local drone,de=h.getDrone(); assert(not de,tostring(de))
+        local qs,ds
+        if not a.routing and a.backend~="routed" then
+          local ep={id="breeder/"..a.id,transposer=a.transposer,side=a.side}
+          local ps,dsSlot=a.slots and a.slots.princess or 1,a.slots and a.slots.drone or 2
+          local inputs=inv:readSlots(ep,{ps,dsSlot}); qs=inputs[ps]; ds=inputs[dsSlot]
+        end
+        return {queen=beeInfo(queen,qs,"princess/queen"),drone=beeInfo(drone,ds,"drone")}
+      end)
+      state.housings[a.id]=ok and snapshot or {error=tostring(snapshot)}
+      state.housings[a.id].observedAt=now
+    end
   end
   state.housingObservedAt=now
 end

@@ -1,6 +1,65 @@
 local W=require("tests.mocks.world"); local ME=require("tests.mocks.me")
 local U=require("lib.util"); local B=require("lib.bees")
 
+test("breeding polls defer background ME scans while active observations stay fresh",function()
+  local w=ME.new(); w.hideGenomes=false; w.c.minDrones=2
+  w:addStock(ME.bee("Spirit","princess")); w:addStock(ME.bee("Spirit","drone",8))
+  local job=W.job(w,"job","Spirit","populate"); job.count=32
+  w.scheduler:step(); eq(job.state,"RUNNING")
+  local dependent=W.job(w,"child","Common"); dependent.dependencies={job.id}
+  local scans,observations=0,0; local scan=w.storage.scan
+  w.storage.scan=function(self) scans=scans+1; return scan(self) end
+  local backend=w.scheduler:backend(job.machine); local cycle=backend.getCycleState
+  backend.getCycleState=function(self) observations=observations+1; return cycle(self) end
+  local deadline=w.scheduler.nextStockScan; local start=w.time
+  for n=1,20 do w.time=start+(deadline-start)*n/21; w.scheduler:step() end
+  eq(scans,0); eq(observations,20); eq(job.state,"RUNNING"); eq(dependent.state,"WAITING")
+  w.obstructed=true; w.scheduler:step(); ok(job.error:find("cannot work",1,true)); eq(scans,0)
+  w.time=deadline; w.scheduler:step(); eq(scans,1)
+end)
+
+test("ready jobs bypass the background ME scan delay and inspect new external bees",function()
+  local w=ME.new(); w.hideGenomes=false; w.c.minDrones=2
+  w:addStock(ME.bee("Spirit","princess")); w:addStock(ME.bee("Spirit","drone",8))
+  local job=W.job(w,"job","Spirit","populate"); job.count=32
+  w.scheduler:step(); eq(job.state,"RUNNING")
+  w:addStock(ME.bee("Forest","drone",3,true))
+  local waiting=W.job(w,"next","Forest","populate"); waiting.count=32
+  ok(w.time<w.scheduler.nextStockScan)
+  w.scheduler:step(); ok(w.state.scan); eq(waiting.state,"WAITING"); eq(job.state,"RUNNING")
+end)
+
+test("two breeding alvearies keep polling and a finished cycle refreshes ME before the deadline",function()
+  local w=ME.new(); w.hideGenomes=false; w.c.minDrones=2; w.c.confirmCycles=1
+  for _,species in ipairs({"Spirit","Forest"}) do
+    w:addStock(ME.bee(species,"princess")); w:addStock(ME.bee(species,"drone",8))
+  end
+  local first=W.job(w,"one","Spirit","populate"); first.count=32
+  local second=W.job(w,"two","Forest","populate"); second.count=32
+  w.scheduler:step(); eq(first.state,"RUNNING"); eq(second.state,"RUNNING"); ok(first.machine~=second.machine)
+  local scan=w.storage.scan; local scans=0
+  w.storage.scan=function(self) scans=scans+1; return scan(self) end
+  w.scheduler:step(); eq(scans,0)
+  ok(w.scheduler.observations[first.machine]); ok(w.scheduler.observations[second.machine])
+  first.count=2
+  w:finish(first.machine,ME.bee("Spirit","princess"),ME.bee("Spirit","drone",4))
+  ok(w.time<w.scheduler.nextStockScan)
+  w.scheduler:step(); ok(scans>0); eq(first.state,"DONE"); eq(second.state,"RUNNING")
+end)
+
+test("idle housing display reads are spaced but manual status and clock resets stay fresh",function()
+  local w=W.new(); w:addMachine("a"); w:build()
+  local Status=require("lib.ui.status"); local queen=w.proxies.housing1.getQueen; local reads=0
+  w.proxies.housing1.getQueen=function() reads=reads+1; return queen() end
+  Status.observe(w.state,w.c,w.components,w.inv,0,{},5); eq(reads,1)
+  for n=1,4 do Status.observe(w.state,w.c,w.components,w.inv,n,{},5) end
+  eq(reads,1)
+  Status.observe(w.state,w.c,w.components,w.inv,5,{},5); eq(reads,2)
+  Status.observe(w.state,w.c,w.components,w.inv,5.1); eq(reads,3)
+  Status.observe(w.state,w.c,w.components,w.inv,5.2,{},0); eq(reads,4)
+  Status.observe(w.state,w.c,w.components,w.inv,0,{},5); eq(reads,5)
+end)
+
 test("component capability checks are reused but disconnected and replacement components are checked",function()
   local calls=0; local proxy={read=function() end}
   local c=require("lib.components").new({proxy=function() return proxy end,
@@ -85,6 +144,7 @@ test("a diagnostic changed after scanner checkpoints is still saved at the end o
     function() saved[#saved+1]=U.copy(w.state) end,function() return w.time end)
   w.scheduler:step(); eq(job.state,"RUNNING")
   w:addStock(ME.bee("Forest","drone",3,true)); w.obstructed=true
+  w.time=w.scheduler.nextStockScan -- external stock discovery uses the background deadline
   w.scheduler:step(); ok(w.state.scan); ok(job.error)
   eq(saved[#saved].jobs[1].error,job.error)
   ok(job.error:find("cannot work",1,true))
@@ -132,11 +192,11 @@ test("foreground status reuses the current running observation and refreshes on 
   w.proxies.housing1.getQueen=function() queens=queens+1; return queen() end
   w.proxies.tp1.getAllStacks=function(...) snapshots=snapshots+1; return bulk(...) end
   w.scheduler:step(); eq(queens,1); local reads=snapshots
-  require("lib.ui.status").observe(w.state,w.c,w.components,w.inv,w.time,w.scheduler.observations)
+  require("lib.ui.status").observe(w.state,w.c,w.components,w.inv,w.time,w.scheduler.observations,5)
   eq(queens,1); eq(snapshots,reads); eq(w.state.housings.a.queen.name,"Spirit")
   w.inventories.a[4].individual.active.flowerProvider="snow"
   w.scheduler:step(); eq(queens,2)
-  require("lib.ui.status").observe(w.state,w.c,w.components,w.inv,w.time,w.scheduler.observations)
+  require("lib.ui.status").observe(w.state,w.c,w.components,w.inv,w.time,w.scheduler.observations,5)
   eq(queens,2); eq(w.state.housings.a.queen.flowerProvider,"snow")
 end)
 
@@ -144,9 +204,10 @@ test("new dispatch discards an earlier observation before foreground status read
   local w=W.new(); w:addMachine("a"); w:build()
   w.inventories.hub[1]=W.bee("Spirit","princess"); w.inventories.hub[2]=W.bee("Spirit","drone",8)
   local job=W.job(w,"job","Spirit","populate"); job.count=32
+  require("lib.ui.status").observe(w.state,w.c,w.components,w.inv,w.time,{},5)
   w.scheduler.observations={a={}}
   w.scheduler:dispatch(job); eq(w.scheduler.observations.a,nil)
-  require("lib.ui.status").observe(w.state,w.c,w.components,w.inv,w.time,w.scheduler.observations)
+  require("lib.ui.status").observe(w.state,w.c,w.components,w.inv,w.time,w.scheduler.observations,5)
   eq(w.state.housings.a.queen.name,"Spirit")
 end)
 

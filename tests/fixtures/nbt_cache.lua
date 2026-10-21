@@ -7,6 +7,7 @@ return function(path)
     local bytes=length:byte(1)*256+length:byte(2)
     local tag=assert(f:read(bytes)); assert(#tag==bytes)
     N.canonical(tag)
+    if N.cache.bytes>129000 then break end -- full cache, without extra setup churn
   end
   f:close()
   assert(N.cache.bytes>125000 and N.cache.bytes<=N.cache.limit,"fixture must fill the NBT cache")

@@ -4,6 +4,37 @@ This audit covers selection, ME requests, transposer movement, collection,
 scanner preparation/returns and recovery. Operation counts below come from Lua
 mocks; the server profile discussed separately below measures in-game time.
 
+## Less background stock and idle housing polling (21 October 2026)
+
+The eighth in-game benchmark took 71.1 seconds. NBT canonicalization fell to
+0.35 seconds with 97.5% hits and no evictions, but there were 152 inventory scans
+taking 15.5 seconds including children. More scheduler iterations meant more
+stock and idle-display reads while the queen was still breeding.
+
+During Interface breeding, background ME discovery now uses a five-second
+deadline when no job can act on stock yet. A waiting job whose dependencies are
+unfinished does not force a scan. Startup, resume, ready waiting jobs, collection,
+assessment and unresolved transfer/scanner work bypass this delay. Active housing
+checks still run every scheduler step; if a queen finishes during a deferred
+stock poll, assessment obtains fresh stock in that same step. Newly added bees
+are discovered at the next background refresh and still pass scanner preparation
+before selection. Stock counts on the display can therefore lag between refreshes.
+Only a deadline is retained; no inventory snapshot or spendable count is cached.
+
+Foreground display refreshes reuse idle housing summaries for five seconds.
+Active scheduler observations remain fresh and take precedence. A newly assigned
+housing is read immediately; manual status and terminal worker displays force a
+refresh. A timestamp on each small summary prevents reuse across an uptime reset.
+These display summaries do not participate in readiness or item selection.
+
+In a local comparison of 30 half-second polls with one breeding and one idle
+alveary, whole-stock scans fell from 30 to 3, and bulk inventory reads from 150
+to 41. Active cycle checks remained 30. These are mock operation counts, not an
+in-game timing prediction. Concurrent cycle completion, new external scanner
+work and dispatch before the deadline are covered by tests. Rerun
+`Beeomatic benchmark` to measure the actual result; direct scanner routing remains
+deferred.
+
 ## Larger bounded NBT cache and reuse counters (21 October 2026)
 
 The seventh in-game benchmark took 75.7 seconds. NBT canonicalization still

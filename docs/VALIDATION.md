@@ -8,7 +8,7 @@ flow still requires in-game acceptance.**
 
 ## Automated checks
 
-Current result: **376 tests, zero failures on each of Lua 5.2 and Lua 5.3**.
+Current result: **380 tests, zero failures on each of Lua 5.2 and Lua 5.3**.
 Run `python tests/run.py` in the development workspace. It syntax-checks every
 project Lua file, then runs the suite on both engines using local Lupa runtimes.
 Alternatively run `lua tests/run.lua` with a compatible runtime. These dependencies
@@ -30,6 +30,10 @@ after resume prunes the absent catalogue, or 21 KB plus a 241 KB catalogue when
 cancel retains it. The fixture reloads both files and saves again under the same
 limits, checking that catalogue entries survive the split.
 The compact startup/recovery cases also retain a filled 128 KiB NBT cache.
+Its fixture stops once the cache is full, without further setup-only decompression
+churn. Worker code loads before the storage backend to limit source-buffer overlap.
+Profiled Lua 5.3 startup was also repeated three times in each missing/disabled
+manual-collection mode under the same ceiling.
 
 Every checkpoint write in this fixture is also checked against a **4 MiB disk
 ceiling**, including the previous state, temporary checkpoint, two generations
@@ -60,6 +64,12 @@ unchanged canonical bytes, failed decodes, and counters relative to command star
 Generated resource fixtures stay on the development PC. Run
 `python tests/benchmark_nbt.py [state.lua-or-catalogue.lua]` for the separate CPU
 and reuse comparison; actual game tags still need the next benchmark profile.
+
+Polling checks cover deferred background scans with fresh active observations,
+unfinished dependencies, ready jobs bypassing the deadline, and collection and
+assessment while two alvearies are breeding. External raw bees still enter the
+scanner on the background refresh. Idle display reuse is checked separately from
+active observations, new assignment, manual/terminal refresh and uptime reset.
 
 Interface coverage includes:
 

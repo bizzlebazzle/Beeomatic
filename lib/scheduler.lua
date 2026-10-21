@@ -533,10 +533,23 @@ function M:step()
   end
   local before=progress()
   self.savedStatus=saveStatus(self.state)
+  -- While queens are breeding, discover external stock every five seconds.
+  -- Ready jobs and assessment still obtain fresh stock before using any bees.
+  local breeding=self.storage.interface and self.state.stockReady and self.state.stockPhase~="SCANNING" and
+    not self.state.scan and not self.state.pending and not self.state.pendingExternal
+  local running=false
+  for _,j in ipairs(self.state.jobs) do
+    if j.state=="RUNNING" then running=true
+    elseif j.state~="DONE" and (j.state~="WAITING" or J.ready(self.state,j)) then breeding=false end
+  end
+  local skipStock=breeding and running and self.nextStockScan and self.now()<self.nextStockScan
   -- A saved Interface scanner batch already knows its source and expected
   -- return. Refresh whole-network stock after it finishes, before selection.
   local ok,items=true,nil
-  if not (self.storage.interface and self.state.scan) then ok,items=pcall(self.storage.scan,self.storage) end
+  if not skipStock and not (self.storage.interface and self.state.scan) then
+    ok,items=pcall(self.storage.scan,self.storage)
+    if ok then self.nextStockScan=self.now()+5 end
+  end
   if not ok then self.state.error=tostring(items); self.save(); return false,"BLOCKED" end
   self.state.error=nil
   if items then
@@ -546,7 +559,8 @@ function M:step()
     end
     self:observeParentStock(items,true)
   end
-  local scanOk,scanned,reason=pcall(self.prepareStock,self,items or {})
+  local scanOk,scanned,reason=true,true,nil
+  if not skipStock then scanOk,scanned,reason=pcall(self.prepareStock,self,items or {}) end
   if not scanOk then self.state.error=tostring(scanned); scanned=false; self.save()
   elseif not scanned then self.state.error=reason end
   -- Only small counts are needed for display. Do not retain this whole-network
