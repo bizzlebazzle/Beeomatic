@@ -19,6 +19,38 @@ test("mutation conditions distinct from survival",function()
   eq(#r,0); a.confirmed["Requires Diamond as a foundation"]=true
   eq(#E.select({a},W.route("Forest","Meadows",10,{"Requires Diamond as a foundation"}),p,p,{}),1)
 end)
+test("optional lunar bonuses allow compatible princesses in all four alvearies",function()
+  local p=W.bee("Esoteric","princess",1,nil,{temperatureTolerance="BOTH_1"})
+  local d=W.bee("Mysterious","drone"); local housings={}
+  for n,temp in ipairs({"NORMAL","COLD","NORMAL","WARM"}) do
+    housings[n]={id="alveary_"..n,environment=W.environment(temp),confirmed={}}
+  end
+  for _,bonus in ipairs({"Better success between the Waxing Crescent and Waxing Gibbous.",
+    "Better success during the Full Moon."}) do
+    local route=W.route("Esoteric","Mysterious",8,{bonus})
+    local candidates,why=E.select(housings,route,p,d,{})
+    eq(#candidates,4); eq(why,"")
+    housings[1].environment.temperature="HOT"
+    candidates,why=E.select(housings,route,p,d,{})
+    eq(#candidates,3); ok(why:find("needs temperature COLD/NORMAL/WARM",1,true),why)
+    housings[1].environment.temperature="NORMAL"
+  end
+end)
+test("lunar restrictions and unknown mutation requirements still need confirmation",function()
+  local a={id="a",environment=W.environment(),confirmed={}}
+  for _,req in ipairs({"Occurs between the Waxing Half and Waning Half","During the Full Moon",
+    "Requires Diamond as a foundation","Unknown mutation condition"}) do
+    local route=W.route("Esoteric","Mysterious",8,
+      {"Better success during the Full Moon.",req})
+    local success,why=E.mutation(route,a)
+    ok(not success); ok(why:find("Unconfirmed mutation requirement: "..req,1,true),why)
+    ok(why:find("Beeomatic doctor --confirm a",1,true),why)
+    ok(not why:find("Better success",1,true),why)
+    a.confirmed[req]=true; ok(E.mutation(route,a))
+  end
+  local success,why=E.mutation({environment={temperature="COLD"}},a)
+  ok(not success); eq(why,"Mutation requires temperature=COLD")
+end)
 test("flower, day/night, rain and sky declarations do not gate scheduling",function()
   local p=W.bee("Forest","princess"); local e=W.environment(); e.flowers=nil; ok(E.bee(p,e))
   e.flowers={}; ok(E.bee(p,e))

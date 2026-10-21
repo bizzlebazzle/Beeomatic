@@ -9,6 +9,24 @@ local function stocked(two)
   return w
 end
 
+test("saved mutation route with an optional lunar bonus dispatches without confirmation",function()
+  local w=stocked(); local route=W.route("Forest","Meadows",8,
+    {"Better success between the Waxing Crescent and Waxing Gibbous."})
+  local j=W.job(w,"one","Arcane","breed",route)
+  w.scheduler:dispatch(j); eq(j.state,"RUNNING"); eq(j.error,nil); eq(j.machine,"a")
+end)
+test("blocked mutation explains the requirement and how to confirm it",function()
+  local w=stocked(); local route=W.route("Forest","Meadows",8,
+    {"Better success during the Full Moon.","Requires Diamond as a foundation"})
+  local j=W.job(w,"one","Arcane","breed",route)
+  w.scheduler:dispatch(j); eq(j.state,"WAITING"); eq(w.moves,0)
+  ok(j.error:find("Unconfirmed mutation requirement: Requires Diamond as a foundation",1,true),j.error)
+  ok(j.error:find("Beeomatic doctor --confirm a",1,true),j.error)
+  ok(not j.error:find("Better success",1,true),j.error)
+  w.c.alvearies[1].confirmed["Requires Diamond as a foundation"]=true
+  w.scheduler:dispatch(j); eq(j.state,"RUNNING"); eq(j.error,nil)
+end)
+
 test("working queens do not raise false housing alerts and real obstructions clear after recovery",function()
   local w=stocked(); local j=W.job(w,"one","Cultivated","populate")
   j.state="RUNNING"; j.machine="a"; j.started=w.time
@@ -233,7 +251,7 @@ test("blocked conversion explains the princess climate without rejecting its dro
   w.inventories.hub[3]=W.bee("Attuned","drone",8)
   local j=W.job(w,"recover","Attuned","convert"); w.scheduler:dispatch(j)
   eq(j.state,"WAITING"); eq(w.moves,0)
-  ok(j.error:find("No available alveary can run the selected princess/queen.",1,true),j.error)
+  ok(j.error:find("Cannot start this pairing in any available alveary.",1,true),j.error)
   ok(j.error:find("Selected parents: Wintry princess + Attuned drone.",1,true),j.error)
   ok(j.error:find("Wintry princess needs temperature ICY/COLD",1,true),j.error)
   ok(not j.error:find("drone needs",1,true),j.error)

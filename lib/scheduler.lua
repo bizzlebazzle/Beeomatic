@@ -306,7 +306,7 @@ function M:dispatch(j)
   end
   if not backend then
     local goal=j.mode=="convert" and ("Recover "..B.displayName(j.species).." princess.\n") or ""
-    j.error=goal.."No available alveary can run the selected princess/queen.\n"..
+    j.error=goal.."Cannot start this pairing in any available alveary.\n"..
       "Selected parents: "..E.parent(p.stack,"princess").." + "..E.parent(d.stack,"drone")..".\n"..
       (reason~="" and reason or "All registered alvearies are busy or disabled.")
     return

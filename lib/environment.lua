@@ -41,13 +41,22 @@ function M.bee(s,e)
   -- housing. Actual availability is checked by the housing, not a setup list.
   return true
 end
+-- Magic Bees 2.10.12 bonuses return 1 outside the named phase, not 0.
+-- Keep unknown descriptions and actual phase restrictions mandatory.
+function M.optionalCondition(req)
+  return type(req)=="string" and (req:match("^Better success between the .+ and .+%.$")~=nil or
+    req:match("^Better success during the .+%.$")~=nil)
+end
 function M.mutation(route,a)
   local e=a.environment or {}; local missing={}
   for _,req in ipairs(route and route.specialConditions or {}) do
-    if not (a.confirmed and a.confirmed[req]) then missing[#missing+1]=req end
+    if not M.optionalCondition(req) and not (a.confirmed and a.confirmed[req]) then
+      missing[#missing+1]="Unconfirmed mutation requirement: "..req..
+        " (run Beeomatic doctor --confirm "..a.id..")"
+    end
   end
   if route and route.environment then
-    for k,v in pairs(route.environment) do if upper(e[k])~=upper(v) then missing[#missing+1]=k.."="..tostring(v) end end
+    for k,v in pairs(route.environment) do if upper(e[k])~=upper(v) then missing[#missing+1]="Mutation requires "..k.."="..tostring(v) end end
   end
   return #missing==0,table.concat(missing,"; ")
 end

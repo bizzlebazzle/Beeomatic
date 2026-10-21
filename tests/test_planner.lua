@@ -222,6 +222,14 @@ test("route with confirmed conditions wins",function()
   local p=assert(run({spirit={W.route("Forest","Meadows",99,{"Requires block"}),W.route("Meadows","Forest",1)}},stock,"spirit",c))
   eq(p.root.route.chance,1)
 end)
+test("optional lunar bonus does not penalize an otherwise suitable mutation route",function()
+  local c=Config.defaults(); c.alvearies={{id="a",enabled=true,confirmed={},environment=W.environment()}}
+  local stock=pair("Esoteric"); for _,s in ipairs(pair("Mysterious")) do stock[#stock+1]=s end
+  local p=assert(run({arcane={W.route("Esoteric","Mysterious",8,
+    {"Better success between the Waxing Crescent and Waxing Gibbous."}),
+    W.route("Mysterious","Esoteric",1)}},stock,"arcane",c))
+  eq(p.root.route.chance,8); eq(p.root.suitable,{"a"}); eq(p.root.unresolved,{})
+end)
 test("only runtime confirmed Spirit routes are used",function()
   local stock=pair("Forest"); for _,s in ipairs(pair("Meadows")) do stock[#stock+1]=s end
   local p=assert(run({spirit={W.route("Forest","Meadows")}},stock)); eq(p.root.route.parents,{"forest","meadows"})

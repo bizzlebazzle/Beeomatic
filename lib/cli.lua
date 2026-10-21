@@ -407,7 +407,9 @@ local function main(root,args,profile)
       for _,x in ipairs(c.alvearies) do if x.id==id then machine=x end end
       assert(machine,"Use doctor --confirm ALVEARY_ID")
       local requirements={}
-      for _,j in ipairs(state.jobs) do for _,req in ipairs(j.route and j.route.specialConditions or {}) do requirements[req]=true end end
+      for _,j in ipairs(state.jobs) do for _,req in ipairs(j.route and j.route.specialConditions or {}) do
+        if not require("lib.environment").optionalCondition(req) then requirements[req]=true end
+      end end
       for _,req in ipairs(U.keys(requirements)) do
         print(id..": "..req)
         print("Type confirmed only after verifying this exact condition at this alveary:")

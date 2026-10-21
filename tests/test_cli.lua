@@ -36,6 +36,22 @@ local function withAnswer(answer,fn)
   assert(success,err)
 end
 
+test("doctor confirmation prompts exclude optional moon bonuses",function()
+  local w=W.new(); w:addMachine("a"); w:build()
+  local bonus="Better success between the Waxing Crescent and Waxing Gibbous."
+  local req="Requires Diamond as a foundation"
+  W.job(w,"one","Arcane","breed",W.route("Esoteric","Mysterious",8,{bonus,req}))
+  O.with(w,function(files,out)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    files["/project/data/state.lua"]="return "..U.encode(w.state)
+    withAnswer("confirmed",function() require("lib.cli").main("/project",{"doctor","--confirm","a"}) end)
+    local saved=assert(load(files["/project/data/config.lua"]))()
+    eq(saved.alvearies[1].confirmed[req],true); eq(saved.alvearies[1].confirmed[bonus],nil)
+    local text=table.concat(out,"\n")
+    ok(text:find(req,1,true)); ok(not text:find(bonus,1,true),text); eq(w.moves,0)
+  end)
+end)
+
 test("species commands accept quoted and unquoted multiword names and preserve flags",function()
   local CLI=require("lib.cli")
   for _,cmd in ipairs({"plan","breed","convert","imprint","populate"}) do

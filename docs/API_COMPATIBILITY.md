@@ -51,8 +51,23 @@ displayed per housing, without claiming to detect actual nearby flower blocks.
 `canBreed()` reports general
 workability; it does not prove that an arbitrary mutation condition is satisfied.
 Special conditions are descriptions, not a complete machine-readable requirement
-API. They require specific per-alveary confirmation; optional structured route
+API. Mandatory conditions require specific per-alveary confirmation; optional structured route
 environment constraints can narrow selection further.
+
+Rechecked 2026-10-21 against the pack's Magic Bees **2.10.12-GTNH**:
+[MoonPhaseMutationBonus](https://github.com/GTNewHorizons/MagicBees/blob/2.10.12-GTNH/src/main/java/magicbees/bees/MoonPhaseMutationBonus.java)
+returns its bonus multiplier during the named phases and **1** outside them.
+Its English `Better success between the {phase} and {phase}.` and
+`Better success during the {phase}.` descriptions are optional and do not gate
+planning, dispatch or `doctor --confirm`. Routes already stored in saved jobs
+use the same check, without needing a replan.
+[Arcane's Esoteric + Mysterious recipe](https://github.com/GTNewHorizons/MagicBees/blob/2.10.12-GTNH/src/main/java/magicbees/bees/BeeMutation.java)
+has base chance 8 and a 1.2 multiplier from Waxing Crescent through Waxing Gibbous.
+[MoonPhaseMutationRestriction](https://github.com/GTNewHorizons/MagicBees/blob/2.10.12-GTNH/src/main/java/magicbees/bees/MoonPhaseMutationRestriction.java)
+instead returns **0** outside its phases; its `Occurs between ...` / `During ...`
+descriptions remain mandatory, as do unknown descriptions and foundation rules.
+Unconfirmed requirements identify the missing confirmation and the per-alveary
+command, rather than implying that the selected queen cannot survive.
 
 Temperature order: ICY, COLD, NORMAL, WARM, HOT, HELLISH. Humidity: ARID, NORMAL,
 DAMP. Source enums expose title-case display names, normalized by Beeomatic.
