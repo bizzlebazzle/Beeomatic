@@ -66,6 +66,9 @@ local function parentWait(j)
   return j.state=="WAITING" and (j.error=="Waiting for stable parent population"
     or j.error=="Waiting for parent drone population and stable confirmation cycles")
 end
+local function rebreedWait(j)
+  return j.state=="WAITING" and j.rebreeding and j.error and j.error:match("^Rebreeding ")
+end
 function M.render(state,c,verbose)
   if verbose then return M.details(state,c,true) end
   local done,queued,paused,busy=0,0,0,0
@@ -77,7 +80,7 @@ function M.render(state,c,verbose)
     elseif j.state=="WAITING" then queued=queued+1
     elseif j.state=="PAUSED" then paused=paused+1
     else busy=busy+1 end
-    if j.error and not parentWait(j) then warnings[#warnings+1]=speciesName(j.species)..": "..reason(j.error) end
+    if j.error and not parentWait(j) and not rebreedWait(j) then warnings[#warnings+1]=speciesName(j.species)..": "..reason(j.error) end
   end
   for _,a in ipairs(c.alvearies or {}) do
     local housing=(state.housings or {})[a.id]
@@ -112,6 +115,7 @@ function M.render(state,c,verbose)
     else idle=idle+1 end
   end
   if idle>0 then r[#r+1]="Alvearies idle: "..idle end
+  for _,j in ipairs(state.jobs or {}) do if rebreedWait(j) then r[#r+1]="Planned: "..reason(j.error) end end
   for _,j in ipairs(state.jobs or {}) do if parentWait(j) then
     r[#r+1]="Planned: "..speciesName(j.species).." - Waiting for stable parent population"
     for _,parent in ipairs(j.route and j.route.parents or {}) do

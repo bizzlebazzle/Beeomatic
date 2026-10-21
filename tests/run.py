@@ -75,4 +75,30 @@ for version, runtime in [('5.2', LuaRuntime), ('5.3', Lua53Runtime)]:
           assert(#reserve==384*1024)
         ''', str(pathlib.Path(folder) / 'buffered.lua'), str(nbt_path))
         print(f'Lua {version}: repeated 339 KB checkpoints with full encoding and NBT caches fit 2 MiB with 384 KiB host reserve', flush=True)
+        recovery = runtime(max_memory=2 * 1024 * 1024, unpack_returned_tuples=True)
+        recovery.execute('''
+          local reserve=string.rep("O",384*1024)
+          local cache=require("tests.fixtures.nbt_cache")(...)
+          local U=require("lib.util")
+          function eq(a,b) assert(U.equal(a,b),tostring(a).." ~= "..tostring(b)) end
+          function ok(value,message) assert(value,message) end
+          local count=0
+          function test(name,fn)
+            if name:match("^saved blocked conversion rebreeds") or name:match("^automatic rebreeding adds prerequisite") then
+              fn(); count=count+1
+            end
+          end
+          -- Include OpenOS's complete source concatenation at load time.
+          local native=package.searchers[2]
+          package.searchers[2]=function(name)
+            if name:sub(1,4)~="lib." then return native(name) end
+            local f=assert(io.open(name:gsub("%.","/")..".lua","rb")); local chunks={}
+            while true do local chunk=f:read(1024); if not chunk then break end; chunks[#chunks+1]=chunk end
+            f:close(); return assert(load(table.concat(chunks),"="..name,"t",_G))
+          end
+          collectgarbage=nil
+          require("tests.test_integration")
+          assert(count==2 and #reserve==384*1024 and cache.cache.bytes>125000)
+        ''', str(nbt_path))
+        print(f'Lua {version}: mutation recovery, prerequisite expansion and restart fit 2 MiB with full NBT cache and 384 KiB host reserve', flush=True)
     check_startup(runtime, ROOT, version)

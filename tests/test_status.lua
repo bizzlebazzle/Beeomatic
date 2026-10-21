@@ -57,6 +57,14 @@ test("parent population waits are normal planned status with counts and stabilit
     ok(not Status.render(state,config,false):find("Planned: Eldritch",1,true))
   end
 end)
+test("automatic mutation recovery is planned work while real recovery failures remain visible",function()
+  local state=sample(); local j=state.jobs[2]
+  j.rebreeding=true; j.error="Rebreeding Charmed from mutation parents to restore stable drone stock"
+  local text=Status.render(state,config,false)
+  ok(text:find("Planned: "..j.error,1,true),text); ok(not text:find("Attention:",1,true),text)
+  j.error="Cannot start this pairing in any available alveary."
+  ok(Status.render(state,config,false):find("Attention:",1,true))
+end)
 
 test("compact status identifies pending target and terminal states",function()
   local state={jobs={},target="old",pendingRequest={target="magicbees.speciescharmed"}}

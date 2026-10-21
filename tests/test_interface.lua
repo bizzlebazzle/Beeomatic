@@ -2,6 +2,32 @@ local ME=require("tests.mocks.me"); local B=require("lib.bees"); local U=require
 local function select(w,s)
   return {network=true,endpoint={id="ME"},slot=B.identity(s),stack=U.copy(s)}
 end
+test("Interface recovery rebreeds fragmented target stock and scans offspring to stable 32 drones",function()
+  local w=ME.new(); w.hideGenomes=false; w.c.storage.databaseSlots=16; w.state.nextId=1
+  for _,species in ipairs({"Forest","Meadows"}) do
+    w:addStock(ME.bee(species,"princess",3)); w:addStock(ME.bee(species,"drone",64))
+  end
+  local variants={}
+  for n=1,9 do
+    local s=ME.bee("Charmed","drone",1,false,{lifespan=n})
+    if n%2==0 then s.individual.inactive.species=ME.bee("Forest","drone").individual.active.species; s.tag=U.encode(s.individual) end
+    variants[#variants+1]=B.identity(s); w:addStock(s)
+  end
+  w.recipes={charmed={require("tests.mocks.world").route("Forest","Meadows")}}
+  w.recipes["test.speciescharmed"]=w.recipes.charmed
+  local j=require("tests.mocks.world").job(w,"job1","Charmed","convert")
+  for tick=1,150 do
+    if w.inventories.analyser[1] then w:finishScan() end
+    local _,status=w.scheduler:step(); if status=="DONE" then break end
+    if j.state=="RUNNING" then w:finish(j.machine,ME.bee("Charmed","princess"),ME.bee("Charmed","drone",8,true)) end
+    w:tick()
+  end
+  ok(w.state.finished,require("lib.ui.status").render(w.state,w.c,true))
+  ok(j.rebreeding); ok(j.confirmed>=w.c.confirmCycles)
+  ok(B.count(w.storage:scan(),"charmed","drone",true)>=32)
+  eq(w.state.scan,nil); eq(w.state.pending,nil); eq(next(w.state.meRequests),nil)
+  for _,identity in ipairs(variants) do eq(w.cells[identity].size,1) end
+end)
 
 test("Interface deposits compact completed identities but preserve pending proof and returned ownership",function()
   for _,owner in ipairs({"scanner","job"}) do

@@ -74,6 +74,10 @@ and spare-princess conversion use the same scheduler. Hive founders, spare
 princesses, reserve drones, compatible climates and mutation requirements must
 exist physically; the program cannot create founders from nothing.
 
+If target drones are split into individually protected variants, the worker can
+recover through runtime mutation recipes, stabilize the species and build its
+normal drone minimum. This also repairs blocked saved conversion jobs on resume.
+
 Completion requires a pure target princess, pure compatible drones, minimum stock
 and two consecutive stable offspring cycles by default. Full gene equivalence and
 reference-drone imprinting are additional options. No destructive discard policy

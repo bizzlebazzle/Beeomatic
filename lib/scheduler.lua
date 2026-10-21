@@ -157,6 +157,42 @@ function M:stockJob(species,mode,count,parent)
     dependencies={},state="WAITING",cycles=0,confirmed=0,helper=true,parent=parent.id}
   self.state.jobs[#self.state.jobs+1]=j; self.save(); return j
 end
+function M:rebreed(j,items)
+  local source
+  for _,a in ipairs(self.c.alvearies) do if a.enabled~=false then
+    local yes,h=pcall(self.components.proxy,self.components,a.address,{"getBeeParents"})
+    if yes then source=h; break end
+  end end
+  if not source then return false,"No accessible housing provides mutation recipes." end
+  -- Avoid loading a graph/index for founders with no runtime mutation recipe.
+  local routes,err=source.getBeeParents(j.species)
+  if not routes then return false,"Cannot read mutation recipes: "..tostring(err) end
+  if not next(routes) then return false,"No mutation recipe reported for "..B.displayName(j.species).."." end
+  local mutations=require("lib.mutations").new(source,self.c.aliases); mutations:index(items)
+  local plan,why=require("lib.planner").plan(j.species,mutations,items,self.c,true)
+  mutations=nil; package.loaded["lib.planner"]=nil; package.loaded["lib.mutations"]=nil
+  if not plan then U.collect(); return false,why end
+  local bySpecies={}; local dependencies={}
+  for _,node in ipairs(plan.order) do if not node.available then
+    local job=j
+    if node~=plan.root then
+      self.state.nextId=(self.state.nextId or 0)+1
+      job={id="job"..self.state.nextId,species=node.species,mode=node.conversion and "convert" or "breed",
+        dependencies={},state="WAITING",cycles=0,confirmed=0,helper=true,parent=j.id,route=node.route}
+      self.state.jobs[#self.state.jobs+1]=job
+    end
+    local deps=job==j and dependencies or job.dependencies
+    for _,child in ipairs(node.children) do if bySpecies[child.species] then deps[#deps+1]=bySpecies[child.species] end end
+    bySpecies[node.species]=job.id
+  end end
+  j.dependencies=j.dependencies or {}
+  for _,id in ipairs(dependencies) do j.dependencies[#j.dependencies+1]=id end
+  j.route=plan.root.route; j.rebreeding=true
+  plan=nil; U.collect()
+  j.error="Rebreeding "..B.displayName(j.species).." from mutation parents to restore stable drone stock"
+  self:log(j.id..": "..j.error)
+  return true
+end
 function M:select(j,items,template)
   if j.mode=="benchmark" then
     for _,p in ipairs(items) do if B.kind(p.stack)=="princess" and not self:protected(p) then
@@ -192,7 +228,9 @@ function M:select(j,items,template)
       B.identity(i.stack)==j.lineage.identity then p=i; found=true end end
     if not found then return nil,nil,"Tracked princess is missing or changed; reconcile the archive before resuming" end
   elseif j.mode=="convert" then
-    p=self:best(items,"princess",target,function(i) return self:conversionDonor(i,items,target) end,genes)
+    -- A mutation recovery must create an additional princess, rather than use
+    -- an existing pure target princess and invalidate the conversion baseline.
+    p=not j.rebreeding and self:best(items,"princess",target,function(i) return self:conversionDonor(i,items,target) end,genes) or nil
   end
   if p and d then
     -- Same target stabilization may use its only princess, preserving reserve drones.
@@ -205,12 +243,18 @@ function M:select(j,items,template)
     end
     return p,d,nil,target
   end
-  if j.mode=="populate" then
-    if not d then return nil,nil,self:droneShortage(j,items,droneCounts) end
+  if (j.mode=="populate" or j.mode=="convert" or j.mode=="imprint" or not j.route) and not j.rebreeding and (not p or not d) then
+    local recovered,why=self:rebreed(j,items)
+    if recovered then
+      if J.ready(self.state,j) then return self:select(j,items,template) end
+      return nil,nil,j.error
+    end
+    if not d then return nil,nil,self:droneShortage(j,items,droneCounts).."\nAutomatic rebreeding unavailable: "..why end
+  end
+  if j.mode=="populate" and not j.rebreeding then
     return nil,nil,"Need a target princess; fertility must exceed one"
   end
-  if j.mode=="convert" or j.mode=="imprint" then
-    if not d then return nil,nil,self:droneShortage(j,items,droneCounts) end
+  if (j.mode=="convert" or j.mode=="imprint") and not j.rebreeding then
     p=p or self:best(items,"princess",target,function(i) return self:conversionDonor(i,items,target) end,genes)
     return p,d,p and nil or "Add a spare princess with fertility > 1 in both alleles; last pure princesses are protected",target
   end

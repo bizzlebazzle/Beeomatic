@@ -1,4 +1,95 @@
 local W=require("tests.mocks.world"); local B=require("lib.bees"); local U=require("lib.util")
+local function charmedWorld(nested)
+  local w=W.new(); w:addMachine("a"); w:addMachine("b"); w:build()
+  for slot=1,5 do w.inventories.hub[slot]=W.bee(slot<=2 and "Forest" or "Meadows","princess") end
+  w.inventories.hub[6]=W.bee("Forest","drone",64); w.inventories.hub[7]=W.bee("Meadows","drone",64)
+  for n=1,9 do w.inventories.hub[20+n]=W.bee("Charmed","drone",1,n%2==0 and "Forest" or nil,{lifespan=n}) end
+  w.recipes={charmed={W.route(nested and "Middle" or "Forest","Meadows")},middle={W.route("Forest","Meadows")}}
+  w.recipes["test.speciescharmed"]=w.recipes.charmed; w.recipes["test.speciesmiddle"]=w.recipes.middle
+  return w
+end
+local function finishRecovery(w,j)
+  local name=B.displayName(j.species)
+  -- Observe a failed/hybrid first mutation before stable pure offspring.
+  local hybrid=j.cycles==1 and name=="Charmed" and "Forest" or nil
+  w:finish(j.machine,W.bee(name,"princess",1,hybrid),W.bee(name,"drone",8,hybrid))
+end
+test("saved blocked conversion rebreeds Charmed to stable 32 drones before its dependent runs",function()
+  local w=charmedWorld(); w.state.nextId=2; w.state.target="spirit"
+  local j=W.job(w,"job1","Charmed","convert"); j.error="Need target drones above the exact-genotype reserve"
+  local downstream=W.job(w,"job2","Spirit","breed",W.route("Charmed","Meadows")); downstream.dependencies={j.id}
+  local verified=false
+  for tick=1,100 do
+    w.scheduler:step()
+    if downstream.state=="RUNNING" then
+      eq(j.state,"DONE"); ok(j.confirmed>=w.c.confirmCycles)
+      ok(w.scheduler:count(w.scheduler:items(j.id),"charmed","drone")>=32)
+      verified=true; break
+    end
+    for _,job in ipairs(w.state.jobs) do if job.state=="RUNNING" then finishRecovery(w,job) end end
+  end
+  ok(verified,require("lib.ui.status").render(w.state,w.c,true)); ok(j.rebreeding)
+  for slot=21,29 do eq(w.inventories.hub[slot].size,1) end
+end)
+test("breed populate and imprint jobs rebuild fragmented target stock from natural parents",function()
+  for _,mode in ipairs({"breed","populate","imprint"}) do
+    local w=charmedWorld(); w.state.nextId=1; w.state.target="charmed"
+    if mode=="imprint" then
+      w.inventories.hub[40]=W.bee("Forest","drone",2)
+      w.c.templates={enabled=true,endpointId="hub",slot=40,reserve=1}
+    end
+    local j=W.job(w,"job1","Charmed",mode)
+    for tick=1,100 do
+      local _,status=w.scheduler:step(); if status=="DONE" then break end
+      for _,job in ipairs(w.state.jobs) do if job.state=="RUNNING" then finishRecovery(w,job) end end
+    end
+    ok(w.state.finished,mode..": "..require("lib.ui.status").render(w.state,w.c,true))
+    ok(w.scheduler:count(w.scheduler:items(j.id),"charmed","drone")>=32)
+    ok(j.confirmed>=w.c.confirmCycles); ok(j.rebreeding)
+    for slot=21,29 do eq(w.inventories.hub[slot].size,1) end
+    if mode=="imprint" then eq(w.inventories.hub[40].size,2) end
+  end
+end)
+test("automatic rebreeding adds prerequisite jobs and survives restart without duplicating them",function()
+  local w=charmedWorld(true); w.state.nextId=1
+  local j=W.job(w,"job1","Charmed","convert")
+  local _,status=w.scheduler:step(); eq(status,"PROGRESS"); eq(#w.state.jobs,2)
+  eq(j.dependencies,{"job2"}); ok(j.route); ok(j.rebreeding); eq(j.state,"WAITING")
+  -- Restart from saved table data before the new prerequisite dispatches.
+  w.state=assert(load("return "..U.encode(w.state)))(); w:build(); w.scheduler:recover()
+  for tick=1,150 do
+    local _,result=w.scheduler:step(); if result=="DONE" then break end
+    for _,job in ipairs(w.state.jobs) do if job.state=="RUNNING" then finishRecovery(w,job) end end
+  end
+  ok(w.state.finished,require("lib.ui.status").render(w.state,w.c,true)); eq(#w.state.jobs,2)
+  eq(w.state.jobs[1].id,"job1"); ok(w.scheduler:count(w.scheduler:items("job1"),"charmed","drone")>=32)
+end)
+test("failed automatic rebreeding retains the reserve shortage and explains missing founders",function()
+  local w=charmedWorld(); w.recipes.charmed={W.route("Missing","Impossible")}
+  w.recipes["test.speciescharmed"]=w.recipes.charmed
+  local j=W.job(w,"job1","Charmed","convert")
+  w.scheduler:step(); eq(j.state,"WAITING"); eq(w.moves,0)
+  ok(j.error:find("largest identical group: 1",1,true),j.error)
+  ok(j.error:find("Automatic rebreeding unavailable:",1,true),j.error)
+  ok(j.error:find("Missing: no mutation recipe reported",1,true),j.error)
+  ok(not j.rebreeding); eq(#w.state.jobs,1)
+end)
+test("conversion by mutation creates an additional target princess and respects mutation requirements",function()
+  local w=charmedWorld(); w.state.nextId=1
+  w.inventories.hub[40]=W.bee("Charmed","princess")
+  local j=W.job(w,"job1","Charmed","convert")
+  w.recipes.charmed[1].specialConditions={"Requires Diamond as a foundation"}
+  w.scheduler:step(); eq(j.state,"WAITING"); eq(w.moves,0); eq(j.baseline,1)
+  ok(j.error:find("Unconfirmed mutation requirement",1,true),j.error)
+  for _,a in ipairs(w.c.alvearies) do a.confirmed["Requires Diamond as a foundation"]=true end
+  for tick=1,100 do
+    local _,status=w.scheduler:step(); if status=="DONE" then break end
+    for _,job in ipairs(w.state.jobs) do if job.state=="RUNNING" then finishRecovery(w,job) end end
+  end
+  ok(w.state.finished,require("lib.ui.status").render(w.state,w.c,true))
+  ok(w.scheduler:count(w.scheduler:items(j.id),"charmed","princess")>=2)
+  eq(w.inventories.hub[40].individual.active.species.name,"Charmed")
+end)
 test("breeding a known mutated target recovers its princess from drones before stabilization",function()
   local w=W.new(); w:addMachine("a"); w:build()
   w.c.confirmCycles=1; w.c.minDrones=2

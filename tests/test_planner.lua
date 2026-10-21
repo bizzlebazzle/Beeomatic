@@ -109,6 +109,22 @@ test("known mutated species with spare drones uses conversion without rebuilding
   local missing,e=run({ethereal={W.route("Missing","Impossible")}},stock,"ethereal")
   eq(missing,nil); ok(e:find("Missing: no mutation recipe reported",1,true))
 end)
+test("fragmented drone reserves choose a mutation recipe rather than unusable conversion stock",function()
+  local stock=pair("Forest"); for _,s in ipairs(pair("Meadows")) do stock[#stock+1]=s end
+  for n=1,9 do stock[#stock+1]=W.bee("Charmed","drone",1,n%2==0 and "Forest" or nil,{lifespan=n}) end
+  local recipes={charmed={W.route("Forest","Meadows")}}
+  for _,princess in ipairs({false,true}) do
+    if princess then stock[#stock+1]=W.bee("Charmed","princess") end
+    local p=assert(run(recipes,stock,"charmed"))
+    ok(p.root.route); ok(not p.root.conversion); ok(not p.root.available)
+  end
+end)
+test("conversion seeds sum identical split drones and exclude protected reference stock",function()
+  local stock={W.bee("Charmed","drone",1),W.bee("Charmed","drone",1)}
+  local p=assert(run({},stock,"charmed")); ok(p.root.conversion)
+  local c=Config.defaults(); c.templates={enabled=true,identity=require("lib.bees").identity(stock[1])}
+  p=run({},stock,"charmed",c); eq(p,nil)
+end)
 
 test("target recovery creates a conversion dependency before the requested operation",function()
   local p=assert(run({spirit={W.route("Missing","Impossible")}}, {W.bee("Spirit","drone",16)}))

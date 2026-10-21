@@ -93,11 +93,19 @@ Changing a registration alone cannot change the physical climate or the bees' ge
 Drone shortage messages report analysed target drones available to the job, the
 largest group with identical stored identity, and the number needed to breed while
 retaining `reserveDrones` (default 1). Nine different single variants cannot supply
-one another's reserves, even when all carry the target species. Add the reported
-number of matching drones to one existing group, or supply a new identical group
-of at least `reserveDrones+1`, then `Beeomatic resume`. Protected reference drones
-are counted separately; other jobs' reserved stock is excluded. Hybrids carrying
-the target in either species allele count as target candidates.
+one another's reserves, even when all carry the target species. When target stock
+cannot supply a usable pairing, the worker tries the species' runtime mutation
+recipes, adds any missing prerequisite jobs, and breeds/stabilizes the target up
+to its normal drone minimum (32 by default). This also works for saved conversion
+jobs on `resume`; existing dependencies, princess lineages and reserves are retained.
+The dashboard identifies this as planned rebreeding. Fresh plans only select
+conversion when one unprotected identical drone group exceeds the reserve.
+
+If automatic rebreeding is unavailable, the message includes the reason (for
+example missing founders or no reported recipe). Supply those prerequisites, or
+add matching drones to reach `reserveDrones+1` in one group, then `Beeomatic resume`.
+Protected reference drones are counted separately; other jobs' reserved stock is
+excluded. Hybrids carrying the target in either species allele count as candidates.
 
 `plan` reads runtime routes and actual storage. If bees lack verified genes, it asks
 `Would you like to scan all unscanned bees now? [y/N]`. Answer `y` or `yes` to

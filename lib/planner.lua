@@ -1,6 +1,6 @@
 local B=require("lib.bees"); local E=require("lib.environment"); local U=require("lib.util")
 local M={}
-function M.plan(target,mutations,items,c)
+function M.plan(target,mutations,items,c,mutationOnly)
   local requested=target
   target=mutations:resolve(target)
   local function display(name)
@@ -19,14 +19,24 @@ function M.plan(target,mutations,items,c)
   local stockCache={}
   local function stock(name)
     if stockCache[name] then return stockCache[name] end
-    local entry={princess={},drone={},counts={princess=0,drone=0}}
+    local entry={princess={},drone={},counts={princess=0,drone=0},largest=0}
+    local drones={}
     for _,item in ipairs(items) do
       checkpoint()
       local s=item.stack or item; local kind=B.kind(s)
       if kind=="princess" or kind=="drone" then
         local n=B.count({s},name,kind,true)
         entry.counts[kind]=entry.counts[kind]+n
-        if n>0 then entry[kind][#entry[kind]+1]=s end
+        local t=c.templates or {}
+        local protected=n>0 and t.enabled and ((t.identity and B.identity(s)==t.identity) or
+          (not t.identity and item.endpoint and item.endpoint.id==t.endpointId and item.slot==t.slot))
+        if n>0 and not protected then
+          entry[kind][#entry[kind]+1]=s
+          if kind=="drone" then
+            local key=B.identity(s); drones[key]=(drones[key] or 0)+n
+            entry.largest=math.max(entry.largest,drones[key])
+          end
+        end
       end
     end
     stockCache[name]=entry
@@ -91,9 +101,10 @@ function M.plan(target,mutations,items,c)
   while index<=#queue and index<=limit do
     checkpoint()
     local n=queue[index]; local name=n.species
-    if count(name,"princess")>0 and count(name,"drone")>0 then
+    local seed=stock(name)
+    if not (mutationOnly and name==target) and #seed.princess>0 and seed.largest>c.reserveDrones then
       n.seed={species=name,available=true,cost=0,children={}}
-    elseif count(name,"drone")>c.reserveDrones then
+    elseif not (mutationOnly and name==target) and seed.largest>c.reserveDrones then
       -- Known species can be recovered from spare drones even when they also
       -- have mutation recipes; do not rebuild their entire ancestry first.
       n.seed={species=name,conversion=true,cost=5,children={}}
@@ -184,7 +195,8 @@ function M.plan(target,mutations,items,c)
       local frame=stack[#stack]; local n=frame.node
       if n.missing then
         failure(display(n.species)..": no mutation recipe reported; pure stock: "..
-          count(n.species,"princess").." princesses, "..count(n.species,"drone").." drones.")
+          count(n.species,"princess").." princesses, "..count(n.species,"drone").." drones."..
+          (count(n.species,"drone")>0 and (" Largest identical group: "..stock(n.species).largest..".") or ""))
       end
       local edge=n.routes[frame.route]
       if not edge then
@@ -210,7 +222,7 @@ function M.plan(target,mutations,items,c)
     end
     if unknown>0 then lines[#lines+1]=tostring(unknown).." bees lack verified genes; analyse/inspect them before planning." end
     lines[#lines+1]="Recipes were followed back to these unresolved prerequisites."
-    lines[#lines+1]="Supply a pure princess + drones, or more than "..c.reserveDrones.." pure drones for princess conversion."
+    lines[#lines+1]="Supply a pure princess + spendable drones, or more than "..c.reserveDrones.." pure drones for princess conversion (one identical group)."
     lines[#lines+1]="Species with no mutation recipe may require hives, trades or other external sources. Check Beeomatic bees list."
     return nil,table.concat(lines,"\n")
   end
