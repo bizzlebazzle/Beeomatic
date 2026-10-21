@@ -51,7 +51,7 @@ end
 local escapes={['"']='\\"',['\\']='\\\\'}
 for byte=0,31 do escapes[string.char(byte)]=string.format("\\%03d",byte) end
 escapes[string.char(127)]="\\127"
--- Stream the same data-only Lua format without constructing the entire document
+-- Stream data-only Lua without sorting tables or constructing the entire document
 -- (or an escaped copy of a large binary NBT key) in memory. Identity encoding
 -- above stays unchanged so saved reservations/receipts remain compatible.
 function M.write(v,sink)
@@ -66,6 +66,7 @@ function M.write(v,sink)
   local function visit(x)
     local ty=type(x)
     if ty=="string" then
+      if #x<=512 then emit('"'..x:gsub('[%z\1-\31\127"\\]',escapes)..'"'); return end
       emit('"')
       for first=1,#x,512 do
         emit((x:sub(first,first+511):gsub('[%z\1-\31\127"\\]',escapes)))
@@ -73,7 +74,12 @@ function M.write(v,sink)
       emit('"')
     elseif ty=="table" then
       emit("{")
-      for _,key in ipairs(M.keys(x)) do emit("["); visit(key); emit("]="); visit(x[key]); emit(",") end
+      for key,value in pairs(x) do
+        if type(key)=="string" and #key<=512 then
+          emit('["'..key:gsub('[%z\1-\31\127"\\]',escapes)..'"]=')
+        else emit("["); visit(key); emit("]=") end
+        visit(value); emit(",")
+      end
       emit("}")
     elseif ty=="number" then
       assert(x==x and x~=math.huge and x~=-math.huge); emit(tostring(x))

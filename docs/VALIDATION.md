@@ -29,8 +29,9 @@ records retain their recovery data. The resulting checkpoint is roughly 0.87 MB.
 Every checkpoint write in this fixture is also checked against a **4 MiB disk
 ceiling**, including the previous state, temporary checkpoint, two generations
 of installed code and 256 KiB of other disk use. An oversized old backup is
-reclaimed only when a verified primary remains and reclaiming it makes the new
-checkpoint fit. Insufficient space otherwise preserves the existing generations.
+reclaimed only when a known good primary remains. Saves encode once and check
+space incrementally without readback or a document-sized RAM buffer. Write/flush
+failures preserve the primary; an unverified primary's backup is also preserved.
 These are deterministic mocked hardware workloads, not a guarantee that arbitrary
 stock/journal sizes fit, and in-game acceptance on the actual computer is still required.
 

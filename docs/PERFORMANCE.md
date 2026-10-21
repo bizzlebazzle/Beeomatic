@@ -4,7 +4,37 @@ This audit covers selection, ME requests, transposer movement, collection,
 scanner preparation/returns and recovery. Operation counts below come from Lua
 mocks; the server profile discussed separately below measures in-game time.
 
-## Server profile diagnosis (20 October 2026)
+## Single-pass saves (21 October 2026)
+
+The supplied automatic benchmark took 565.3 seconds, including 507.55 seconds
+in 113 state checkpoints (90% of elapsed time). Its 299 serialization calls
+spent 399.5 seconds encoding, excluding timed children. The saved state was
+347,243 bytes. The adaptive buffer from the earlier fix still fell back to
+three complete encoding passes on many saves; end-of-run free RAM does not
+describe memory available during each save.
+
+Saving now streams the state once, in chunks of at most 4 KiB, directly to the
+temporary file. It checks write/flush results, then rotates the backup and renames
+the temporary file. The sizing/buffering pass and full readback verification are
+removed. Space is checked as chunks arrive; a failed write leaves the primary
+in place. There is no immediate detection of silent disk corruption; normal load
+parsing and backup fallback remain. This is the simpler save policy appropriate
+for this game script.
+
+State tables no longer sort every key, and small strings/field names take fewer
+Lua calls to emit. Bee identity encoding remains deterministic and unchanged.
+Saved files remain compatible with the existing reader, including binary NBT.
+Watchdog yields and keyboard handling at completed saves remain in place.
+
+A local Lua 5.2 fixture containing 64 completed receipts and 16 catalogue entries
+(359,852 encoded bytes) dropped from three serialization passes and 92 reads to
+one pass and zero reads. A debug instruction counter dropped from approximately
+1,246,000 to 197,000 instructions (84%); local CPU time was about 58 ms versus
+22 ms. These are synthetic measurements, not predicted Minecraft timings. Rerun
+`Beeomatic benchmark` in game to measure the new total; breeding and analysis
+still contribute their own waits.
+
+## Earlier server profile diagnosis (20 October 2026)
 
 The supplied 605.4-second run spent 563.3 seconds in 137 state checkpoints
 (93% of elapsed time). Measuring encoded size cost 214.1 seconds; encoding
@@ -13,7 +43,7 @@ themselves took 0.6 seconds combined. The state was 339,453 bytes and the report
 showed 1,360,217 bytes of free RAM. Scheduler steps reached 109.6 seconds,
 delaying the old end-of-step keyboard check.
 
-Checkpoints now count bytes while encoding and retain the encoded chunks when
+The initial fix counted bytes while encoding and retained the encoded chunks when
 they fit the RAM budget: at most 512 KiB, and at most half the free memory
 remaining above a 512 KiB reserve. With the reported free RAM, that state fits.
 The same bytes are written and compared exactly, removing the separate size
@@ -133,7 +163,7 @@ normal operation. No profiler hooks remain after the invocation returns.
 
 ## Remaining costs
 
-- Durable checkpoints still serialize and verify the complete saved state. Their
+- Durable checkpoints still serialize the complete saved state once. Their
   cost grows with the live catalogue, jobs, batch records and retained receipts.
   A smaller separate movement journal would require a recovery-format redesign.
 - Independent dispatches still scan current stock. Reusing a snapshot after a

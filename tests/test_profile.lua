@@ -94,7 +94,7 @@ test("profile separates checkpoint disk I/O from streaming serialization and lea
     local data={tag=string.rep("x",20000)}; store:save(data)
     eq(assert(load(files["/state.lua"]))(),data)
     eq(p.rows.serialize.own,0); ok(p.rows.serialize.total>0)
-    ok(p.rows["disk.write"].count>0); ok(p.rows["disk.read"].count>0)
+    ok(p.rows["disk.write"].count>0); eq(p.rows["disk.read"],nil); eq(p.rows.serialize.count,1)
     eq(p.rows["checkpoint.state"].own,0); p:finish()
   end)
 end)

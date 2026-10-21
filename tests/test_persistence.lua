@@ -1,7 +1,7 @@
 local U=require("lib.util"); local P=require("lib.persistence")
 local W=require("tests.mocks.world"); local O=require("tests.mocks.openos")
 
-test("checkpoint yields during encoding writing and verification under a simulated watchdog",function()
+test("checkpoint yields during streaming writes under a simulated watchdog",function()
   for _,free in ipairs({1360217,524288}) do
     local w=W.new(); w:build()
     O.with(w,function(files,_,fs)
@@ -24,9 +24,8 @@ test("checkpoint yields during encoding writing and verification under a simulat
       io.open=function(path,mode)
         local f,why=open(path,mode)
         if f then
-          local writing,reading=f.write,f.read
+          local writing=f.write
           f.write=function(self,...) phase="write"; work(); return writing(self,...) end
-          f.read=function(self,...) phase="read"; work(); return reading(self,...) end
         end
         return f,why
       end
@@ -38,7 +37,7 @@ test("checkpoint yields during encoding writing and verification under a simulat
       until not success or coroutine.status(thread)=="dead"
       os.sleep,U.write,io.open=sleep,write,open
       ok(success,why)
-      for _,name in ipairs({"encode","write","read"}) do ok((yields[name] or 0)>0,name) end
+      for _,name in ipairs({"encode","write"}) do ok((yields[name] or 0)>0,name) end
       eq(P.new("/state.lua",fs):load({}),data)
     end)
   end
@@ -56,24 +55,35 @@ test("checkpoint byte count matches serialization for all bytes keys and scalar 
   raises(function() U.size({bad=math.huge}) end)
 end)
 
-test("checkpoint buffering adapts to free RAM and removes measurement and repeat encoding",function()
+test("state serialization avoids sorting while identity encoding remains deterministic",function()
+  local value={z={second=2,first=1},a=false,[4]="four"}
+  local keys=U.keys; U.keys=function() error("state must not sort keys") end
+  local chunks={}
+  local success,why=pcall(U.write,value,function(chunk) chunks[#chunks+1]=chunk end)
+  U.keys=keys; ok(success,why)
+  eq(assert(load(table.concat(chunks),"=state","t",{}))(),value)
+  eq(U.encode({b=2,a=1}),'{["a"]=1,["b"]=2,}')
+end)
+
+test("checkpoints serialize once without measurement buffering or readback at any free RAM",function()
   local w=W.new(); w:build()
   O.with(w,function(files,_,fs)
     for _,free in ipairs({1360217,524288}) do
       require("computer").freeMemory=function() return free end
       local data={tag=string.rep("x",339000)}
-      local write,size=U.write,U.size; local calls=0
+      local write,size,open=U.write,U.size,io.open; local calls=0
       U.write=function(...) calls=calls+1; return write(...) end
       U.size=function() error("redundant size pass") end
+      io.open=function(path,mode) eq(mode,"wb","save must not read back"); return open(path,mode) end
       local success,why=pcall(function() P.new("/state.lua",fs):save(data) end)
-      U.write,U.size=write,size
-      ok(success,why); eq(calls,free>524288 and 1 or 3)
+      U.write,U.size,io.open=write,size,open
+      ok(success,why); eq(calls,1)
       eq(P.new("/state.lua",fs):load({}),data)
     end
   end)
 end)
 
-test("small checkpoints serialize once while large ones retain bounded streaming verification",function()
+test("checkpoint serialization stays single pass across chunk and former buffer boundaries",function()
   local w=W.new(); w:build()
   O.with(w,function(files,_,fs)
     for _,length in ipairs({0,16363,16364,32000}) do
@@ -81,7 +91,7 @@ test("small checkpoints serialize once while large ones retain bounded streaming
       U.write=function(...) calls=calls+1; return write(...) end
       local success,why=pcall(function() P.new("/state.lua",fs):save(data) end)
       U.write=write; ok(success,why)
-      eq(calls,U.size(data)<=16384 and 1 or 3)
+      eq(calls,1)
       eq(P.new("/state.lua",fs):load({}),data)
     end
   end)
@@ -147,7 +157,7 @@ test("streaming persistence round trips binary strings across chunk boundaries",
   eq(assert(load(table.concat(chunks),"=stream","t",{}))(),value)
 end)
 
-test("state saves verify exact chunks without loading another copy of state",function()
+test("state saves round trip without loading another copy of state",function()
   local w=W.new(); w:addMachine("a"); w:build()
   O.with(w,function(files,out,fs)
     local path="/project/data/state.lua"; local p=P.new(path,fs)
@@ -159,38 +169,21 @@ test("state saves verify exact chunks without loading another copy of state",fun
   end)
 end)
 
-test("corrupted temporary state cannot replace the previous generation",function()
-  local w=W.new(); w:addMachine("a"); w:build()
-  O.with(w,function(files,out,fs)
-    local path="/project/data/state.lua"; files[path]='return {old=true}'
-    local open=io.open
-    io.open=function(name,mode)
-      local f,why=open(name,mode)
-      if f and name==path..".tmp" and mode=="wb" then
-        f.flush=function() files[name]=files[name]:gsub("new","bad"); return true end
-      end
-      return f,why
-    end
-    raises(function() P.new(path,fs):save({new=true}) end,"state verification failed")
-    eq(files[path],'return {old=true}'); eq(files[path..".bak"],nil)
-  end)
-end)
-
-test("large streaming checkpoints also reject truncation and trailing bytes before replacement",function()
-  for _,corrupt in ipairs({function(s) return s:sub(1,-2) end,function(s) return s.."x" end}) do
+test("write and flush failures preserve the primary and backup generations",function()
+  for _,failure in ipairs({"write","flush"}) do
     local w=W.new(); w:build()
     O.with(w,function(files,_,fs)
-      local path="/state.lua"; files[path]="return {old=true}"
+      local path="/state.lua"; files[path]="return {old=true}"; files[path..".bak"]="return {older=true}"
       local open=io.open
       io.open=function(name,mode)
         local f,why=open(name,mode)
         if f and name==path..".tmp" and mode=="wb" then
-          f.flush=function() files[name]=corrupt(files[name]); return true end
+          f[failure]=function() return nil,"disk failure" end
         end
         return f,why
       end
-      raises(function() P.new(path,fs):save({large=string.rep("x",20000)}) end,"state verification failed")
-      eq(files[path],"return {old=true}"); eq(files[path..".bak"],nil)
+      raises(function() P.new(path,fs):save({large=string.rep("x",20000)}) end,"disk failure")
+      eq(files[path],"return {old=true}"); eq(files[path..".bak"],"return {older=true}")
     end)
   end
 end)
@@ -213,7 +206,7 @@ test("loading legacy receipts drops completed stacks while pending recovery rema
   end)
 end)
 
-test("checkpoint disk preflight leaves primary backup and partial temporary file untouched",function()
+test("checkpoint disk limit preserves primary and backup while streaming",function()
   local w=W.new(); w:addMachine("a"); w:build()
   O.with(w,function(files,_,fs)
     local path="/project/data/state.lua"
@@ -223,7 +216,7 @@ test("checkpoint disk preflight leaves primary backup and partial temporary file
       spaceUsed=function() return 4*1024*1024-4200 end} end
     fs.size=function(p) return files[p] and #files[p] end
     raises(function() P.new(path,fs):save({new=string.rep("data",500)}) end,"Not enough disk space for checkpoint")
-    eq(files,original)
+    eq(files[path],original[path]); eq(files[path..".bak"],original[path..".bak"])
     fs.get=function() return {spaceTotal=function() return 4*1024*1024 end,spaceUsed=function() return 1000 end} end
     P.new(path,fs):save({new=true})
     eq(P.new(path,fs):load({}),{new=true}); eq(files[path..".bak"],original[path])
@@ -249,7 +242,7 @@ test("checkpoint reclaims an oversized backup only when the primary is verified"
       else
         ok(loaded.recoveredBackup)
         raises(function() store:save({new=string.rep("y",2000)}) end,"Not enough disk space")
-        eq(files,original)
+        eq(files[path],original[path]); eq(files[path..".bak"],original[path..".bak"])
       end
     end)
   end

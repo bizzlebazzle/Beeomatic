@@ -19,7 +19,7 @@ for version, runtime in [('5.2', LuaRuntime), ('5.3', Lua53Runtime)]:
     print(f'Lua {version} syntax: {len(sources)} files', flush=True)
     lua.execute((ROOT / 'tests/run.lua').read_text(encoding='utf-8'))
     # Real allocator limit, not just timing or table-size mocks. The old giant
-    # serialization buffer fails here; streaming save + verification + reload fit.
+    # serialization buffer fails here; streaming save + reload fit.
     with tempfile.TemporaryDirectory(prefix='memory-', dir=ROOT / 'tests') as folder:
         limited = runtime(max_memory=2 * 1024 * 1024, unpack_returned_tuples=True)
         limited.execute('''
@@ -44,7 +44,7 @@ for version, runtime in [('5.2', LuaRuntime), ('5.3', Lua53Runtime)]:
             assert(restored[i].genome.fertility==3)
           end
         ''', str(pathlib.Path(folder) / 'state.lua'))
-        print(f'Lua {version}: 1,600 records saved, verified and reloaded within 2 MiB; old encoder exhausted memory', flush=True)
+        print(f'Lua {version}: 1,600 records saved and reloaded within 2 MiB; old encoder exhausted memory', flush=True)
         buffered = runtime(max_memory=2 * 1024 * 1024, unpack_returned_tuples=True)
         buffered.execute('''
           local reserve=string.rep("O",384*1024)
@@ -63,5 +63,5 @@ for version, runtime in [('5.2', LuaRuntime), ('5.3', Lua53Runtime)]:
           assert(store:load({}).tag==state.tag)
           assert(#reserve==384*1024)
         ''', str(pathlib.Path(folder) / 'buffered.lua'))
-        print(f'Lua {version}: 339 KB buffered checkpoint encodes once within 2 MiB with 384 KiB host reserve', flush=True)
+        print(f'Lua {version}: 339 KB streaming checkpoint encodes once within 2 MiB with 384 KiB host reserve', flush=True)
     check_startup(runtime, ROOT, version)
