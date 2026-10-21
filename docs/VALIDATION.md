@@ -8,7 +8,7 @@ flow still requires in-game acceptance.**
 
 ## Automated checks
 
-Current result: **371 tests, zero failures on each of Lua 5.2 and Lua 5.3**.
+Current result: **376 tests, zero failures on each of Lua 5.2 and Lua 5.3**.
 Run `python tests/run.py` in the development workspace. It syntax-checks every
 project Lua file, then runs the suite on both engines using local Lupa runtimes.
 Alternatively run `lua tests/run.lua` with a compatible runtime. These dependencies
@@ -29,6 +29,7 @@ identities that are no longer used. The resulting checkpoint is roughly 22 KB
 after resume prunes the absent catalogue, or 21 KB plus a 241 KB catalogue when
 cancel retains it. The fixture reloads both files and saves again under the same
 limits, checking that catalogue entries survive the split.
+The compact startup/recovery cases also retain a filled 128 KiB NBT cache.
 
 Every checkpoint write in this fixture is also checked against a **4 MiB disk
 ceiling**, including the previous state, temporary checkpoint, two generations
@@ -41,8 +42,9 @@ stock/journal sizes fit, and in-game acceptance on the actual computer is still 
 
 The encoding cache is also exercised by two successive 339 KB binary-string
 checkpoints and reload in a 2 MiB VM with 384 KiB host reserve. That fixture fills
-the cache's 256 KiB accounting budget. Loading releases the encoded pieces before
-parsing; the fixture also disables manual collection. Unit checks cover eviction,
+the cache's 256 KiB accounting budget alongside a filled 128 KiB NBT cache.
+Loading releases the encoded pieces before parsing; the fixture also disables
+manual collection. Unit checks cover eviction,
 exact binary output, changed identities/tables, persistent-store reuse, cache
 release on load with counters preserved, and profile counters.
 
@@ -51,6 +53,13 @@ genomes, additions, changed genes, pruning, restart without another catalogue
 write, backup recovery, and write failure before either file is replaced. The
 CLI benchmark checks that the separate catalogue exists and is profiled while
 the state omits its inline copy. Both files share one bounded encoding cache.
+
+NBT cache checks cover repeated access to 80 tags without another decompression,
+the 128-entry and 128 KiB bounds, entry overhead accounting, eviction/reload,
+unchanged canonical bytes, failed decodes, and counters relative to command start.
+Generated resource fixtures stay on the development PC. Run
+`python tests/benchmark_nbt.py [state.lua-or-catalogue.lua]` for the separate CPU
+and reuse comparison; actual game tags still need the next benchmark profile.
 
 Interface coverage includes:
 

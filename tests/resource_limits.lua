@@ -71,6 +71,7 @@ if not compact then
   assert(state.transactions[64].stack)
   return #reserved
 end
+local nbt=require("tests.fixtures.nbt_cache")(root.."/nbt-cache.bin")
 local messages=0
 print=function() messages=messages+1 end
 local _,why=require("lib.cli").main(root,profile and {command,"--profile"} or {command})
@@ -82,6 +83,7 @@ local restored=store:load({})
 local entries=0; for _ in pairs(restored.aeCatalog) do entries=entries+1 end
 assert(entries==(command=="cancel" and 16 or 0),"split catalogue was not restored")
 store:save(restored) -- exercise a later checkpoint and the compact state's backup
+assert(nbt.cache.bytes>125000,"NBT cache must remain full during startup and checkpoints")
 for _,name in ipairs({"lib.planner","lib.mutations","lib.setup","lib.ui.diagnostics"}) do
   assert(not package.loaded[name],"resume eagerly loaded "..name)
 end

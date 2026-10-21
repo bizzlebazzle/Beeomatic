@@ -526,7 +526,9 @@ function M.main(root,args)
   local result=table.pack(pcall(function()
     profile:wrap(U,"write","serialize"); profile:wrap(U,"size","checkpoint.measure")
     profile:wrap(B,"identity","bee.identity"); profile:wrap(B,"migrateIdentities","identity.migrate")
-    profile:wrap(require("lib.nbt"),"canonical","nbt.canonical")
+    local nbt=require("lib.nbt"); profile.nbtCache=nbt.cache
+    profile.nbtBaseline={hits=nbt.cache.hits,misses=nbt.cache.misses,evictions=nbt.cache.evictions}
+    profile:wrap(nbt,"canonical","nbt.canonical")
     profile:wrap(require("event"),"pull","event.wait")
     for _,key in ipairs({"exists","get","size","remove","rename"}) do profile:wrap(fs,key,"filesystem."..key) end
     print("Profiling enabled. Read timings with Beeomatic logs --profile after the command exits.")

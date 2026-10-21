@@ -88,6 +88,13 @@ function M:report()
   if cache then out[#out+1]=string.format(
     "Large-string cache: %d hits, %d misses; %d input bytes reused; %d/262144 bytes retained (accounted)",
     cache.hits,cache.misses,cache.reused,cache.bytes) end
+  local nbt=self.nbtCache
+  if nbt then
+    local start=self.nbtBaseline or {hits=0,misses=0,evictions=0}
+    out[#out+1]=string.format(
+      "NBT cache: %d hits, %d misses, %d evictions; %d entries; %d/%d bytes retained (accounted)",
+      nbt.hits-start.hits,nbt.misses-start.misses,nbt.evictions-start.evictions,nbt.entries,nbt.bytes,nbt.limit)
+  end
   out[#out+1]="\n    count      own_s    total_s      max_s errors operation"
   for _,label in ipairs(labels) do local r=self.rows[label]
     out[#out+1]=string.format("%9d %10.3f %10.3f %10.3f %6d %s",r.count,r.own,r.total,r.max,r.errors,label)

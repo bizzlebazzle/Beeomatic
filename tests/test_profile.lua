@@ -1,6 +1,16 @@
 local Profile=require("lib.profile"); local U=require("lib.util")
 local W=require("tests.mocks.world"); local O=require("tests.mocks.openos")
 
+test("profile reports NBT cache counters relative to command start",function()
+  local p=Profile.new("/profile.log",function() return 0 end,{})
+  p.nbtCache={hits=110,misses=25,evictions=9,bytes=12000,entries=14,limit=131072}
+  p.nbtBaseline={hits=100,misses=20,evictions=7}
+  local report=p:report()
+  ok(report:find("NBT cache: 10 hits, 5 misses, 2 evictions; 14 entries; 12000/131072 bytes retained (accounted)",1,true))
+  p.nbtCache.hits=115
+  ok(p:report():find("NBT cache: 15 hits, 5 misses, 2 evictions",1,true))
+end)
+
 test("profile reports encoding cache reuse without recording cached contents",function()
   local p=Profile.new("/profile.log",function() return 0 end,{})
   p.statePath="/state.lua"; p.cataloguePath="/catalogue.lua"

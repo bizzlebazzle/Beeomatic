@@ -198,15 +198,24 @@ function M.sort(raw,fields)
   return value
 end
 -- Bounded cache avoids decompressing unchanged network/receipt tags each poll.
-local cache,queue,cacheBytes={},{},0
+local cache,queue={},{}
+M.cache={hits=0,misses=0,evictions=0,bytes=0,entries=0,limit=131072}
+local stats=M.cache
 function M.canonical(tag)
   if type(tag)~="string" or tag:sub(1,2)~="\31\139" then return nil end
-  if cache[tag] then return cache[tag] end
+  if cache[tag] then stats.hits=stats.hits+1; return cache[tag] end
+  stats.misses=stats.misses+1
   local value=M.sort(M.gunzip(tag))
-  while #queue>0 and (#queue>=16 or cacheBytes+#tag+#value>LIMIT) do
-    local old=table.remove(queue,1); cacheBytes=cacheBytes-#old-#cache[old]; cache[old]=nil
+  local cost=#tag+#value+128 -- compressed and canonical strings plus entry overhead
+  if cost<=stats.limit then
+    while #queue>0 and (#queue>=128 or stats.bytes+cost>stats.limit) do
+      local old=table.remove(queue,1)
+      stats.bytes=stats.bytes-#old-#cache[old]-128; cache[old]=nil
+      stats.evictions=stats.evictions+1
+    end
+    queue[#queue+1]=tag; cache[tag]=value; stats.bytes=stats.bytes+cost
   end
-  if #tag+#value<=LIMIT then queue[#queue+1]=tag; cache[tag]=value; cacheBytes=cacheBytes+#tag+#value end
+  stats.entries=#queue
   return value
 end
 function M.difference(a,b)

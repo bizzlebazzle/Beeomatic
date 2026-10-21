@@ -1,4 +1,47 @@
 local N=require("lib.nbt"); local F=require("tests.fixtures.nbt")
+local function cacheTag(tag,n)
+  -- Different gzip timestamps are valid distinct input keys; payload/CRC stay exact.
+  return tag:sub(1,4)..string.char(n%256,math.floor(n/256),173,91)..tag:sub(9)
+end
+
+test("NBT cache reuses eighty tags without repeating decompression",function()
+  local expected=N.sort(F.raw); local stats=N.cache
+  local hits,misses=stats.hits,stats.misses
+  local gunzip=N.gunzip; local calls=0
+  N.gunzip=function(tag) calls=calls+1; return gunzip(tag) end
+  for _=1,3 do for n=1000,1079 do eq(N.canonical(cacheTag(F.a,n)),expected) end end
+  N.gunzip=gunzip
+  eq(calls,80); eq(stats.hits-hits,160); eq(stats.misses-misses,80)
+end)
+
+test("NBT cache bounds entry count and reports eviction and accounted bytes",function()
+  local expected=N.sort(F.raw); local stats=N.cache; local evictions=stats.evictions
+  for n=2000,2159 do eq(N.canonical(cacheTag(F.a,n)),expected) end
+  eq(stats.entries,128); eq(stats.bytes,128*(#F.a+#expected+128))
+  ok(stats.evictions>evictions); ok(stats.bytes<=stats.limit)
+  local misses=stats.misses
+  eq(N.canonical(cacheTag(F.a,2000)),expected); eq(stats.misses,misses+1)
+end)
+
+test("NBT cache evicts large canonical values within its byte budget",function()
+  local expected=N.sort(F.dynamicRaw); local stats=N.cache; local evictions=stats.evictions
+  for n=3000,3011 do
+    eq(N.canonical(cacheTag(F.dynamic,n)),expected)
+    ok(stats.bytes<=131072); ok(stats.entries<=128)
+  end
+  ok(stats.evictions>evictions); ok(stats.entries<12)
+  local misses=stats.misses
+  eq(N.canonical(cacheTag(F.dynamic,3000)),expected); eq(stats.misses,misses+1)
+end)
+
+test("NBT cache ignores opaque tags and does not retain failed decodes",function()
+  local stats=N.cache; local hits,misses,bytes,entries=stats.hits,stats.misses,stats.bytes,stats.entries
+  eq(N.canonical("mock tag"),nil); eq(N.canonical(nil),nil)
+  eq(stats.hits,hits); eq(stats.misses,misses)
+  raises(function() N.canonical(F.a:sub(1,-2)) end)
+  eq(stats.misses,misses+1); eq(stats.bytes,bytes); eq(stats.entries,entries)
+end)
+
 test("gzip NBT reader handles stored fixed and dynamic deflate blocks",function()
   for _,tag in ipairs({F.a,F.stored,F.fixed}) do eq(N.gunzip(tag),F.raw) end
   eq(N.gunzip(F.dynamic),F.dynamicRaw)

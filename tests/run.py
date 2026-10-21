@@ -3,7 +3,7 @@ import os
 import pathlib
 import sys
 import tempfile
-from resource_limits import check as check_startup
+from resource_limits import check as check_startup, write_nbt_fixture
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / '.tools'))
@@ -46,6 +46,8 @@ for version, runtime in [('5.2', LuaRuntime), ('5.3', Lua53Runtime)]:
         ''', str(pathlib.Path(folder) / 'state.lua'))
         print(f'Lua {version}: 1,600 records saved and reloaded within 2 MiB; old encoder exhausted memory', flush=True)
         buffered = runtime(max_memory=2 * 1024 * 1024, unpack_returned_tuples=True)
+        nbt_path = pathlib.Path(folder) / 'nbt-cache.bin'
+        write_nbt_fixture(nbt_path)
         buffered.execute('''
           local reserve=string.rep("O",384*1024)
           local U=require("lib.util"); local P=require("lib.persistence")
@@ -57,6 +59,7 @@ for version, runtime in [('5.2', LuaRuntime), ('5.3', Lua53Runtime)]:
           local state={tag=table.concat(chunks):sub(1,339000)}; chunks=nil
           collectgarbage("collect") -- release fixture-construction temporaries
           collectgarbage=nil -- automatic collection must suffice for saves and reload
+          local nbt=require("tests.fixtures.nbt_cache")(select(2,...))
           local write=U.write; local calls=0
           U.write=function(...) calls=calls+1; return write(...) end
           local store=P.new(...,{exists=function(path)
@@ -68,7 +71,8 @@ for version, runtime in [('5.2', LuaRuntime), ('5.3', Lua53Runtime)]:
           store:save(state)
           assert(calls==2,"second checkpoint must still encode only once")
           assert(store:load({}).tag==state.tag)
+          assert(nbt.cache.bytes>125000)
           assert(#reserve==384*1024)
-        ''', str(pathlib.Path(folder) / 'buffered.lua'))
-        print(f'Lua {version}: repeated 339 KB checkpoints with a full encoding cache fit 2 MiB with 384 KiB host reserve', flush=True)
+        ''', str(pathlib.Path(folder) / 'buffered.lua'), str(nbt_path))
+        print(f'Lua {version}: repeated 339 KB checkpoints with full encoding and NBT caches fit 2 MiB with 384 KiB host reserve', flush=True)
     check_startup(runtime, ROOT, version)

@@ -1,12 +1,25 @@
 """Full startup allocation test, including OpenOS-style source concatenation."""
 import pathlib
 import tempfile
+import gzip
+import random
+import struct
+
+
+def write_nbt_fixture(path):
+    rng = random.Random(17)
+    with path.open("wb") as output:
+        for _ in range(160):
+            raw = b"\x0a\0\0\x07\0\x01x" + struct.pack(">I", 900) + rng.randbytes(900) + b"\0"
+            tag = gzip.compress(raw, mtime=0)
+            output.write(struct.pack(">H", len(tag)) + tag)
 
 
 def check(runtime, root, version):
     with tempfile.TemporaryDirectory(prefix="startup-", dir=root / "tests") as folder:
         path = pathlib.Path(folder)
         (path / "data").mkdir()
+        write_nbt_fixture(path / "nbt-cache.bin")
         seed = runtime(unpack_returned_tuples=True)
         seed.execute('''
           package.path="./?.lua;"..package.path

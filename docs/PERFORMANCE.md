@@ -4,6 +4,39 @@ This audit covers selection, ME requests, transposer movement, collection,
 scanner preparation/returns and recovery. Operation counts below come from Lua
 mocks; the server profile discussed separately below measures in-game time.
 
+## Larger bounded NBT cache and reuse counters (21 October 2026)
+
+The seventh in-game benchmark took 75.7 seconds. NBT canonicalization still
+consumed 11.4 seconds across 2,390 calls. Its separate cache held at most 16
+compressed tags within 64 KiB, too few for the supplied 80-entry catalogue.
+
+The NBT cache now allows 128 entries within 128 KiB. Accounting includes compressed
+bytes, canonical bytes and 128 bytes per entry for overhead. FIFO eviction keeps
+both limits bounded; the existing per-tag parsing/decompression limits and exact
+canonical identity format are unchanged. Only immutable input bytes and their
+canonical result are cached, with no inventory counts or ownership data.
+
+The profile header adds `NBT cache`: hits, misses and evictions during the
+command, plus current entry count and accounted retained bytes. Counters use a
+baseline at command start so a warm module cache does not inflate reported work.
+Opaque mock tags are excluded; a failed gzip decode counts as a miss but is not
+retained. The existing large-string encoding cache has separate counters.
+
+`python tests/benchmark_nbt.py` compares the previous and new bounds on 80 synthetic
+variants. An optional `state.lua` or `catalogue.lua` path instead parses saved
+canonical identities and recompresses their NBT for replay, without executing the
+save. In a local 30-pass replay of the supplied catalogue (2,400 calls), misses
+fell from 2,251 to 70 and evictions from 2,235 to zero. The new cache recorded
+2,330 hits (97.1%) and retained 102,285 accounted bytes. There were 70 distinct
+recompressed inputs across the 80 catalogue entries. Both Lua 5.2 and 5.3 returned
+identical canonical bytes. This replay changes compression/field ordering from
+the original game tags; the next in-game profile must establish actual reuse.
+
+Resource checks fill the NBT cache alongside a full encoding cache during 339 KB
+saves and reload, and retain a full NBT cache through startup/recovery. All fit
+the 2 MiB allocator ceiling with 384 KiB host reserve, including without manual
+collection. No scanner routing or checkpoint behavior changes in this update.
+
 ## Save the catalogue only when it changes (21 October 2026)
 
 The sixth in-game profile took 86.8 seconds, down from 126.4 seconds. Encoding
