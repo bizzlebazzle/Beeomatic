@@ -50,10 +50,9 @@ test("available targets and conversion plans explain their next action",function
   ok(text:find("1. Recover Forest princess from spare drones",1,true))
 end)
 
-test("runtime species labels retain spelling and multiword names",function()
-  local m=require("lib.mutations").new({listAllSpecies=function()
-    return {{name="Spirit",uid="magicbees.speciesspirit"},{name="Certus Quartz",uid="mod.speciescertus"}}
-  end,getBeeParents=function() return {} end},{})
+test("stock species labels retain spelling and multiword names without global indices",function()
+  local m=require("lib.mutations").new({listAllSpecies=function() error("unbounded species list") end,
+    getBeeBreedingData=function() error("unbounded recipe list") end,getBeeParents=function() return {} end},{})
   local stock={W.bee("Certus Quartz","princess"),W.bee("Certus Quartz","drone",16)}
   for _,s in ipairs(stock) do
     s.individual.active.species.uid="mod.speciescertus"; s.individual.inactive.species.uid="mod.speciescertus"
@@ -76,8 +75,12 @@ test("recursive plans explain missing external founders by name and recover when
     [species.target.uid]={{allele1=species.middle,allele2=species.base,chance=10}},
     [species.middle.uid]={{allele1=species.external,allele2=species.base,chance=10}}}
   local m=require("lib.mutations").new({
-    listAllSpecies=function() return {species.target,species.middle} end,
-    getBeeParents=function(id) return routes[id] or {} end},{})
+    listAllSpecies=function() error("unbounded species list") end,
+    getBeeParents=function(id)
+      -- The pinned OC housing accepts either localized name or UID.
+      for _,s in pairs(species) do if id==s.name:lower() then id=s.uid end end
+      return routes[id] or {}
+    end},{})
   local function bee(s,kind,count)
     local stack=W.bee(s.name,kind,count)
     stack.individual.active.species=s; stack.individual.inactive.species=s

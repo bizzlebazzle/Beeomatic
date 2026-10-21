@@ -4,9 +4,11 @@ function M.collect()
   if type(collectgarbage)=="function" then pcall(collectgarbage,"collect") end
 end
 function M.lower(s) return tostring(s or ""):lower() end
-function M.copy(v)
+function M.copy(v,seen)
   if type(v) ~= "table" then return v end
-  local t = {}; for k,x in pairs(v) do t[k] = M.copy(x) end; return t
+  seen=seen or {}; if seen[v] then return seen[v] end
+  local t = {}; seen[v]=t
+  for k,x in pairs(v) do t[k] = M.copy(x,seen) end; return t
 end
 function M.keys(t)
   local r = {}; for k in pairs(t or {}) do r[#r+1] = k end
@@ -52,10 +54,17 @@ local escapes={['"']='\\"',['\\']='\\\\'}
 for byte=0,31 do escapes[string.char(byte)]=string.format("\\%03d",byte) end
 escapes[string.char(127)]="\\127"
 function M.stringCache() return {values={},queue={},bytes=0,hits=0,misses=0,reused=0} end
+local function trim(cache,extra)
+  while #cache.queue>0 and (#cache.queue>=256 or cache.bytes+extra>(cache.limit or 262144)) do
+    local old=table.remove(cache.queue,1)
+    cache.bytes=cache.bytes-#old-#cache.values[old]-128; cache.values[old]=nil
+  end
+end
 -- Stream data-only Lua without sorting tables or constructing the entire document
 -- (or an escaped copy of a large binary NBT key) in memory. Identity encoding
 -- above stays unchanged so saved reservations/receipts remain compatible.
 function M.write(v,sink,cache)
+  if cache then trim(cache,0) end
   local chunks,bytes={},0
   local function flush()
     if bytes>0 then sink(table.concat(chunks)); chunks={}; bytes=0 end
@@ -73,11 +82,10 @@ function M.write(v,sink,cache)
     if cache then
       cache.misses=cache.misses+1
       local cost=#s+#encoded+128 -- include room for string/table entries
-      while #cache.queue>=256 or cache.bytes+cost>262144 do
-        local old=table.remove(cache.queue,1)
-        cache.bytes=cache.bytes-#old-#cache.values[old]-128; cache.values[old]=nil
+      if cost<=(cache.limit or 262144) then
+        trim(cache,cost)
+        cache.queue[#cache.queue+1]=s; cache.values[s]=encoded; cache.bytes=cache.bytes+cost
       end
-      cache.queue[#cache.queue+1]=s; cache.values[s]=encoded; cache.bytes=cache.bytes+cost
     end
     return encoded
   end

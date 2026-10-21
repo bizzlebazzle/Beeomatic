@@ -4,6 +4,38 @@ This audit covers selection, ME requests, transposer movement, collection,
 scanner preparation/returns and recovery. Operation counts below come from Lua
 mocks; the server profile discussed separately below measures in-game time.
 
+## Bound Spirit planning memory (22 October 2026)
+
+The worker still crashed after filtering ME discovery. The earlier allocator
+fixture used unknown variants and stopped before target planning; it did not
+cover a populated genome catalogue or a pending Spirit plan.
+
+Planning no longer calls `listAllSpecies()` or `getBeeBreedingData()`. Names and
+UIDs come from analysed stock and the parent alleles returned by target-specific
+`getBeeParents(nameOrUid)` queries. This avoids allocating the pack's entire
+species/recipe/condition lists. Unseen targets use the housing's supported name
+lookup; known parent labels retain their runtime spelling.
+
+The worker releases the preparation snapshot before loading planning code and
+reading fresh stock. Interface snapshots reuse existing catalogue identity
+strings; the planner reuses unowned ME slot identities for exact drone groups.
+Loaded homozygous chromosomes share one table, and deep copies preserve sharing
+within each copy while isolating it from saved genes. Hybrid values and the
+on-disk catalogue format are unchanged.
+
+At each checkpoint the encoding cache is limited to a quarter of reported free
+RAM, with a 4 KiB floor and the existing 256 KiB ceiling. Old cached pieces are
+evicted when the budget shrinks. This cache is disposable encoding data, not
+genomes or recovery receipts. Profiles show its current limit. Crash logs now
+include the last worker phase even when an OOM loses the original stack frame.
+
+New 2 MiB allocator tests include a populated 80-variant catalogue, a full NBT
+cache, a 384 KiB host reserve and no manual GC API. They run `breed spirit`,
+resume its pending request and recover a saved Spirit conversion's mutation
+route. They interrupt at the committed plan/route checkpoint before physical
+transfers; these are memory/restart checks, not a complete in-game breeding run.
+Both Lua 5.2 and 5.3 pass. Capacity still depends on actual NBT and genome sizes.
+
 ## Bound ME response memory (21 October 2026)
 
 Startup/resume fetched the entire ME network before discarding unrelated items.
@@ -22,7 +54,7 @@ The allocator regression reproduces the old resume traceback with an unfiltered
 3,000-item response. Filtered resume now fits 2 MiB with 219 synthetic bee
 variants, 3,000 unrelated item types, full caches, a 384 KiB host reserve and
 profiling, on Lua 5.2 and 5.3. Disk use remains below 4 MiB. This is a synthetic
-capacity check; live bee snapshots/catalogues still grow with distinct genotypes
+discovery check with unknown genomes; it stops before target planning. Live bee snapshots/catalogues still grow with distinct genotypes
 and their NBT sizes. It does not establish unlimited bee capacity.
 
 ## Combine adjacent movement checkpoints (21 October 2026)

@@ -88,6 +88,13 @@ exhaust RAM at startup/resume. The updated version requests each bee caste
 separately and avoids an extra genome copy. Unrelated items no longer fill the
 scan response; distinct bee genotypes and their NBT still determine bee capacity.
 
+The next fix also removes pack-wide species/recipe indexing during Spirit
+planning, releases overlapping stock snapshots and shrinks the encoding cache
+under RAM pressure. If a crash persists after updating and rebooting, retain the
+new `data/crash.log`, including its `Phase:` line, alongside the matching
+`data/state.lua` and `data/catalogue.lua`. Do not cancel or delete the saved plan
+to recover from a memory error.
+
 `Not enough disk space for checkpoint` means the new generation cannot fit with
 recovery protection. Beeomatic checks available space as it streams the temporary file and
 keeps the primary generation. Free unrelated disk space, then resume. Old backup

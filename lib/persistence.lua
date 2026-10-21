@@ -6,7 +6,11 @@ end
 function M.new(path,fs,onTable,skipField,cataloguePath)
   local self=setmetatable({path=path,fs=fs or require("filesystem"),onTable=onTable,skipField=skipField,cache=U.stringCache()},M)
   if cataloguePath then
-    self.catalogue=M.new(cataloguePath,self.fs)
+    self.catalogue=M.new(cataloguePath,self.fs,function(genes)
+      -- Homozygous chromosomes are read-only catalogue data. Share their
+      -- tables; snapshots still deep-copy them before exposing mutable genes.
+      if type(genes.active)=="table" and U.equal(genes.active,genes.inactive) then genes.inactive=genes.active end
+    end)
     self.catalogue.cache=self.cache -- one bounded encoding cache for both files
   end
   return self
@@ -59,6 +63,9 @@ function M:save(value)
   end
   local tmp=self.path..".tmp"
   local computer=package.loaded.computer
+  if computer and computer.freeMemory then
+    self.cache.limit=math.max(4096,math.min(262144,math.floor(computer.freeMemory()/4)))
+  end
   -- Buffered writes need not yield, even outside the foreground worker.
   local nextYield=0
   local function cooperate()

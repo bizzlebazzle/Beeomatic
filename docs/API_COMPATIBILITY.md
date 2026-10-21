@@ -35,6 +35,12 @@ implementation applies field equality before returning its array to Lua. This
 keeps unrelated network items out of the 2 MiB computer without selecting by
 species, label or genotype. Exact variant selection still verifies full NBT.
 
+Planning uses `getBeeParents`, whose pinned implementation accepts either the
+localized species name or UID, case-insensitively. Its converted parent alleles
+provide names and UIDs, including hive species. The global `listAllSpecies` and
+`getBeeBreedingData` callbacks remain available in OC but Beeomatic does not call
+them: their complete converted results compete with the live catalogue for RAM.
+
 [Forestry `TileAlveary`](https://github.com/GTNewHorizons/ForestryMC/blob/4.11.37/src/main/java/forestry/apiculture/multiblock/TileAlveary.java)
 implements `IBeeHousing` and delegates inventory to its controller. Adapter queries
 and transposer inventory access are separate. Multiple adapters on blocks of the

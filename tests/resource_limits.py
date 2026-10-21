@@ -15,6 +15,55 @@ def write_nbt_fixture(path):
             output.write(struct.pack(">H", len(tag)) + tag)
 
 
+def check_planning(runtime, root, version, variants=80):
+    with tempfile.TemporaryDirectory(prefix="planning-", dir=root / "tests") as folder:
+        path = pathlib.Path(folder)
+        (path / "data").mkdir()
+        write_nbt_fixture(path / "nbt-cache.bin")
+        seed = runtime(unpack_returned_tuples=True)
+        seed.execute('''
+          local root,variants=...
+          local W=require("tests.mocks.world"); local ME=require("tests.mocks.me")
+          local U=require("lib.util"); local B=require("lib.bees"); local w=ME.new()
+          local stock={Princess={},Drone={},Queen={}}
+          for n=1,variants do
+            local species=n%2==0 and "Forest" or "Meadows"
+            local kind=n<3 and "princess" or "drone"
+            local s=ME.bee(species,kind,kind=="drone" and 64 or 1,false,{lifespan=n})
+            s.tag=string.rep(string.char(n%256),600)..n
+            w.state.aeCatalog[B.identity(s)]=s.individual; s.individual=nil
+            local caste=kind=="drone" and "Drone" or "Princess"
+            stock[caste][#stock[caste]+1]=s
+          end
+          local function write(name,value)
+            local f=assert(io.open(root.."/"..name,"wb"))
+            U.write(value,function(chunk) assert(f:write(chunk)) end); f:close()
+          end
+          write("data/config.lua",w.c)
+          write("data/catalogue.lua",w.state.aeCatalog); w.state.aeCatalog=nil
+          w.state.pendingRequest={target="spirit",mode="breed",flags={}}
+          write("data/state.lua",w.state)
+          for caste,items in pairs(stock) do write(caste..".lua",items) end
+        ''', path.as_posix(), variants)
+        initial = {p.name: p.read_bytes() for p in (path / "data").iterdir()}
+        source = (root / "tests/resource_limits.lua").read_text(encoding="utf-8")
+        for command, scenario in (("breed", True), ("resume", True), ("resume", "rebreed")):
+            for file in (path / "data").iterdir():
+                file.unlink()
+            for name, data in initial.items():
+                (path / "data" / name).write_bytes(data)
+            if command == "breed":
+                (path / "data/state.lua").write_text('return {jobs={},reservations={},transactions={}}')
+            elif scenario == "rebreed":
+                (path / "data/state.lua").write_text('''return {reservations={},transactions={},jobs={
+                  {id="job1",species="spirit",mode="convert",state="WAITING",cycles=0,confirmed=0,dependencies={}}}}''')
+            limited = runtime(max_memory=2 * 1024 * 1024, unpack_returned_tuples=True)
+            limited.globals().disk_used = lambda: sum(p.stat().st_size for p in path.rglob("*") if p.is_file()) + 768 * 1024
+            _, live_kib = limited.execute(source, path.as_posix(), True, "missing", command, False, False, scenario)
+            print(f"Lua {version}: Spirit {command}{' saved conversion' if scenario == 'rebreed' else ''} planned with {variants} known bee variants "
+                  f"within 2 MiB; live {live_kib:.0f} KiB", flush=True)
+
+
 def check(runtime, root, version):
     with tempfile.TemporaryDirectory(prefix="startup-", dir=root / "tests") as folder:
         path = pathlib.Path(folder)

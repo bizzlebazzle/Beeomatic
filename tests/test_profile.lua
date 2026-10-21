@@ -23,6 +23,8 @@ test("profile reports encoding cache reuse without recording cached contents",fu
   ok(report:find("Large-string cache: "..cache.hits.." hits, "..cache.misses.." misses",1,true))
   ok(report:find(cache.reused.." input bytes reused",1,true))
   ok(report:find(cache.bytes.."/262144 bytes retained",1,true))
+  cache.limit=65536
+  ok(p:report():find(cache.bytes.."/65536 bytes retained",1,true))
   ok(report:find("State file bytes: 41000",1,true))
   ok(report:find("Catalogue file bytes: 218000",1,true))
   ok(not report:find("private-nbt",1,true))

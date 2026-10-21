@@ -201,6 +201,7 @@ local function main(root,args,profile)
     save()
   end
   local function run()
+    local phase="initializing worker"
     if fs.exists(lock) then
       assert(f.recover,"Worker lock exists. Use resume --recover only after stopping the old process.")
       assert(fs.remove(lock))
@@ -219,8 +220,10 @@ local function main(root,args,profile)
     end
     worker=coroutine.create(function() return xpcall(function()
       if cancellationPending() then cancelWork(c); return end
+      phase="validating hardware"
       Config.validate(c); storage:validate()
       if storage.interface then scanner():validate() end
+      phase="recovering saved work"
       scheduler():recover()
       if state.pendingRequest then
         -- This request already passed the admission checks. Prepare its stock
@@ -237,6 +240,7 @@ local function main(root,args,profile)
         if applyControl() then break end
         local active,status
         if state.pendingRequest and not state.paused and not state.stopping then
+          phase="preparing bee stock"
           -- The saved batch carries its own exact source and return baseline.
           -- Its scanner phase checks returns directly; refresh global stock
           -- only when selecting a new batch, as in the standalone plan scanner.
@@ -250,14 +254,20 @@ local function main(root,args,profile)
             else
               state.error=nil
               Jobs.releaseCancelled(state)
-              items=storage:scan()
+              items=nil -- release the preparation snapshot before allocating another
               local req=state.pendingRequest; local m,plan,e
               if req.mode=="benchmark" then
                 plan={target="benchmark",order={{species="benchmark",children={}}}}
               else
-                m=mutations(items)
-                plan,e=require("lib.planner").plan(req.target,m,items,c); assert(plan,e)
+                phase="loading mutation planner"
+                m=mutations()
+                local planner=require("lib.planner")
+                phase="reading planning stock"
+                items=storage:scan(); m:index(items)
+                phase="planning "..req.target
+                plan,e=planner.plan(req.target,m,items,c); assert(plan,e)
               end
+              phase="saving breeding plan"
               Jobs.create(state,plan,req.mode,req.count,req.flags,req); state.pendingRequest=nil; save()
               -- Planning is finished. Its graph/index and code need not compete
               -- with live storage/scanner snapshots for the rest of this run.
@@ -266,10 +276,11 @@ local function main(root,args,profile)
               U.collect()
             end
           end
-        else active,status=scheduler():step() end
+        else phase="advancing breeding jobs"; active,status=scheduler():step() end
         if cancellationPending() then cancelWork(c); break end
         -- Housing details are display data. Do not repeatedly query every
         -- housing or write a full recovery checkpoint just to redraw the UI.
+        phase="updating display"
         local now=computer.uptime()
         if now>=nextObservation or status=="DONE" or status=="STOPPED" or status=="BLOCKED" then
           local idleSeconds=(status=="DONE" or status=="STOPPED" or status=="BLOCKED") and 0 or 5
@@ -325,7 +336,7 @@ local function main(root,args,profile)
       local report
       local written,writeError=pcall(function()
         report=assert(io.open(crashPath,"w"))
-        assert(report:write("Beeomatic worker crash\nCommand: "..table.concat(args," ").."\n\n"..tostring(err).."\n"))
+        assert(report:write("Beeomatic worker crash\nCommand: "..table.concat(args," ").."\nPhase: "..phase.."\n\n"..tostring(err).."\n"))
         assert(report:flush())
         report:close(); report=nil
       end)
@@ -445,7 +456,8 @@ local function main(root,args,profile)
     end; return
   end
   if cmd=="plan" then
-    assert(a[2],"Specify a species"); local items=storage:scan()
+    assert(a[2],"Specify a species"); local m=mutations()
+    local planner=require("lib.planner"); local items=storage:scan()
     local unscanned=0
     for _,i in ipairs(items) do if B.kind(i.stack) and not B.scanned(i.stack) then unscanned=unscanned+(i.stack.size or 1) end end
     if unscanned>0 or state.scan then
@@ -497,8 +509,8 @@ local function main(root,args,profile)
         if not ok then return blocked("Scanning paused: "..tostring(why).."\nProgress preserved; repair the scanner and rerun Beeomatic plan "..a[2]..".") end
       end
     end
-    local m=mutations(items)
-    local plan,reason=require("lib.planner").plan(a[2],m,items,c)
+    m:index(items)
+    local plan,reason=planner.plan(a[2],m,items,c)
     if not plan then
       local message=reason or ("Not enough verified parent stock to reach "..a[2]..".")
       print(message); return nil,message

@@ -74,9 +74,12 @@ function M:catalogue(stack,deferSave)
 end
 function M:scan()
   local pooled={}
+  local identities={}
+  for key in pairs(self.state.aeCatalog) do identities[key]=key end
   local function add(s,private)
     if s and B.kind(s) and (s.size or 0)>0 then
-      local key=B.identity(s); local entry=pooled[key]
+      local key=B.identity(s); key=identities[key] or key
+      local entry=pooled[key]
       if entry then entry.size=entry.size+s.size else pooled[key]=private and s or U.copy(s) end
       if B.scanned(s) then self.state.aeCatalog[key]=U.copy(s.individual) end
     end

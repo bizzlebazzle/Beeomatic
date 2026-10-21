@@ -296,6 +296,7 @@ test("worker crashes save a traceback and keep the original error visible withou
     local result,err=require("lib.cli").main("/project",{"breed","spirit"})
     eq(result,nil); ok(err:find("simulated foreground failure",1,true))
     local report=files["/project/data/crash.log"]
+    ok(report:find("Phase: ",1,true),report)
     ok(report:find("Command: breed spirit",1,true)); ok(report:find("simulated foreground failure",1,true))
     ok(report:find("stack traceback:",1,true)); eq(files["/project/data/worker.lock"],nil)
     local state=assert(load(files["/project/data/state.lua"],"=state","t",{}))()

@@ -1,6 +1,36 @@
 local U=require("lib.util"); local P=require("lib.persistence")
 local W=require("tests.mocks.world"); local O=require("tests.mocks.openos")
 
+test("loaded catalogue shares identical chromosomes without changing hybrid genes or exposing saved tables",function()
+  local w=W.new(); w:build()
+  O.with(w,function(files,_,fs)
+    local expected={aeCatalog={pure=W.bee("Forest","drone").individual,
+      hybrid=W.bee("Forest","drone",1,"Meadows").individual}}
+    P.new("/state.lua",fs,nil,nil,"/catalogue.lua"):save(expected)
+    local restored=P.new("/state.lua",fs,nil,nil,"/catalogue.lua"):load({})
+    eq(restored,expected)
+    ok(restored.aeCatalog.pure.active==restored.aeCatalog.pure.inactive)
+    ok(restored.aeCatalog.hybrid.active~=restored.aeCatalog.hybrid.inactive)
+    local copy=U.copy(restored.aeCatalog.pure)
+    ok(copy.active==copy.inactive); ok(copy.active~=restored.aeCatalog.pure.active)
+    copy.active.fertility=99; eq(restored.aeCatalog.pure.active.fertility,3)
+    eq(assert(load(files["/catalogue.lua"]))(),expected.aeCatalog)
+  end)
+end)
+
+test("checkpoint encoding cache shrinks under RAM pressure without losing saved data",function()
+  local w=W.new(); w:build()
+  O.with(w,function(files,_,fs)
+    local free=4*1024*1024; require("computer").freeMemory=function() return free end
+    local chunks={}; for n=1,96 do chunks[n]=string.rep(string.char(n),512) end
+    local value={tag=table.concat(chunks),pending={identity="preserve exact receipt",count=2}}
+    local store=P.new("/state.lua",fs); store:save(value); ok(store.cache.bytes>16384)
+    free=16384; store:save(value)
+    ok(store.cache.bytes<=4096); eq(assert(load(files["/state.lua"]))(),value)
+    eq(store:load({}),value)
+  end)
+end)
+
 test("split catalogue migrates legacy saves and writes only changed genomes",function()
   local w=W.new(); w:build()
   O.with(w,function(files,_,fs)

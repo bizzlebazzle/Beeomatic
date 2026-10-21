@@ -3,7 +3,7 @@ import os
 import pathlib
 import sys
 import tempfile
-from resource_limits import check as check_startup, write_nbt_fixture
+from resource_limits import check as check_startup, check_planning, write_nbt_fixture
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / '.tools'))
@@ -51,8 +51,9 @@ for version, runtime in [('5.2', LuaRuntime), ('5.3', Lua53Runtime)]:
         buffered.execute('''
           local reserve=string.rep("O",384*1024)
           local U=require("lib.util"); local P=require("lib.persistence")
+          local hostGC=collectgarbage
           package.loaded.computer={freeMemory=function()
-            return 2*1024*1024-collectgarbage("count")*1024
+            return 2*1024*1024-hostGC("count")*1024
           end}
           local chunks={}
           for n=1,663 do chunks[n]=string.rep(string.char(n%256),512) end
@@ -67,7 +68,8 @@ for version, runtime in [('5.2', LuaRuntime), ('5.3', Lua53Runtime)]:
             end,remove=os.remove,rename=os.rename})
           store:save(state)
           assert(calls==1,"server-sized checkpoint must encode only once")
-          assert(store.cache.bytes>250000 and store.cache.bytes<=262144,"fixture must fill the bounded cache")
+          assert(store.cache.bytes>0 and store.cache.bytes<=store.cache.limit and store.cache.limit<=262144,
+            "encoding cache exceeded available-memory budget")
           store:save(state)
           assert(calls==2,"second checkpoint must still encode only once")
           assert(store:load({}).tag==state.tag)
@@ -102,3 +104,4 @@ for version, runtime in [('5.2', LuaRuntime), ('5.3', Lua53Runtime)]:
         ''', str(nbt_path))
         print(f'Lua {version}: mutation recovery, prerequisite expansion and restart fit 2 MiB with full NBT cache and 384 KiB host reserve', flush=True)
     check_startup(runtime, ROOT, version)
+    check_planning(runtime, ROOT, version)

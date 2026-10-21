@@ -1,5 +1,5 @@
 -- Fresh VM: no test framework or preloaded Beeomatic modules hide startup costs.
-local root,compact,gcMode,command,profile,largeNetwork=...
+local root,compact,gcMode,command,profile,largeNetwork,planning=...
 command=command or "resume"
 local hostGC=collectgarbage
 if gcMode=="missing" then collectgarbage=nil
@@ -29,8 +29,18 @@ end
 package.preload.filesystem=function() return fs end
 package.preload.computer=function() return {uptime=function() return 10 end,address=function() return "limited" end,
   freeMemory=function() return 2*1024*1024-hostGC("count")*1024 end} end
-package.preload.event=function() return {pull=function(seconds) if seconds~=0 then error("blocked resume must return to shell") end end} end
+package.preload.event=function() return {pull=function(seconds)
+  if planning then
+    local f=baseOpen(root.."/data/state.lua","rb")
+    if f then local data=f:read("*a"); f:close()
+      if not data:find('pendingRequest',1,true) and data:find('spirit',1,true) and
+        (planning~="rebreed" or data:find('rebreeding',1,true)) then return "interrupted" end
+    end
+  end
+  if seconds~=0 then error("blocked resume must return to shell") end
+end} end
 local devices={}
+local phase="startup"
 for _,address in ipairs({"tp1","tp2","tp-scan"}) do
   devices[address]={address=address,getInventorySize=function(side) return side==0 and 9 or 11 end,
     getStackInSlot=function() end,transferItem=function() error("unexpected transfer") end,
@@ -40,10 +50,39 @@ for _,address in ipairs({"housing1","housing2"}) do
   devices[address]={address=address,getQueen=function() end,getDrone=function() end,
     canBreed=function() return true end,getBeeParents=function() return {} end}
 end
+if planning then
+  for _,address in ipairs({"housing1","housing2"}) do
+    devices[address].listAllSpecies=function()
+      phase="species index"
+      local species={}
+      for n=1,500 do species[n]={name="Species "..n,uid="test.species"..n,temperature="NORMAL",humidity="NORMAL"} end
+      species[#species+1]={name="Spirit",uid="magicbees.speciesspirit"}
+      return species
+    end
+    devices[address].getBeeBreedingData=function()
+      phase="full breeding list"
+      local routes={}
+      for n=1,900 do routes[n]={allele1="Forest",allele2="Meadows",result="Species "..n,chance=10,
+        specialConditions={string.rep("Requires a special foundation. ",20)..n,
+          string.rep("Requires a special climate. ",20)..n}} end
+      return routes
+    end
+    devices[address].getBeeParents=function(name)
+      phase="parent recipes"
+      if name=="spirit" or name=="magicbees.speciesspirit" then
+        return {{allele1={name="Forest",uid="test.speciesforest"},allele2={name="Meadows",uid="test.speciesmeadows"},
+          chance=8,specialConditions={}}}
+      end
+      return {}
+    end
+  end
+end
 for _,address in ipairs({"if1","if2","if-scan"}) do
   devices[address]={getInterfaceConfiguration=function() end,setInterfaceConfiguration=function() return true end}
 end
 devices.me={getItemsInNetwork=function(filter)
+  phase="network discovery "..tostring(filter and filter.name)
+  if planning then return assert(require("lib.persistence").new(root.."/"..filter.name:match("bee(%a+)GE")..".lua",fs):readFile(root.."/"..filter.name:match("bee(%a+)GE")..".lua")) end
   if not largeNetwork then return {} end
   -- These items live in AE, not Lua RAM, until an unfiltered callback returns.
   local items={}
@@ -69,7 +108,7 @@ end
 local native=package.searchers[2]
 package.searchers[2]=function(name)
   if name:sub(1,4)~="lib." then return native(name) end
-  assert(not compact or not journalStarted,"worker module loaded after journal: "..name)
+  assert(not compact or not journalStarted or (planning and (name=="lib.mutations" or name=="lib.planner")),"worker module loaded after journal: "..name)
   local path=name:gsub("%.","/")..".lua"
   local f=assert(baseOpen(path,"rb")); local chunks={}
   while true do local chunk=f:read(1024); if not chunk then break end; chunks[#chunks+1]=chunk end
@@ -85,14 +124,26 @@ if not compact then
   return #reserved
 end
 local nbt=require("tests.fixtures.nbt_cache")(root.."/nbt-cache.bin")
+if planning then hostGC("collect") end -- release only fixture-construction garbage
 local messages=0
 print=function() messages=messages+1 end
-local _,why=require("lib.cli").main(root,profile and {command,"--profile"} or {command})
-assert(not why,why)
-assert(messages>0)
+local args={command}
+if planning and command=="breed" then args[#args+1]="spirit" end
+if profile then args[#args+1]="--profile" end
+local _,why=require("lib.cli").main(root,args)
+assert(not why,phase..": "..tostring(why))
+assert(planning or messages>0)
 local receipts=require("lib.storage.receipts")
 local store=require("lib.persistence").new(root.."/data/state.lua",fs,receipts.decoded,receipts.skipField,root.."/data/catalogue.lua")
 local restored=store:load({})
+if planning then
+  assert(not restored.pendingRequest and #restored.jobs>0,"Spirit plan was not committed")
+  assert(restored.jobs[#restored.jobs].species=="spirit")
+  if planning=="rebreed" then assert(restored.jobs[#restored.jobs].rebreeding,"saved conversion did not recover its mutation route") end
+  assert(not exists(root.."/data/worker.lock"))
+  hostGC("collect")
+  return #reserved,(hostGC("count"))
+end
 if largeNetwork then assert(restored.storageCounts.drone==219*64,"filtered scan lost bee variants/counts") end
 local entries=0; for _ in pairs(restored.aeCatalog) do entries=entries+1 end
 assert(entries==(command=="cancel" and 16 or 0),"split catalogue was not restored")

@@ -10,15 +10,8 @@ function M:index(items)
       self.labels[id]=s.name
     end
   end
-  if self.housing.listAllSpecies then for _,s in pairs(self.housing.listAllSpecies() or {}) do add(s) end end
-  -- Mutation parents include hive species omitted by listAllSpecies.
-  if self.housing.getBeeBreedingData then
-    for _,r in pairs(self.housing.getBeeBreedingData() or {}) do
-      for _,s in ipairs({r.allele1,r.allele2,r.result}) do
-        if type(s)=="string" and not self.names[U.lower(s)] then self.names[U.lower(s)]=U.lower(s) else add(s) end
-      end
-    end
-  end
+  -- Learn names from stock and queried parents. The global species and recipe
+  -- lists can exhaust 2 MiB before any target-specific planning can begin.
   for _,b in ipairs(items or {}) do local s=b.stack or b; if B.scanned(s) then
     add(s.individual.active.species); add(s.individual.inactive.species)
   end end
@@ -36,7 +29,9 @@ function M:parents(name)
     local q=U.copy(p)
     local function id(s)
       local resolved=self:resolve(type(s)=="table" and (s.uid or s.name) or s)
-      if type(s)=="table" and s.name then self.labels[resolved]=s.name end
+      if type(s)=="table" and s.name then
+        self.labels[resolved]=s.name; self.names[U.lower(s.name)]=resolved; self.names[resolved]=resolved
+      end
       return resolved
     end
     q.parents={id(p.allele1),id(p.allele2)}; r[#r+1]=q
@@ -44,5 +39,9 @@ function M:parents(name)
   table.sort(r,function(a,b) return table.concat(a.parents,"+")<table.concat(b.parents,"+") end)
   self.cache[name]=r; return r
 end
-function M:displayName(name) return B.displayName(self.labels[self:resolve(name)] or name) end
+function M:displayName(name)
+  local label=self.labels[self:resolve(name)]
+  if label then return B.displayName(label) end
+  return (B.displayName(name):gsub("(%s)(%l)",function(space,ch) return space..ch:upper() end))
+end
 return M

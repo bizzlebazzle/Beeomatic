@@ -86,8 +86,8 @@ function M:report()
   end
   local cache=self.stringCache
   if cache then out[#out+1]=string.format(
-    "Large-string cache: %d hits, %d misses; %d input bytes reused; %d/262144 bytes retained (accounted)",
-    cache.hits,cache.misses,cache.reused,cache.bytes) end
+    "Large-string cache: %d hits, %d misses; %d input bytes reused; %d/%d bytes retained (accounted)",
+    cache.hits,cache.misses,cache.reused,cache.bytes,cache.limit or 262144) end
   local nbt=self.nbtCache
   if nbt then
     local start=self.nbtBaseline or {hits=0,misses=0,evictions=0}
