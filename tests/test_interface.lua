@@ -3,6 +3,26 @@ local function select(w,s)
   return {network=true,endpoint={id="ME"},slot=B.identity(s),stack=U.copy(s)}
 end
 
+test("Interface deposits compact completed identities but preserve pending proof and returned ownership",function()
+  for _,owner in ipairs({"scanner","job"}) do
+    local w=ME.new(); w.immediate=true
+    local s=ME.bee("Spirit","drone",4); local identity=B.identity(s); local expected=U.copy(s)
+    w.inventories["scan-output"][1]=s
+    local pending={}
+    w.inv.save=function()
+      if w.state.pending then pending[#pending+1]=U.copy(w.state.pending) end
+    end
+    local receipt=w.storage:deposit({endpoint=w.c.scanner.output,slot=1,stack=s},w.c.scanner.storage,owner)
+    eq(#pending,2)
+    for _,tx in ipairs(pending) do eq(tx.identity,identity); eq(tx.stack,expected) end
+    eq(w.state.transactions[1].identity,nil); eq(w.state.transactions[1].stack,nil)
+    eq(w.state.pending,nil); eq(B.identity(receipt.stack),identity)
+    if owner=="scanner" then eq(receipt.slot,identity); eq(receipt.batchId,nil)
+    else eq(w.state.meBatches[receipt.batchId].identity,identity); eq(receipt.slot,receipt.batchId) end
+    eq(w.cells[identity].size,4)
+  end
+end)
+
 test("Interface stocking and consumed cleanup need only intent ready and cleared checkpoints",function()
   local w=ME.new(); local s=ME.bee("Spirit","drone",8); w:addStock(s)
   local saved={}; w.inv.save=function() saved[#saved+1]=U.copy(w.state) end

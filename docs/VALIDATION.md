@@ -8,7 +8,7 @@ flow still requires in-game acceptance.**
 
 ## Automated checks
 
-Current result: **353 tests, zero failures on each of Lua 5.2 and Lua 5.3**.
+Current result: **356 tests, zero failures on each of Lua 5.2 and Lua 5.3**.
 Run `python tests/run.py` in the development workspace. It syntax-checks every
 project Lua file, then runs the suite on both engines using local Lupa runtimes.
 Alternatively run `lua tests/run.lua` with a compatible runtime. These dependencies
@@ -24,7 +24,9 @@ plus the immediate `cancel` path.
 The same legacy fixture fails when full completed-receipt stacks are retained.
 Obsolete completed-receipt payloads are skipped without constructing their tables
 during decoding, while pending transfer/scanner
-records retain their recovery data. The resulting checkpoint is roughly 0.87 MB.
+records retain their recovery data. Completed Interface receipts also drop
+identities that are no longer used. The resulting checkpoint is roughly 22 KB
+after resume prunes the absent catalogue, or 262 KB when cancel retains it.
 
 Every checkpoint write in this fixture is also checked against a **4 MiB disk
 ceiling**, including the previous state, temporary checkpoint, two generations

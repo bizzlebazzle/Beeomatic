@@ -206,6 +206,32 @@ test("loading legacy receipts drops completed stacks while pending recovery rema
   end)
 end)
 
+test("loaded Interface receipt history drops unused identities and preserves pending recovery data",function()
+  local w=W.new(); w:build()
+  local receipts=require("lib.storage.receipts")
+  local managed={id="port",managed=true}; local chest={id="chest"}
+  local value={transactions={},pending={source=managed,dest=chest,identity=string.rep("nbt",1200),stack={tag="raw"}}}
+  for n=1,64 do
+    value.transactions[n]={id=n,owner="job",phase="COMMITTED",source=n%2==0 and managed or chest,
+      dest=n%2==0 and chest or managed,destSlot=1,count=1,identity=value.pending.identity..n}
+  end
+  value.transactions[65]={id=65,source=chest,dest=chest,identity="legacy-export"}
+  local before=U.size(value)
+  O.with(w,function(files,_,fs)
+    files["/state.lua"]="return "..U.encode(value)
+    local store=P.new("/state.lua",fs,receipts.decoded,receipts.skipField)
+    local loaded=store:load({})
+    eq(loaded.pending,value.pending)
+    for n=1,64 do
+      eq(loaded.transactions[n].identity,nil); eq(loaded.transactions[n].id,n)
+      eq(loaded.transactions[n].dest,value.transactions[n].dest); eq(loaded.transactions[n].count,1)
+    end
+    eq(loaded.transactions[65].identity,"legacy-export")
+    ok(U.size(loaded)<before/4,"completed identities must not dominate subsequent checkpoints")
+    store:save(loaded); eq(store:load({}),loaded)
+  end)
+end)
+
 test("checkpoint disk limit preserves primary and backup while streaming",function()
   local w=W.new(); w:addMachine("a"); w:build()
   O.with(w,function(files,_,fs)

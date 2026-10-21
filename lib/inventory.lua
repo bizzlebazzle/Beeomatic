@@ -16,6 +16,12 @@ function M:get(ep,slot)
 end
 -- One availability check for a group of fresh reads, never cached item contents.
 function M:readSlots(ep,slots)
+  if #slots>2 and self:proxy(ep).getAllStacks then
+    local result={}; local wanted={}
+    for _,slot in ipairs(slots) do wanted[slot]=true end
+    for _,item in ipairs(self:scan(ep)) do if wanted[item.slot] then result[item.slot]=item.stack end end
+    return result
+  end
   local p=self:proxy(ep); assert(p.getInventorySize(ep.side),"inventory unavailable: "..ep.id)
   local result={}
   for _,slot in ipairs(slots) do result[slot]=p.getStackInSlot(ep.side,slot) end
@@ -84,8 +90,9 @@ function M:move(item,dest,slot,count,owner,receipt)
   assert(not dst or (B.identity(dst)==B.identity(src) and dst.size+count<=(dst.maxSize or 1)),
     "destination is incompatible/full: "..dest.id..":"..slot)
   assert(count>0 and count<=src.size,"invalid transfer amount")
+  local identity=B.identity(src)
   local tx={source=U.copy(item.endpoint),slot=item.slot,dest=U.copy(dest),destSlot=slot,
-    identity=B.identity(src),before=src.size,destBefore=dst and dst.size or 0,count=count,owner=owner,phase="INTENT",
+    identity=identity,before=src.size,destBefore=dst and dst.size or 0,count=count,owner=owner,phase="INTENT",
     stack=(item.endpoint.managed or dest.managed) and U.copy(src) or nil,
     batchId=item.batchId,scanning=item.scanning,transform=U.copy(item.transform)}
   self.state.transferSequence=(self.state.transferSequence or 0)+1; tx.id=self.state.transferSequence
@@ -112,7 +119,7 @@ function M:move(item,dest,slot,count,owner,receipt)
   if dest.managed then
     local stack=U.copy(src); stack.size=count
     local id=self.state.meBatches["receipt/"..tx.id] and ("receipt/"..tx.id) or nil
-    return {network=true,endpoint={id="ME"},slot=id or tx.identity,batchId=id,root=id,owner=owner,stack=stack}
+    return {network=true,endpoint={id="ME"},slot=id or identity,batchId=id,root=id,owner=owner,stack=stack}
   end
   return {endpoint=dest,slot=slot,stack=got}
 end

@@ -7,9 +7,10 @@ function M.skipField(key,field,parent)
   return parent=="transactions" and type(field)=="number" and (key=="stack" or key=="transform")
 end
 function M.compact(tx)
-  -- Completed receipt consumers use identity/count/endpoints, never the full
-  -- bee genome or the already-applied ownership transform. Pending intent keeps both.
+  -- Collection recovery uses receipt IDs/endpoints. Only legacy export recovery
+  -- needs the identity after commit; Interface ownership is already in meBatches.
   tx.stack=nil; tx.transform=nil
+  if (tx.source and tx.source.managed) or (tx.dest and tx.dest.managed) then tx.identity=nil end
 end
 function M.decoded(value,field,parent)
   if parent=="transactions" and type(field)=="number" then

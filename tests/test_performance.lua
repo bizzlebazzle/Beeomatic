@@ -12,9 +12,9 @@ test("component capability checks are reused but disconnected and replacement co
   proxy={read=function() end}; c:proxy("device",{"read"}); eq(calls,2)
 end)
 
-test("grouped slot reads validate once and never reuse item contents",function()
+test("fallback grouped slot reads validate once and never reuse item contents",function()
   local w=W.new(); w:addMachine("a"); w:build()
-  local p=w.proxies.tp1; local size=p.getInventorySize; local sizes,reads=0,0
+  local p=w.proxies.tp1; p.getAllStacks=nil; local size=p.getInventorySize; local sizes,reads=0,0
   p.getInventorySize=function(side) sizes=sizes+1; return size(side) end
   local read=p.getStackInSlot
   p.getStackInSlot=function(side,slot) reads=reads+1; return read(side,slot) end
@@ -25,6 +25,22 @@ test("grouped slot reads validate once and never reuse item contents",function()
   w.inventories.hub[3].size=2; eq(w.inv:readSlots(ep,{3})[3].size,2)
   p.getInventorySize=function() return nil end
   raises(function() w.inv:readSlots(ep,{3}) end,"inventory unavailable")
+end)
+
+test("grouped output reads use one fresh bulk snapshot with exact slot positions",function()
+  local w=W.new(); w:addMachine("a"); w:build(); local ep=w.c.storage.endpoints[1]
+  local p=w.proxies.tp1; local bulk=p.getAllStacks; local calls=0
+  p.getAllStacks=function(side) calls=calls+1; return bulk(side) end
+  p.getInventorySize=function() error("bulk count supplies inventory size") end
+  p.getStackInSlot=function() error("must not reread individual slots") end
+  w.inventories.hub[2]=W.bee("Forest","drone",4)
+  w.inventories.hub[5]=W.bee("Spirit","princess")
+  w.inventories.hub[9]=W.bee("Forest","princess")
+  local slots=w.inv:readSlots(ep,{8,5,1,2})
+  eq(calls,1); eq(slots[2].size,4); eq(B.kind(slots[5]),"princess")
+  eq(slots[1],nil); eq(slots[8],nil); eq(slots[9],nil)
+  w.inventories.hub[2]=nil
+  eq(w.inv:readSlots(ep,{1,2,5})[2],nil); eq(calls,2)
 end)
 
 test("transfer saves reservation with intent and keeps movement and receipt checkpoints",function()

@@ -4,6 +4,32 @@ This audit covers selection, ME requests, transposer movement, collection,
 scanner preparation/returns and recovery. Operation counts below come from Lua
 mocks; the server profile discussed separately below measures in-game time.
 
+## Smaller receipt history and bulk output reads (21 October 2026)
+
+The next in-game benchmark took 257.3 seconds, down from 565.3 seconds (54%).
+Its 99 checkpoints took 175.6 seconds; serialization alone still consumed 139.9
+seconds excluding children. The state was 358,032 bytes. Per-slot reads and
+inventory-size calls on the busiest transposer added another 28.35 seconds.
+
+Completed Interface receipts now discard their full NBT identity, along with the
+already-discarded stack and ownership transform. Ownership has already been
+applied to active ME batches; collection recovery uses receipt IDs and endpoints.
+Pending movement proof, active batches, requests and catalogue identities stay
+exact. Legacy export receipts retain the identity used by export reconciliation.
+The loader also compacts old Interface history, so the next save benefits without
+waiting for all 64 retained receipts to rotate out.
+
+The same 64-receipt/16-catalogue synthetic fixture below shrinks from 359,852 to
+102,421 bytes (72%), reducing writes per checkpoint from 91 to 26. Local Lua 5.2
+CPU time was about 22 ms before versus 5 ms after; in-game timing remains to be
+measured. This change does not introduce a new persistence format or cache.
+
+Reads of three or more specified slots now use one fresh bulk inventory snapshot
+when supported. Only requested slots are returned, including correct gaps; old
+components keep the per-slot fallback. This reduces housing-output polling from
+one size call plus a call per output slot to one bulk callback. Stock is never
+reused across observations.
+
 ## Single-pass saves (21 October 2026)
 
 The supplied automatic benchmark took 565.3 seconds, including 507.55 seconds
