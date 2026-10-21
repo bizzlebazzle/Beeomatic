@@ -1,7 +1,15 @@
 local U=require("lib.util")
 local M={}; M.__index=M
-function M.new(path,fs,onTable,skipField)
-  return setmetatable({path=path,fs=fs or require("filesystem"),onTable=onTable,skipField=skipField,cache=U.stringCache()},M)
+local function index(value,skip)
+  local copy={}; for key,v in pairs(value) do if key~=skip then copy[key]=v end end; return copy
+end
+function M.new(path,fs,onTable,skipField,cataloguePath)
+  local self=setmetatable({path=path,fs=fs or require("filesystem"),onTable=onTable,skipField=skipField,cache=U.stringCache()},M)
+  if cataloguePath then
+    self.catalogue=M.new(cataloguePath,self.fs)
+    self.catalogue.cache=self.cache -- one bounded encoding cache for both files
+  end
+  return self
 end
 function M:readFile(path)
   local read=require("lib.state_codec").read
@@ -17,18 +25,38 @@ end
 function M:load(default)
   -- Encoded save pieces are disposable; release them before parsing another state.
   self.cache.values={}; self.cache.queue={}; self.cache.bytes=0
+  local function loaded(value)
+    self.savedCatalogue=nil
+    if self.catalogue and value.aeCatalog==nil then
+      value.aeCatalog=self.catalogue:load({})
+      value.aeCatalog.recoveredBackup=nil -- the catalogue contains genomes only
+      self.savedCatalogue=index(value.aeCatalog)
+    end -- inline legacy catalogues migrate at the next successful save
+    return value
+  end
   local v,primaryError=self:readFile(self.path)
-  if v then self.primaryVerified=true; return v end
+  if v then self.primaryVerified=true; return loaded(v) end
   U.collect() -- release a partial parse before trying the backup when supported
   local backupError
   v,backupError=self:readFile(self.path..".bak")
-  if v then self.primaryVerified=false; v.recoveredBackup=true; return v end
+  if v then self.primaryVerified=false; v.recoveredBackup=true; return loaded(v) end
   assert(not self.fs.exists(self.path) and not self.fs.exists(self.path..".bak"),
     "Cannot load saved data; files preserved.\n"..self.path..": "..tostring(primaryError)..
     "\n"..self.path..".bak: "..tostring(backupError))
-  return U.copy(default or {})
+  return loaded(U.copy(default or {}))
 end
 function M:save(value)
+  if self.catalogue then
+    local catalogue=value.aeCatalog or {}
+    if not self.savedCatalogue or not U.equal(catalogue,self.savedCatalogue) then
+      self.catalogue.wait=self.wait; self.catalogue.profile=self.profile
+      self.catalogue:save(catalogue) -- durable before state can reference new genes
+      -- Writers replace complete genome entries. Retain just their index, not
+      -- another copy of all gene tables or a serialized catalogue in RAM.
+      self.savedCatalogue=index(catalogue)
+    end
+    value=index(value,"aeCatalog")
+  end
   local tmp=self.path..".tmp"
   local computer=package.loaded.computer
   -- Buffered writes need not yield, even outside the foreground worker.

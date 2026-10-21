@@ -76,6 +76,12 @@ print=function() messages=messages+1 end
 local _,why=require("lib.cli").main(root,profile and {command,"--profile"} or {command})
 assert(not why,why)
 assert(messages>0)
+local receipts=require("lib.storage.receipts")
+local store=require("lib.persistence").new(root.."/data/state.lua",fs,receipts.decoded,receipts.skipField,root.."/data/catalogue.lua")
+local restored=store:load({})
+local entries=0; for _ in pairs(restored.aeCatalog) do entries=entries+1 end
+assert(entries==(command=="cancel" and 16 or 0),"split catalogue was not restored")
+store:save(restored) -- exercise a later checkpoint and the compact state's backup
 for _,name in ipairs({"lib.planner","lib.mutations","lib.setup","lib.ui.diagnostics"}) do
   assert(not package.loaded[name],"resume eagerly loaded "..name)
 end

@@ -55,12 +55,15 @@ def check(runtime, root, version):
             limited.globals().disk_used = disk_used
             _, live_kib = limited.execute(source, path.as_posix(), True, mode, command, profile)
             current = (path / "data/state.lua").stat().st_size
+            catalogue_path = path / "data/catalogue.lua"
+            catalogue = catalogue_path.stat().st_size if catalogue_path.exists() else 0
             # Cancel retains the known-genome catalogue without querying broken
             # hardware; resume can prune entries proven absent from live stock.
             ratio = 0.5 if command == "resume" else 0.65
-            assert current < len(legacy) * ratio, (current, len(legacy))
+            assert current + catalogue < len(legacy) * ratio, (current, catalogue, len(legacy))
             assert peak_disk < 4 * 1024 * 1024, peak_disk
             print(f"Lua {version}: full ME {command}{' --profile' if profile else ''} with collectgarbage {mode} fits 2 MiB "
                   f"with 384 KiB host reserve; live {live_kib:.0f} KiB; "
                   f"checkpoint {len(legacy):,} -> {current:,} bytes; "
+                  f"catalogue {catalogue:,} bytes; "
                   f"disk fixture peak {peak_disk:,}/4,194,304 bytes", flush=True)

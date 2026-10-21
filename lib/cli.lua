@@ -59,15 +59,17 @@ local function main(root,args,profile)
   end
   local cp=P.new(data.."/config.lua",fs)
   local receipts=require("lib.storage.receipts")
-  local sp=P.new(data.."/state.lua",fs,receipts.decoded,receipts.skipField)
+  local sp=P.new(data.."/state.lua",fs,receipts.decoded,receipts.skipField,data.."/catalogue.lua")
   local ctl=P.new(data.."/control.lua",fs); local lock=data.."/worker.lock"
   if profile then
     assert(not fs.exists(lock) or f.recover,"Stop the running worker with Ctrl+C before enabling profiling.")
     profile.statePath=data.."/state.lua"
+    profile.cataloguePath=data.."/catalogue.lua"
     profile.stringCache=sp.cache
-    for _,store in ipairs({cp,sp,ctl}) do store.profile=profile end
+    for _,store in ipairs({cp,sp,sp.catalogue,ctl}) do store.profile=profile end
     profile:wrap(cp,"load","config.load"); profile:wrap(cp,"save","checkpoint.config")
     profile:wrap(sp,"load","state.load"); profile:wrap(sp,"save","checkpoint.state")
+    profile:wrap(sp.catalogue,"load","catalogue.load"); profile:wrap(sp.catalogue,"save","checkpoint.catalogue")
     profile:wrap(ctl,"load","control.load"); profile:wrap(ctl,"save","checkpoint.control")
   end
   if fs.exists(lock) and (cmd=="pause" or cmd=="cancel" or (cmd=="resume" and not f.recover)) then

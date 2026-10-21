@@ -8,7 +8,7 @@ flow still requires in-game acceptance.**
 
 ## Automated checks
 
-Current result: **368 tests, zero failures on each of Lua 5.2 and Lua 5.3**.
+Current result: **371 tests, zero failures on each of Lua 5.2 and Lua 5.3**.
 Run `python tests/run.py` in the development workspace. It syntax-checks every
 project Lua file, then runs the suite on both engines using local Lupa runtimes.
 Alternatively run `lua tests/run.lua` with a compatible runtime. These dependencies
@@ -26,7 +26,9 @@ Obsolete completed-receipt payloads are skipped without constructing their table
 during decoding, while pending transfer/scanner
 records retain their recovery data. Completed Interface receipts also drop
 identities that are no longer used. The resulting checkpoint is roughly 22 KB
-after resume prunes the absent catalogue, or 262 KB when cancel retains it.
+after resume prunes the absent catalogue, or 21 KB plus a 241 KB catalogue when
+cancel retains it. The fixture reloads both files and saves again under the same
+limits, checking that catalogue entries survive the split.
 
 Every checkpoint write in this fixture is also checked against a **4 MiB disk
 ceiling**, including the previous state, temporary checkpoint, two generations
@@ -43,6 +45,12 @@ the cache's 256 KiB accounting budget. Loading releases the encoded pieces befor
 parsing; the fixture also disables manual collection. Unit checks cover eviction,
 exact binary output, changed identities/tables, persistent-store reuse, cache
 release on load with counters preserved, and profile counters.
+
+Catalogue persistence checks cover inline migration, unchanged replacement
+genomes, additions, changed genes, pruning, restart without another catalogue
+write, backup recovery, and write failure before either file is replaced. The
+CLI benchmark checks that the separate catalogue exists and is profiled while
+the state omits its inline copy. Both files share one bounded encoding cache.
 
 Interface coverage includes:
 

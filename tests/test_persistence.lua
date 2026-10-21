@@ -1,6 +1,84 @@
 local U=require("lib.util"); local P=require("lib.persistence")
 local W=require("tests.mocks.world"); local O=require("tests.mocks.openos")
 
+test("split catalogue migrates legacy saves and writes only changed genomes",function()
+  local w=W.new(); w:build()
+  O.with(w,function(files,_,fs)
+    local path,cat="/state.lua","/catalogue.lua"
+    local value={aeCatalog={old=W.bee("Forest","drone").individual},jobs={{cycles=1}}}
+    files[path]="return "..U.encode(value); files[cat]="return {stale=true}"
+    local store=P.new(path,fs,nil,nil,cat); local loaded=store:load({})
+    eq(loaded,value); eq(files[cat],"return {stale=true}") -- no migration writes during loading
+    local open=io.open; local writes=0
+    io.open=function(name,mode)
+      if name==cat..".tmp" and mode=="wb" then writes=writes+1 end
+      return open(name,mode)
+    end
+    store:save(loaded); eq(writes,1); eq(store.cache,store.catalogue.cache)
+    eq(assert(load(files[path]))().aeCatalog,nil); eq(assert(load(files[cat]))(),value.aeCatalog)
+    eq(loaded,value) -- serialization leaves the live catalogue attached
+    for n=2,20 do loaded.jobs[1].cycles=n; store:save(loaded) end
+    loaded.aeCatalog.old=U.copy(loaded.aeCatalog.old); store:save(loaded)
+    eq(writes,1,"unchanged replacement genomes must not rewrite the catalogue")
+    loaded.aeCatalog.new=W.bee("Spirit","drone").individual; store:save(loaded); eq(writes,2)
+    loaded.aeCatalog.new=U.copy(loaded.aeCatalog.new)
+    loaded.aeCatalog.new.active.fertility=4; store:save(loaded); eq(writes,3)
+    loaded.aeCatalog.old=nil; store:save(loaded); eq(writes,4)
+    local reopened=P.new(path,fs,nil,nil,cat); local restored=reopened:load({})
+    eq(restored,loaded); reopened:save(restored); eq(writes,4)
+    io.open=open
+  end)
+end)
+
+test("split catalogue failures preserve recovery state and can retry without dropping live genes",function()
+  for _,failure in ipairs({"catalogue","state"}) do
+    local w=W.new(); w:build()
+    O.with(w,function(files,_,fs)
+      local path,cat="/state.lua","/catalogue.lua"
+      local store=P.new(path,fs,nil,nil,cat)
+      local value={aeCatalog={old={ident="forest"}},pending={identity="old",count=1}}
+      store:save(value)
+      local primary,backup=files[path],files[path..".bak"]
+      value.aeCatalog.new={ident="spirit"}; value.pending.identity="new"
+      local open=io.open
+      io.open=function(name,mode)
+        local f,why=open(name,mode)
+        if f and name==(failure=="catalogue" and cat or path)..".tmp" and mode=="wb" then
+          f.flush=function() return nil,"disk failure" end
+        end
+        return f,why
+      end
+      raises(function() store:save(value) end,"disk failure")
+      io.open=open
+      eq(files[path],primary); eq(files[path..".bak"],backup)
+      eq(value.aeCatalog.new.ident,"spirit")
+      local restored=P.new(path,fs,nil,nil,cat):load({})
+      eq(restored.pending,{identity="old",count=1})
+      if failure=="state" then eq(restored.aeCatalog.new.ident,"spirit") end
+      store:save(value); eq(P.new(path,fs,nil,nil,cat):load({}),value)
+    end)
+  end
+end)
+
+test("split catalogue restores backups and keeps inline legacy fallback authoritative",function()
+  local w=W.new(); w:build()
+  O.with(w,function(files,_,fs)
+    local path,cat="/state.lua","/catalogue.lua"
+    files[path]="return {jobs={}}"; files[cat]="broken"
+    files[cat..".bak"]='return {forest={ident="forest"}}'
+    local restored=P.new(path,fs,nil,nil,cat):load({})
+    eq(restored.aeCatalog.forest.ident,"forest")
+    -- A recovered catalogue's marker belongs to the file loader, not the index.
+    eq(restored.aeCatalog.recoveredBackup,nil)
+    files[path]="broken"; files[path..".bak"]='return {aeCatalog={legacy={ident="old"}}}'
+    local store=P.new(path,fs,nil,nil,cat); restored=store:load({})
+    eq(restored.aeCatalog,{legacy={ident="old"}}); ok(restored.recoveredBackup)
+    store:save(restored); eq(assert(load(files[cat]))(),restored.aeCatalog)
+    files[cat]=nil; files[cat..".bak"]=nil
+    eq(P.new(path,fs,nil,nil,cat):load({}).aeCatalog,{})
+  end)
+end)
+
 test("checkpoint yields during streaming writes under a simulated watchdog",function()
   for _,free in ipairs({1360217,524288}) do
     local w=W.new(); w:build()

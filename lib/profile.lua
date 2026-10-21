@@ -81,6 +81,9 @@ function M:report()
   if self.statePath and self.fs.size then
     local ok,n=pcall(self.fs.size,self.statePath); if ok and n then out[#out+1]="State file bytes: "..n end
   end
+  if self.cataloguePath and self.fs.size then
+    local ok,n=pcall(self.fs.size,self.cataloguePath); if ok and n then out[#out+1]="Catalogue file bytes: "..n end
+  end
   local cache=self.stringCache
   if cache then out[#out+1]=string.format(
     "Large-string cache: %d hits, %d misses; %d input bytes reused; %d/262144 bytes retained (accounted)",

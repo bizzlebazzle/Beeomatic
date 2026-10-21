@@ -3,6 +3,8 @@ local W=require("tests.mocks.world"); local O=require("tests.mocks.openos")
 
 test("profile reports encoding cache reuse without recording cached contents",function()
   local p=Profile.new("/profile.log",function() return 0 end,{})
+  p.statePath="/state.lua"; p.cataloguePath="/catalogue.lua"
+  p.fs.size=function(path) return path==p.statePath and 41000 or 218000 end
   local cache=U.stringCache(); p.stringCache=cache
   local value={tag=string.rep("private-nbt",200)}
   for _=1,2 do U.write(value,function() end,cache) end
@@ -11,6 +13,8 @@ test("profile reports encoding cache reuse without recording cached contents",fu
   ok(report:find("Large-string cache: "..cache.hits.." hits, "..cache.misses.." misses",1,true))
   ok(report:find(cache.reused.." input bytes reused",1,true))
   ok(report:find(cache.bytes.."/262144 bytes retained",1,true))
+  ok(report:find("State file bytes: 41000",1,true))
+  ok(report:find("Catalogue file bytes: 218000",1,true))
   ok(not report:find("private-nbt",1,true))
 end)
 

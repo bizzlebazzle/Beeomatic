@@ -4,6 +4,43 @@ This audit covers selection, ME requests, transposer movement, collection,
 scanner preparation/returns and recovery. Operation counts below come from Lua
 mocks; the server profile discussed separately below measures in-game time.
 
+## Save the catalogue only when it changes (21 October 2026)
+
+The sixth in-game profile took 86.8 seconds, down from 126.4 seconds. Encoding
+cache hits reached 98.8%. Serialization excluding nested operations fell to
+0.95 seconds, but the 70 checkpoints still took 34 seconds, including 18.05
+seconds in writes. File replacement adds further time within those checkpoints.
+
+The CLI now stores known ME genomes in `data/catalogue.lua`, outside the
+frequently written `data/state.lua`. The catalogue is written before state when
+entries are added, replaced with changed genes, or pruned. Unchanged replacement
+entries do not trigger writes. Existing genome writers replace entire entries;
+the change detector retains a shallow index of these entries, sharing immutable
+gene tables and identity strings rather than copying the catalogue in memory.
+State serialization uses a shallow view without `aeCatalog`; the live state is
+never detached from its catalogue, including when a write fails or yields.
+
+Loading still accepts an inline legacy catalogue. The next checkpoint saves it
+separately before replacing state; inline data wins if recovering an older
+backup. Each file uses the existing temporary-write/backup replacement path.
+The separate file contains knowledge of genes, not ownership or movement counts.
+Pending transfers, scanner progress and ownership remain in the state checkpoint.
+Missing catalogue files start an empty index that normal stock analysis can
+rebuild; unreadable files retain the existing backup/error behavior.
+
+Against the supplied 259,964-byte save, the repeated state file is 41,633 bytes
+and the separate catalogue is 218,325 bytes on Lua 5.3. A local 70-save replay
+wrote the catalogue once and 3,132,626 bytes in total, about 83% less than writing
+the full state 70 times. Migration, repeated writes and reload passed on both
+Lua 5.2 and 5.3 in 2 MiB VMs with 384 KiB host reserve and manual collection
+disabled. This byte reduction is not a prediction of elapsed in-game time.
+
+The profile adds `checkpoint.catalogue`, `catalogue.load` and `Catalogue file
+bytes` alongside the state measurements. Catalogue writes are nested inside
+state checkpoints, so do not add their totals together. Both files share the
+existing 256 KiB encoding cache. NBT caching and direct scanner routing remain
+unchanged; rerun `Beeomatic benchmark` to measure this update.
+
 ## Cache sized against the saved catalogue (21 October 2026)
 
 The fifth in-game benchmark took 126.4 seconds. Its 74 checkpoints consumed
