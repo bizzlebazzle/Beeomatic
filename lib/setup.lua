@@ -454,7 +454,11 @@ function M.new(config,components,inv,save,read,out)
     self.save()
   end
   function w:run(reconfigure)
-    if reconfigure then self.c.setupStep=1; self.save() end
+    if reconfigure then self.c.setupStep=1; self.save()
+    elseif C.scannerSetupRequired(self.c) and (self.c.setupStep or 1)>3 then
+      self.c.setupStep=3; self.save()
+      self.out("Scanner layout needs updating; resuming at scanner setup.")
+    end
     self.out("Beeomatic setup. Progress is saved; type back to revisit the previous section.")
     self.out("For detailed hardware diagnostics, use Beeomatic doctor --probe.")
     while (self.c.setupStep or 1)<=4 do

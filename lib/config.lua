@@ -19,6 +19,10 @@ function M.defaults()
     storage={kind="me_interface",endpoints={},databaseSlots=9,timeout=60},scanner={enabled=false},templates={enabled=false},
     }
 end
+function M.scannerSetupRequired(c)
+  return c.storage.kind=="me_interface" and
+    (c.scanner.mode~="buffered" or not c.scanner.input or not c.scanner.output)
+end
 function M.validate(c)
   assert(c.version==1,"unsupported configuration version")
   assert(c.storage and (c.storage.kind=="chest" or c.storage.kind=="ae2" or c.storage.kind=="me_interface"),"unsupported storage backend")
@@ -28,7 +32,7 @@ function M.validate(c)
   if c.storage.kind=="me_interface" then
     assert(c.storage.address and c.storage.database,"configure ME reader and database")
     assert(c.scanner.enabled and c.scanner.storage and c.scanner.storage.managed,"register the shared scanner Interface")
-    assert(c.scanner.mode=="buffered" and c.scanner.input and c.scanner.output,
+    assert(not M.scannerSetupRequired(c),
       "scanner layout retired: run setup for input/output chests after resolving old scanner work")
     local ports,addresses,views={},{},{}
     for _,ep in ipairs(c.storage.endpoints) do

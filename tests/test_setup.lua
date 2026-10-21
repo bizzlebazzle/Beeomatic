@@ -456,3 +456,35 @@ test("keeping the climate preserves existing mutation confirmations",function()
   wizard:editAlveary(a)
   ok(a.confirmed.foundation)
 end)
+
+test("completed retired scanner setup resumes hardware selection without repeating storage or alvearies",function()
+  for _,mode in ipairs({"external","direct"}) do
+    local w=require("tests.mocks.me").new(); w.c.setupStep=5
+    for _,component in ipairs(w.components:discover()) do
+      w.c.componentNames[component.address]={name=component.address,kind=component.kind}
+    end
+    local before=U.copy(w.c.alvearies); local port=w.c.scanner.storage
+    w.c.scanner.mode=mode=="external" and mode or nil; w.c.scanner.output=nil
+    local wizard,output,snapshots=picker(w,{"1","1","1","2","3","no"})
+    wizard.storage=function() error("storage is already registered") end
+    wizard.addAlveary=function() error("alvearies are already registered") end
+    wizard:run(false)
+    eq(snapshots[1].setupStep,3); eq(w.c.setupStep,5); eq(w.c.scanner.mode,"buffered")
+    eq(w.c.scanner.output.side,2); eq(w.c.scanner.storage,port); eq(w.c.alvearies,before)
+    require("lib.config").validate(w.c); eq(w.moves,0)
+  end
+end)
+
+test("retired scanner setup saves its rewound checkpoint before an interruption",function()
+  local w=require("tests.mocks.me").new(); w.c.scanner.mode="external"; w.c.scanner.output=nil
+  w.c.setupStep=4; local wizard,_,snapshots=picker(w,{})
+  raises(function() wizard:run(false) end,"Setup interrupted")
+  eq(w.c.setupStep,3); eq(snapshots[1].setupStep,3); eq(w.moves,0)
+end)
+
+test("completed buffered setup retains its completed checkpoint",function()
+  local w=require("tests.mocks.me").new(); w.c.setupStep=5
+  local wizard=picker(w,{})
+  wizard.scanner=function() error("scanner already configured") end
+  wizard:run(false); eq(w.c.setupStep,5); eq(w.moves,0)
+end)

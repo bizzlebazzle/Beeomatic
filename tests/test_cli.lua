@@ -887,3 +887,39 @@ test("cancel preserves managed slot evidence while a transfer is unresolved",fun
     eq(cleared,0); eq(state.meRequests.slot.phase,"RETURNING")
   end)
 end)
+
+test("ordinary setup refuses retired scanner migration with unresolved work",function()
+  local cases={
+    {pending={phase="INTENT"}}, {pendingExternal={kind="ME_EXPORT"}}, {scan={phase="PROCESSING"}},
+    {meRequests={scanner={phase="READY"}}}, {meBatches={owned={count=8}}},
+    {jobs={{id="job",state="RUNNING",machine="a"}}}
+  }
+  for _,state in ipairs(cases) do
+    local w=require("tests.mocks.me").new(); w.c.setupStep=5; w.c.scanner.mode="external"; w.c.scanner.output=nil
+    O.with(w,function(files)
+      local config="return "..U.encode(w.c); local saved="return "..U.encode(state)
+      files["/project/data/config.lua"]=config; files["/project/data/state.lua"]=saved
+      raises(function() require("lib.cli").main("/project",{"setup"}) end,
+        state.jobs and "finish or cancel" or "reconcile outstanding")
+      eq(files["/project/data/config.lua"],config); eq(files["/project/data/state.lua"],saved); eq(w.moves,0)
+    end)
+  end
+end)
+
+test("public setup replaces a completed retired scanner configuration",function()
+  local w=require("tests.mocks.me").new(); w.c.setupStep=5; w.c.scanner.mode="external"; w.c.scanner.output=nil
+  for _,component in ipairs(w.components:discover()) do
+    w.c.componentNames[component.address]={name=component.address,kind=component.kind}
+  end
+  O.with(w,function(files,out)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    local read=io.read; local answers={"1","1","1","2","3","no"}; local n=0
+    io.read=function() n=n+1; return answers[n] end
+    local success,err=pcall(function() require("lib.cli").main("/project",{"setup"}) end)
+    io.read=read; ok(success,err)
+    local c=assert(load(files["/project/data/config.lua"],"=config","t",{}))()
+    eq(c.scanner.mode,"buffered"); eq(c.scanner.output.side,2); eq(c.setupStep,5)
+    eq(c.alvearies,w.c.alvearies); require("lib.config").validate(c); eq(w.moves,0)
+    ok(table.concat(out,"\n"):find("Configuration saved",1,true))
+  end)
+end)

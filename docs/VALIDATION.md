@@ -8,7 +8,7 @@ flow still requires in-game acceptance.**
 
 ## Automated checks
 
-Current result: **348 tests, zero failures on each of Lua 5.2 and Lua 5.3**.
+Current result: **353 tests, zero failures on each of Lua 5.2 and Lua 5.3**.
 Run `python tests/run.py` in the development workspace. It syntax-checks every
 project Lua file, then runs the suite on both engines using local Lupa runtimes.
 Alternatively run `lua tests/run.lua` with a compatible runtime. These dependencies
@@ -63,6 +63,10 @@ Interface coverage includes:
   restart before output transfer and after committed return. Unrelated changes
   in ME cannot satisfy or contaminate chest returns. Retired layouts are rejected.
   The public CLI completes startup and breeding through this topology.
+- Plain `setup` resumes completed retired configurations at scanner registration,
+  preserving alvearies and the saved checkpoint on interruption. Current layouts
+  keep their completed checkpoint. Migration refuses unresolved movements, scanner
+  batches, Interface requests, owned batches and active jobs before changing config.
 - Automatic native alveary input/output maps and retryable placement checks:
   empty slots, wrong caste and mismatched housing adapters. Unanalysed test bees
   are accepted for placement without weakening the runtime analysis gate.

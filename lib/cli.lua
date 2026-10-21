@@ -348,7 +348,7 @@ local function main(root,args,profile)
   end
   if cmd=="setup" or (cmd=="alveary" and sub=="add") then
     unlocked()
-    if cmd=="setup" and f.reconfigure then
+    if cmd=="setup" and (f.reconfigure or Config.scannerSetupRequired(c)) then
       assert(not state.pending and not state.pendingExternal and not state.scan and not next(state.meRequests or {}) and not next(state.meBatches or {}),
         "reconcile outstanding movements/scanning before reconfiguring storage")
       for _,j in ipairs(state.jobs) do
