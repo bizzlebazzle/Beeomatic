@@ -44,7 +44,7 @@ test("benchmark automatically profiles exactly one stable cycle and scans both o
         for slot=1,inventory.size do eq(inventory[slot],nil) end
       end
       local report=assert(files["/project/data/profile.log"])
-      for _,label in ipairs({"Command: benchmark","Outcome: returned","scanner.step","inventory.move","transferItem"}) do
+      for _,label in ipairs({"Command: benchmark","Outcome: returned","scanner.step","inventory.move","transferItem","Large-string cache:"}) do
         ok(report:find(label,1,true),label)
       end
       eq(files["/project/data/worker.lock"],nil); eq(files["/project/data/crash.log"],nil)

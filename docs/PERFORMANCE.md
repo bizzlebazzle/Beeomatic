@@ -4,6 +4,35 @@ This audit covers selection, ME requests, transposer movement, collection,
 scanner preparation/returns and recovery. Operation counts below come from Lua
 mocks; the server profile discussed separately below measures in-game time.
 
+## Bounded string-encoding cache (21 October 2026)
+
+The fourth in-game benchmark took 127.65 seconds. Its 70 checkpoints consumed
+78.4 seconds, including 58.65 seconds of serialization excluding children; disk
+writes took only 1.5 seconds. The state was 260,009 bytes.
+
+Each persistence store now retains escaped pieces of long strings between saves.
+Pieces are at most 512 source bytes, so similar NBT identities can share unchanged
+parts. The cache evicts its oldest pieces within a 64 KiB accounting budget and
+64-entry limit. Accounting includes raw and escaped bytes plus an entry overhead
+allowance; actual VM memory is covered by the allocator tests. Small strings keep
+their direct path. Mutable tables are always traversed again, and changing a
+string changes its cache key. Save bytes, disk format, watchdog yields and transfer
+checkpoints are unchanged. The cache lasts only for that store's invocation.
+
+`python tests/benchmark_serialization.py` compares 70 cached/uncached serializations
+on Lua 5.2 and 5.3. The 247,218-byte shared-NBT catalogue fixture has 98% of its
+string input bytes in long strings. One local sample reduced bytes passed through
+escaping by 61-78%, and CPU time by 48-70% (about 0.6 seconds to 0.18-0.32 seconds).
+The deliberately unrepeated 250,962-byte text fixture has no cache hits and was
+6-8% slower due to cache bookkeeping. These synthetic workloads do not establish
+an in-game speedup; entry order and real genotype reuse affect the result.
+
+The profile header now includes `Large-string cache`: piece hits, misses, source
+bytes whose escaping was reused, and accounted retained bytes. Those counters
+describe the state writer's long-string pieces, not small fields or NBT decoding.
+Rerun `Beeomatic benchmark` and share its profile to measure real reuse and timing.
+The NBT canonicalization cache and P2P routing are unchanged.
+
 ## Fewer checkpoints and repeated observations (21 October 2026)
 
 The third in-game benchmark took 162 seconds. Its 74 checkpoints consumed

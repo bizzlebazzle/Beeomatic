@@ -18,8 +18,8 @@ test("checkpoint yields during streaming writes under a simulated watchdog",func
         ok(seconds>0); yields[phase]=(yields[phase] or 0)+1
         coroutine.yield("watchdog"); lastYield=now
       end
-      U.write=function(value,sink)
-        return write(value,function(chunk) work(); sink(chunk) end)
+      U.write=function(value,sink,cache)
+        return write(value,function(chunk) work(); sink(chunk) end,cache)
       end
       io.open=function(path,mode)
         local f,why=open(path,mode)
@@ -41,6 +41,54 @@ test("checkpoint yields during streaming writes under a simulated watchdog",func
       eq(P.new("/state.lua",fs):load({}),data)
     end)
   end
+end)
+
+test("cached string pieces preserve binary bytes and reflect table and identity changes",function()
+  local bytes={}; for i=0,255 do bytes[#bytes+1]=string.char(i) end
+  local binary=table.concat(bytes):rep(12)
+  local value={[binary]={tag=binary,cycles=1},pending={identity=binary},jobs={{state="RUNNING"}}}
+  local cache=U.stringCache()
+  local function encode(cached)
+    local chunks={}
+    U.write(value,function(chunk) ok(#chunk<=4096); chunks[#chunks+1]=chunk end,cached)
+    return table.concat(chunks)
+  end
+  local original=encode(); eq(encode(cache),original)
+  local misses=cache.misses; eq(encode(cache),original); eq(cache.misses,misses); ok(cache.hits>0)
+  value[binary].cycles=2; value[binary].tag=binary.."changed\0"
+  value.pending.identity=binary.."new variant"; value.jobs[1].state="PAUSED"
+  local updated=encode(cache); eq(updated,encode())
+  eq(assert(load(updated,"=cached","t",{}))(),value)
+end)
+
+test("string cache evicts old pieces and remains bounded under changing stock",function()
+  local cache=U.stringCache(); local value={}
+  for n=1,180 do
+    value.tag=string.rep(string.char(n),512).."tail"
+    U.write(value,function() end,cache)
+    ok(cache.bytes<=65536); ok(#cache.queue<=64)
+  end
+  local bytes,entries=0,0
+  for key,encoded in pairs(cache.values) do
+    ok(#key<=512); bytes=bytes+#key+#encoded+128; entries=entries+1
+  end
+  eq(bytes,cache.bytes); eq(entries,#cache.queue)
+  eq(cache.values[string.rep(string.char(1),512)],nil)
+  local misses=cache.misses; value.tag=string.rep(string.char(1),512).."tail"
+  local chunks={}; U.write(value,function(chunk) chunks[#chunks+1]=chunk end,cache)
+  ok(cache.misses>misses); eq(assert(load(table.concat(chunks),"=evicted","t",{}))(),value)
+end)
+
+test("persistence reuses its encoding cache between saves without persisting cache data",function()
+  local w=W.new(); w:build()
+  O.with(w,function(files,_,fs)
+    local store=P.new("/state.lua",fs); local value={tag=string.rep("\0\255\\\"",1400),job={cycles=1}}
+    store:save(value); local misses=store.cache.misses
+    value.job.cycles=2; store:save(value)
+    eq(store.cache.misses,misses); ok(store.cache.hits>0); ok(store.cache.reused>#value.tag)
+    eq(store:load({}),value); eq(assert(load(files["/state.lua"]))(),value)
+    eq(P.new("/other.lua",fs).cache.hits,0)
+  end)
 end)
 
 test("checkpoint byte count matches serialization for all bytes keys and scalar types",function()

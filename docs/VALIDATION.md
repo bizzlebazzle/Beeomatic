@@ -8,7 +8,7 @@ flow still requires in-game acceptance.**
 
 ## Automated checks
 
-Current result: **364 tests, zero failures on each of Lua 5.2 and Lua 5.3**.
+Current result: **368 tests, zero failures on each of Lua 5.2 and Lua 5.3**.
 Run `python tests/run.py` in the development workspace. It syntax-checks every
 project Lua file, then runs the suite on both engines using local Lupa runtimes.
 Alternatively run `lua tests/run.lua` with a compatible runtime. These dependencies
@@ -36,6 +36,11 @@ space incrementally without readback or a document-sized RAM buffer. Write/flush
 failures preserve the primary; an unverified primary's backup is also preserved.
 These are deterministic mocked hardware workloads, not a guarantee that arbitrary
 stock/journal sizes fit, and in-game acceptance on the actual computer is still required.
+
+The encoding cache is also exercised by two successive 339 KB binary-string
+checkpoints and reload in a 2 MiB VM with 384 KiB host reserve. That fixture fills
+the cache's 64 KiB accounting budget. Unit checks cover eviction, exact binary
+output, changed identities/tables, persistent-store reuse and profile counters.
 
 Interface coverage includes:
 

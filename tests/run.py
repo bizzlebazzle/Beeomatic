@@ -52,16 +52,22 @@ for version, runtime in [('5.2', LuaRuntime), ('5.3', Lua53Runtime)]:
           package.loaded.computer={freeMemory=function()
             return 2*1024*1024-collectgarbage("count")*1024
           end}
-          local state={tag=string.rep("x",339000)}
+          local chunks={}
+          for n=1,663 do chunks[n]=string.rep(string.char(n%256),512) end
+          local state={tag=table.concat(chunks):sub(1,339000)}; chunks=nil
           collectgarbage("collect") -- release fixture-construction temporaries
           local write=U.write; local calls=0
           U.write=function(...) calls=calls+1; return write(...) end
-          local store=P.new(...,{exists=function() return false end,
-            rename=function(a,b) return os.rename(a,b) end})
+          local store=P.new(...,{exists=function(path)
+              local f=io.open(path,"rb"); if f then f:close(); return true end; return false
+            end,remove=os.remove,rename=os.rename})
           store:save(state)
           assert(calls==1,"server-sized checkpoint must encode only once")
+          assert(store.cache.bytes>60000 and store.cache.bytes<=65536,"fixture must fill the bounded cache")
+          store:save(state)
+          assert(calls==2,"second checkpoint must still encode only once")
           assert(store:load({}).tag==state.tag)
           assert(#reserve==384*1024)
         ''', str(pathlib.Path(folder) / 'buffered.lua'))
-        print(f'Lua {version}: 339 KB streaming checkpoint encodes once within 2 MiB with 384 KiB host reserve', flush=True)
+        print(f'Lua {version}: repeated 339 KB checkpoints with a full encoding cache fit 2 MiB with 384 KiB host reserve', flush=True)
     check_startup(runtime, ROOT, version)

@@ -64,6 +64,7 @@ local function main(root,args,profile)
   if profile then
     assert(not fs.exists(lock) or f.recover,"Stop the running worker with Ctrl+C before enabling profiling.")
     profile.statePath=data.."/state.lua"
+    profile.stringCache=sp.cache
     for _,store in ipairs({cp,sp,ctl}) do store.profile=profile end
     profile:wrap(cp,"load","config.load"); profile:wrap(cp,"save","checkpoint.config")
     profile:wrap(sp,"load","state.load"); profile:wrap(sp,"save","checkpoint.state")

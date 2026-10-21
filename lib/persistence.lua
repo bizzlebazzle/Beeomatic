@@ -1,7 +1,7 @@
 local U=require("lib.util")
 local M={}; M.__index=M
 function M.new(path,fs,onTable,skipField)
-  return setmetatable({path=path,fs=fs or require("filesystem"),onTable=onTable,skipField=skipField},M)
+  return setmetatable({path=path,fs=fs or require("filesystem"),onTable=onTable,skipField=skipField,cache=U.stringCache()},M)
 end
 function M:readFile(path)
   local read=require("lib.state_codec").read
@@ -61,7 +61,7 @@ function M:save(value)
         assert(bytes+4096<=free,"Not enough disk space for checkpoint. Saved primary preserved.")
       end
       assert(f:write(chunk))
-    end)
+    end,self.cache)
     assert(f:flush())
   end)
   f:close(); assert(ok,why)

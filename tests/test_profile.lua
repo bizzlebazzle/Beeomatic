@@ -1,6 +1,19 @@
 local Profile=require("lib.profile"); local U=require("lib.util")
 local W=require("tests.mocks.world"); local O=require("tests.mocks.openos")
 
+test("profile reports encoding cache reuse without recording cached contents",function()
+  local p=Profile.new("/profile.log",function() return 0 end,{})
+  local cache=U.stringCache(); p.stringCache=cache
+  local value={tag=string.rep("private-nbt",200)}
+  for _=1,2 do U.write(value,function() end,cache) end
+  local report=p:report()
+  ok(cache.hits>0); ok(cache.misses>0)
+  ok(report:find("Large-string cache: "..cache.hits.." hits, "..cache.misses.." misses",1,true))
+  ok(report:find(cache.reused.." input bytes reused",1,true))
+  ok(report:find(cache.bytes.."/65536 bytes retained",1,true))
+  ok(not report:find("private-nbt",1,true))
+end)
+
 test("profile preserves nil returns and separates nested wall-clock timings",function()
   local time=0; local p=Profile.new("/profile.log",function() return time end,{})
   local result=table.pack(p:call("parent",nil,function(...)
