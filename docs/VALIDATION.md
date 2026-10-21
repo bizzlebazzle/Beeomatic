@@ -8,7 +8,7 @@ flow still requires in-game acceptance.**
 
 ## Automated checks
 
-Current result: **380 tests, zero failures on each of Lua 5.2 and Lua 5.3**.
+Current result: **385 tests, zero failures on each of Lua 5.2 and Lua 5.3**.
 Run `python tests/run.py` in the development workspace. It syntax-checks every
 project Lua file, then runs the suite on both engines using local Lupa runtimes.
 Alternatively run `lua tests/run.lua` with a compatible runtime. These dependencies
@@ -70,6 +70,14 @@ unfinished dependencies, ready jobs bypassing the deadline, and collection and
 assessment while two alvearies are breeding. External raw bees still enter the
 scanner on the background refresh. Idle display reuse is checked separately from
 active observations, new assignment, manual/terminal refresh and uptime reset.
+
+Checkpoint checks inspect the full known-catalogue CLI benchmark's saved intent
+before each of its eight transfers and enforce 58 state checkpoints. Scanner
+phase checks retain returned counts and committed receipts while combining saves.
+Reload tests cover scanner insertion intent, verified output before transfer,
+interrupted consumed-port cleanup and collection before result locations were
+saved, for both chest and Interface storage. Existing ambiguous Interface intents
+still stop without replay; no new automatic recovery rule is introduced.
 
 Interface coverage includes:
 

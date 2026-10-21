@@ -54,6 +54,38 @@ test("benchmark automatically profiles exactly one stable cycle and scans both o
   end
 end)
 
+test("known-catalogue benchmark combines checkpoints and saves intent before every transfer",function()
+  local w=ME.new(); seed(w,"Forest")
+  w.state.aeCatalog={}
+  for key,stack in pairs(w.cells) do w.state.aeCatalog[key]=U.copy(stack.individual) end
+  O.with(w,function(files)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    files["/project/data/state.lua"]="return "..U.encode(w.state)
+    local cycles=driver(w,files)
+    for _,address in ipairs({"tp1","tp2","tp-scan"}) do
+      local proxy=w.proxies[address]; local transfer=proxy.transferItem
+      proxy.transferItem=function(from,to,count,slot,destSlot)
+        local saved=assert(load(files["/project/data/state.lua"]))(); local tx=saved.pending
+        ok(tx); eq(tx.phase,"INTENT"); eq(tx.source.side,from); eq(tx.dest.side,to)
+        eq(tx.slot,slot); eq(tx.destSlot,destSlot); eq(tx.count,count)
+        if tx.scanning then eq(saved.scan.phase,"INSERTING")
+        elseif tx.owner=="scanner" then eq(saved.scan.phase,"RETURNING") end
+        return transfer(from,to,count,slot,destSlot)
+      end
+    end
+    local P=require("lib.persistence"); local save=P.save; local writes=0
+    P.save=function(self,value)
+      if self.path=="/project/data/state.lua" then writes=writes+1 end
+      return save(self,value)
+    end
+    local success,result,why=pcall(require("lib.cli").main,"/project",{"benchmark"})
+    P.save=save
+    ok(success,result); eq(why,nil,why)
+    local state=assert(load(files["/project/data/state.lua"]))()
+    eq(writes,58); eq(w.moves,8); eq(cycles(),1); ok(state.finished)
+  end)
+end)
+
 test("interrupted benchmark resumes the same cycle without another mating",function()
   local w=ME.new(); seed(w,"Forest")
   O.with(w,function(files)

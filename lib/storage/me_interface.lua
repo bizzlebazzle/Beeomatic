@@ -216,7 +216,7 @@ function M:materialize(item,ep,owner,count)
   self:catalogue(stack,true); x.phase="READY"; self.inv.save()
   return {endpoint=ep,slot=slot,stack=stack,batchId=item.batchId}
 end
-function M:clearRequest(x)
+function M:clearRequest(x,deferSave)
   -- A committed consumption already makes reconcile() clear this filter.
   -- Unconsumed cancellations still need intent before changing the hardware.
   if not x.consumed and x.phase~="RETURNING" then x.phase="RETURNING"; self.inv.save() end
@@ -224,12 +224,18 @@ function M:clearRequest(x)
   assert(yes,"Interface request cleanup failed: "..tostring(why))
   local filter,err=p.getInterfaceConfiguration(x.slot); assert(not err and not filter,"Interface filter did not clear")
   self:poll(function() return not self.inv:get(x.ep,x.slot) end,"timeout returning Interface refill to ME")
-  self.state.meRequests[U.location(x.ep,x.slot)]=nil; self.inv.save()
+  self.state.meRequests[U.location(x.ep,x.slot)]=nil
+  if not deferSave then self.inv.save() end
 end
 function M:releasePort(ep)
+  local changed=false
   for _,key in ipairs(U.keys(self.state.meRequests)) do local x=self.state.meRequests[key]
-    if x.ep.id==ep.id and x.consumed then self:clearRequest(x) end
+    if x.ep.id==ep.id and x.consumed then self:clearRequest(x,true); changed=true end
   end
+  -- Consumed requests already have durable movement receipts; clear this port
+  -- together, including any caller's updated scanner phase.
+  if changed then self.inv.save() end
+  return changed
 end
 function M:cancel(owner)
   for _,key in ipairs(U.keys(self.state.meRequests)) do local x=self.state.meRequests[key]

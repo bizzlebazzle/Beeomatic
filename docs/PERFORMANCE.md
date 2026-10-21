@@ -4,6 +4,36 @@ This audit covers selection, ME requests, transposer movement, collection,
 scanner preparation/returns and recovery. Operation counts below come from Lua
 mocks; the server profile discussed separately below measures in-game time.
 
+## Combine adjacent movement checkpoints (21 October 2026)
+
+The ninth profile took 70.5 seconds. Its 70 state checkpoints consumed 20.55
+seconds, with file renames and removals accounting for 11.35 seconds across the
+run. This pass reduces repeated saves around the existing transfer boundaries.
+
+Scanner REQUESTING shares the Interface request intent; INSERTING and RETURNING
+share the physical movement intent. INSPECTED shares cancellation's filter-clearing
+intent for already-analysed bees. PROCESSING shares consumed-port cleanup's save,
+with a standalone save when recovery has already cleared the request. Consumed
+princess/drone filters on the same port are cleared with one checkpoint; their
+committed movement receipts already witness consumption.
+
+Collection's phase and sequence boundary are saved by the first movement intent.
+Result locations are saved with the next move or assessment; if interrupted in
+between, the existing committed receipt/batch reconstruction fills them back in.
+The INTENT, MOVED returned count and COMMITTED ownership receipt of each physical
+movement remain separate durable checkpoints. Unconsumed filter clearing retains
+its intent checkpoint. The save format and atomic file replacement are unchanged.
+
+A complete known-catalogue benchmark replay reduced state checkpoints from 70
+to 58 (17%), with the same eight movements, one cycle, one returned princess and
+four drones. A real raw scanner batch now takes ten checkpoints instead of
+fourteen; an already-analysed inspection takes five instead of seven. Tests inspect
+the saved state at every transfer and reload snapshots around scanner input,
+output and collection, including both chest and Interface collection paths.
+These are checkpoint counts, not a prediction of elapsed-time savings. Rerun
+`Beeomatic benchmark` to measure the game result; direct scanner routing remains
+deferred.
+
 ## Less background stock and idle housing polling (21 October 2026)
 
 The eighth in-game benchmark took 71.1 seconds. NBT canonicalization fell to

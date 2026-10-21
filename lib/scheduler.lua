@@ -343,7 +343,7 @@ function M:advance(j,stockReady,stockReason)
     local status,why,observation=b:getCycleState(); machine.lastInteraction=self.now()
     if self.observations then self.observations[j.machine]=observation end
     if status=="FINISHED" then
-      j.state="COLLECTING"; j.collectionAfter=self.state.transferSequence or 0; j.resultLocations={}; self.save()
+      j.state="COLLECTING"; j.collectionAfter=self.state.transferSequence or 0; j.resultLocations={}
     elseif status=="UNCERTAIN" then error(why)
     elseif self.now()-(j.started or self.now())>self.c.cycleTimeout then error("Cycle timeout: "..tostring(why or "queen still present"))
     else j.error=why; return end
@@ -353,12 +353,13 @@ function M:advance(j,stockReady,stockReason)
     local function receipt(i)
       if i.batchId then
         for _,loc in ipairs(j.resultLocations) do if loc.root==i.root then return end end
-        j.resultLocations[#j.resultLocations+1]={root=i.root}; self.save(); return
+        j.resultLocations[#j.resultLocations+1]={root=i.root}; return
       end
       for _,loc in ipairs(j.resultLocations) do if loc.endpoint.id==i.endpoint.id and loc.slot==i.slot then return end end
-      j.resultLocations[#j.resultLocations+1]={endpoint=i.endpoint,slot=i.slot}; self.save()
+      j.resultLocations[#j.resultLocations+1]={endpoint=i.endpoint,slot=i.slot}
     end
-    -- Reconstruct a receipt committed immediately before a crash in the collector.
+    -- Moves durably save COLLECTING and their receipts. Save result locations
+    -- with the next move/assessment, reconstructing any missing ones on restart.
     for _,tx in ipairs(self.state.transactions) do
       if tx.owner==j.id and tx.id and tx.id>(j.collectionAfter or math.huge) and tx.dest.id==b.config.storage.id then
         if tx.dest.managed then

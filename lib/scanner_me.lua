@@ -40,7 +40,7 @@ function M:step(items)
     q={phase="REQUESTING",item=U.copy(candidate),identity=B.identity(candidate.stack),batchId=candidate.batchId,
       name=candidate.stack.name,damage=candidate.stack.damage,count=count,
       ident=candidate.stack.individual and candidate.stack.individual.ident,started=self.now()}
-    self.state.scan=q; self.save()
+    self.state.scan=q -- materialize saves this batch with its Interface intent
   end
   if q.phase=="INSPECTED" then
     self.storage:cancel("scanner"); return self:finish()
@@ -51,12 +51,12 @@ function M:step(items)
     if B.scanned(physical.stack) then
       -- An ME record without chromosomes is not proof the item needs analysis.
       -- materialize already persisted the physical genome with its receipt.
-      q.phase="INSPECTED"; self.save()
+      q.phase="INSPECTED" -- cancel saves this with its filter-clearing intent
       self.storage:cancel("scanner"); return self:finish()
     end
     q.source={endpoint=U.copy(physical.endpoint),slot=physical.slot}
     q.inputSlot=self.inv:empty(c.input)
-    q.phase="INSERTING"; self.save()
+    q.phase="INSERTING" -- move saves this phase with its transfer intent
   end
   if q.phase=="INSERTING" then
     local request=self.state.meRequests[U.location(q.source.endpoint,q.source.slot)]
@@ -71,8 +71,8 @@ function M:step(items)
           return not got and n==q.count
         end)
     end
-    q.phase="PROCESSING"; q.started=self.now(); self.save()
-    self.storage:releasePort(c.storage)
+    q.phase="PROCESSING"; q.started=self.now()
+    if not self.storage:releasePort(c.storage) then self.save() end
     return false,"Shared scanner analysing "..q.count.." bees"
   end
   if q.phase=="PROCESSING" then
@@ -90,7 +90,7 @@ function M:step(items)
     end
     for _,i in ipairs(self.inv:scan(c.input)) do assert(not B.kind(i.stack),"scanner still contains input when output appeared") end
     q.outputSlot=r.slot; q.result=U.copy(r.stack)
-    q.phase="RETURNING"; self.save()
+    q.phase="RETURNING" -- deposit saves the verified result with its transfer intent
   end
   if q.phase=="RETURNING" then
     if q.returned then return self:finish() end

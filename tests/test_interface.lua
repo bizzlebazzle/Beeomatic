@@ -566,11 +566,38 @@ end)
 
 test("scanner restart before output transfer resumes its saved verification",function()
   local w=bufferedScanner(); w.scanner:step(w.storage:scan()); w:finishScan()
-  local save=w.scanner.save; local cut=false
-  w.scanner.save=function()
-    save(); if w.state.scan and w.state.scan.phase=="RETURNING" and not cut then cut=true; error("output power cut") end
+  local save=w.inv.save; local saved
+  w.inv.save=function()
+    save()
+    if w.state.scan and w.state.scan.phase=="RETURNING" and w.state.pending and w.state.pending.phase=="INTENT" then
+      saved=U.copy(w.state); error("output power cut")
+    end
   end
   raises(function() w.scanner:step({}) end,"output power cut")
-  eq(w.moves,1); w.scanner.save=save; w.scheduler:recover(); w.scanner:step({})
+  eq(w.moves,1); eq(saved.scan.outputSlot,1); ok(B.scanned(saved.scan.result))
+  w.inv.save=save
+  for key in pairs(w.state) do w.state[key]=nil end
+  for key,value in pairs(saved) do w.state[key]=value end
+  w.scheduler:recover(); w.scanner:step({})
   eq(w.moves,2); eq(w.state.scan,nil)
+end)
+
+test("combined scanner insertion intent retains source data and never replays an ambiguous transfer",function()
+  local w=bufferedScanner(); local save=w.inv.save; local saved
+  w.inv.save=function()
+    save()
+    if w.state.scan and w.state.scan.phase=="INSERTING" and w.state.pending and w.state.pending.phase=="INTENT" then
+      saved=U.copy(w.state); error("input intent power cut")
+    end
+  end
+  raises(function() w.scanner:step(w.storage:scan()) end,"input intent power cut")
+  eq(w.moves,0); eq(saved.scan.source.endpoint.id,"scan-port"); eq(saved.scan.inputSlot,1)
+  eq(saved.meRequests["scan-port:2"].phase,"READY")
+  w.inv.save=save
+  for key in pairs(w.state) do w.state[key]=nil end
+  for key,value in pairs(saved) do w.state[key]=value end
+  -- An Interface can refill after extraction while the analyser consumes input.
+  -- The original recovery rule therefore needs a returned count before retry.
+  raises(function() w.scheduler:recover() end,"Ambiguous Interface movement")
+  eq(w.moves,0); eq(w.state.scan.phase,"INSERTING"); eq(w.state.pending.phase,"INTENT")
 end)

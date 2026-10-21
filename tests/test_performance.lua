@@ -1,6 +1,93 @@
 local W=require("tests.mocks.world"); local ME=require("tests.mocks.me")
 local U=require("lib.util"); local B=require("lib.bees")
 
+test("scanner phases share request movement and cleanup checkpoints",function()
+  local w=ME.new(); w:addStock(ME.bee("Spirit","drone",8,true))
+  local saved={}
+  w.scheduler=require("lib.scheduler").new(w.c,w.state,w.components,w.inv,w.storage,w.scanner,
+    function() saved[#saved+1]=U.copy(w.state) end,function() return w.time end)
+  w.scanner:step(w.storage:scan()); eq(#saved,6)
+  eq(saved[1].scan.phase,"REQUESTING"); eq(saved[1].meRequests["scan-port:2"].phase,"INTENT")
+  eq(saved[3].scan.phase,"INSERTING"); eq(saved[3].pending.phase,"INTENT")
+  eq(saved[4].pending.phase,"MOVED"); eq(saved[4].pending.returned,8)
+  eq(saved[5].pending,nil); ok(saved[5].scan.inserted)
+  eq(saved[6].scan.phase,"PROCESSING"); eq(next(saved[6].meRequests),nil)
+  w:finishScan(); w.scanner:step({}); eq(#saved,10)
+  eq(saved[7].scan.phase,"RETURNING"); eq(saved[7].pending.phase,"INTENT"); ok(saved[7].scan.result)
+  eq(saved[8].pending.phase,"MOVED"); eq(saved[8].pending.returned,8)
+  eq(saved[9].pending,nil); ok(saved[9].scan.returned); eq(saved[10].scan,nil)
+  w=ME.new(); w:addStock(ME.bee("Spirit","drone",8)); saved={}
+  w.scheduler=require("lib.scheduler").new(w.c,w.state,w.components,w.inv,w.storage,w.scanner,
+    function() saved[#saved+1]=U.copy(w.state) end,function() return w.time end)
+  w.scanner:step(w.storage:scan()); eq(#saved,5); eq(w.moves,0)
+  eq(saved[3].scan.phase,"INSPECTED"); eq(saved[3].meRequests["scan-port:2"].phase,"RETURNING")
+  eq(saved[5].scan,nil); eq(B.count(w.storage:scan(),"spirit","drone",true),8)
+end)
+
+test("consumed princess and drone port cleanup shares one checkpoint and can restart halfway",function()
+  for _,interrupt in ipairs({false,true}) do
+    local w=ME.new(); local ep=w.c.alvearies[1].storage
+    for _,kind in ipairs({"princess","drone"}) do
+      local stack=ME.bee("Spirit",kind,kind=="drone" and 8 or 1); w:addStock(stack)
+      local item={network=true,endpoint={id="ME"},slot=B.identity(stack),stack=stack}
+      local p=w.storage:materialize(item,ep,"job",1)
+      w.inv:move(p,{id="a",transposer="tp1",side=3},kind=="princess" and 6 or 8,1,"job")
+    end
+    local durable=U.copy(w.state); local saved=0
+    w.inv.save=function() saved=saved+1 end
+    local port=w.proxies[ep.address]; local configure=port.setInterfaceConfiguration
+    if interrupt then
+      port.setInterfaceConfiguration=function(slot,...)
+        if slot==2 then error("cleanup power cut") end
+        return configure(slot,...)
+      end
+      raises(function() w.storage:releasePort(ep) end,"cleanup power cut"); eq(saved,0)
+      for key in pairs(w.state) do w.state[key]=nil end
+      for key,value in pairs(durable) do w.state[key]=value end
+      port.setInterfaceConfiguration=configure
+      w.storage:reconcile()
+    else
+      eq(w.storage:releasePort(ep),true); eq(saved,1)
+      eq(w.storage:releasePort(ep),false); eq(saved,1)
+    end
+    eq(next(w.state.meRequests),nil); eq(w.moves,2)
+    eq(w.inventories.a[6].size,1); eq(w.inventories.a[8].size,1)
+    eq(w.cells[B.identity(ME.bee("Spirit","drone",8))].size,7)
+  end
+end)
+
+test("collection reconstructs committed locations after a restart without another deposit",function()
+  for _,interface in ipairs({false,true}) do
+    local w=interface and ME.new() or W.new()
+    local factory=interface and ME or W
+    if interface then w.hideGenomes=false
+    else w:addMachine("a"); w:build() end
+    w.c.minDrones=2; w.c.confirmCycles=1
+    if interface then
+      w:addStock(ME.bee("Spirit","princess")); w:addStock(ME.bee("Spirit","drone",8))
+    else
+      w.inventories.hub[1]=W.bee("Spirit","princess"); w.inventories.hub[2]=W.bee("Spirit","drone",8)
+    end
+    local job=W.job(w,"job","Spirit","populate"); job.count=32
+    w.scheduler:step(); eq(job.state,"RUNNING"); job.count=2
+    w:finish(job.machine,factory.bee("Spirit","princess"),factory.bee("Spirit","drone",4))
+    local durable
+    w.scheduler=require("lib.scheduler").new(w.c,w.state,w.components,w.inv,w.storage,w.scanner,function()
+      if not durable and w.state.jobs[1].state=="COLLECTING" and not w.state.pending and
+        w.state.transactions[#w.state.transactions].id>w.state.jobs[1].collectionAfter then
+        durable=U.copy(w.state); error("collection power cut")
+      end
+    end,function() return w.time end)
+    w.scheduler:step(); ok(durable); eq(#durable.jobs[1].resultLocations,0); eq(w.moves,3)
+    for key in pairs(w.state) do w.state[key]=nil end
+    for key,value in pairs(durable) do w.state[key]=value end
+    w.scheduler:recover(); w.scheduler:step()
+    eq(w.state.jobs[1].state,"DONE"); eq(w.moves,4); eq(w.state.pending,nil)
+    eq(B.count(w.storage:scan(),"spirit","princess",true),1)
+    eq(B.count(w.storage:scan(),"spirit","drone",true),11)
+  end
+end)
+
 test("breeding polls defer background ME scans while active observations stay fresh",function()
   local w=ME.new(); w.hideGenomes=false; w.c.minDrones=2
   w:addStock(ME.bee("Spirit","princess")); w:addStock(ME.bee("Spirit","drone",8))
