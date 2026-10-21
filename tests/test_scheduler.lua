@@ -114,6 +114,61 @@ test("princess conversion uses spare rather than existing target princess",funct
   w:finish("a",W.bee("Spirit","princess"),W.bee("Spirit","drone",8)); w.scheduler:step()
   eq(j.state,"DONE"); eq(B.count(w.storage:scan(),"spirit","princess",true),2)
 end)
+test("missing target drones report species counts reserve and exact action in both status views",function()
+  local w=stocked(); local j=W.job(w,"one","Charmed","convert")
+  w.scheduler:dispatch(j); eq(j.state,"WAITING"); eq(w.moves,0)
+  for _,message in ipairs({"Cannot recover a Charmed princess", "Analysed target drones available to this job: 0",
+    "largest identical group: 0", "Need 2 in one identical group: 1 to breed + 1 kept as reserve",
+    "Add at least 2 identical analysed Charmed drones, then Beeomatic resume."}) do
+    ok(j.error:find(message,1,true),j.error)
+    for _,verbose in ipairs({false,true}) do
+      ok(require("lib.ui.status").render(w.state,w.c,verbose):find(message,1,true))
+    end
+  end
+end)
+test("nine separate target variants including hybrids do not count as a spendable identical group",function()
+  local w=stocked(); local j=W.job(w,"one","Charmed","convert")
+  for n=1,9 do w.inventories.hub[20+n]=W.bee("Charmed","drone",1,n%2==0 and "Forest" or nil,{lifespan=n}) end
+  w.scheduler:dispatch(j); eq(j.state,"WAITING"); eq(w.moves,0)
+  ok(j.error:find("Analysed target drones available to this job: 9; largest identical group: 1",1,true),j.error)
+  ok(j.error:find("Add 1 more matching drone to an existing group",1,true),j.error)
+  w.inventories.hub[21].size=2
+  w.scheduler:dispatch(j); eq(j.state,"RUNNING"); eq(w.inventories.hub[21].size,1)
+end)
+test("reserve diagnostics use configured counts and sum split identical stacks",function()
+  local w=stocked(); w.c.reserveDrones=3
+  w.inventories.hub[20]=W.bee("Charmed","drone",1)
+  w.inventories.hub[21]=W.bee("Charmed","drone",2)
+  local j=W.job(w,"one","Charmed","convert")
+  w.scheduler:dispatch(j); eq(j.state,"WAITING"); eq(w.moves,0)
+  ok(j.error:find("largest identical group: 3",1,true),j.error)
+  ok(j.error:find("Need 4 in one identical group: 1 to breed + 3 kept as reserve",1,true),j.error)
+  w.inventories.hub[21].size=3
+  w.scheduler:dispatch(j); eq(j.state,"RUNNING")
+  eq(w.scheduler:count(w.scheduler:items(j.id),"charmed","drone"),3)
+end)
+test("drone shortage excludes template raw and other-job stock but includes target hybrids",function()
+  local w=stocked(); w.c.templates={enabled=true,endpointId="hub",slot=20,reserve=1}
+  w.inventories.hub[20]=W.bee("Charmed","drone",16)
+  w.inventories.hub[21]=W.bee("Charmed","drone",32); w.inventories.hub[21].individual.isAnalyzed=false
+  w.inventories.hub[22]=W.bee("Charmed","drone",64)
+  w.state.reservations["hub:22"]={owner="other"}
+  w.inventories.hub[23]=W.bee("Forest","drone",1,"Charmed")
+  local j=W.job(w,"one","Charmed","convert")
+  w.scheduler:dispatch(j); eq(j.state,"WAITING"); eq(w.moves,0)
+  ok(j.error:find("Analysed target drones available to this job: 1; largest identical group: 1",1,true),j.error)
+  ok(j.error:find("16 reference-template drones excluded",1,true),j.error)
+end)
+test("population and imprint share precise drone reserve diagnostics",function()
+  for _,mode in ipairs({"populate","imprint"}) do
+    local w=stocked(); w.inventories.hub[20]=W.bee("Charmed","drone",1)
+    local j=W.job(w,"one","Charmed",mode)
+    local p,d,why=w.scheduler:select(j,w.scheduler:items(j.id))
+    eq(p,nil); eq(d,nil); eq(w.moves,0)
+    ok(why:find("Cannot breed Charmed",1,true),why)
+    ok(why:find("largest identical group: 1",1,true),why)
+  end
+end)
 test("population completes from offspring count and stable pair",function()
   local w=stocked(); w.inventories.hub[1]=W.bee("Spirit","princess"); w.inventories.hub[2]=W.bee("Spirit","drone",8)
   local j=W.job(w,"one","Spirit","populate"); j.count=12

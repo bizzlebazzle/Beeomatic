@@ -129,6 +129,25 @@ function M:best(items,kind,target,predicate,template)
     if n>score then best,score=i,n end
   end end; return best
 end
+function M:droneShortage(j,items,counts)
+  local total,largest,protected=0,0,0
+  for _,i in ipairs(items) do if B.kind(i.stack)=="drone" and G.purity(i.stack,j.species)>0 then
+    if self:protected(i) then protected=protected+i.stack.size else
+      total=total+i.stack.size; largest=math.max(largest,counts[B.identity(i.stack)] or 0)
+    end
+  end end
+  local name=B.displayName(j.species); local reserve=self.c.reserveDrones; local minimum=reserve+1
+  local goal=j.mode=="convert" and ("Cannot recover a "..name.." princess") or ("Cannot breed "..name)
+  local missing=minimum-largest
+  local action=largest>0 and ("Add "..missing.." more matching "..(missing==1 and "drone" or "drones").." to an existing group") or
+    ("Add at least "..minimum.." identical analysed "..name.." drones")
+  return goal..": no spendable target drone.\n"..
+    "Analysed target drones available to this job: "..total.."; largest identical group: "..largest..".\n"..
+    "Need "..minimum.." in one identical group: 1 to breed + "..reserve.." kept as reserve.\n"..
+    "Different variants cannot share a reserve."..
+    (protected>0 and (" "..protected.." reference-template drones excluded.") or "").."\n"..
+    action..", then Beeomatic resume."
+end
 function M:stockJob(species,mode,count,parent)
   for _,j in ipairs(self.state.jobs) do
     if j.species==species and j.mode==mode and j.state~="DONE" then return j end
@@ -186,9 +205,12 @@ function M:select(j,items,template)
     end
     return p,d,nil,target
   end
-  if j.mode=="populate" then return nil,nil,"Need a target princess and at least two compatible drones; fertility must exceed one" end
+  if j.mode=="populate" then
+    if not d then return nil,nil,self:droneShortage(j,items,droneCounts) end
+    return nil,nil,"Need a target princess; fertility must exceed one"
+  end
   if j.mode=="convert" or j.mode=="imprint" then
-    if not d then return nil,nil,"Need target drones above the exact-genotype reserve" end
+    if not d then return nil,nil,self:droneShortage(j,items,droneCounts) end
     p=p or self:best(items,"princess",target,function(i) return self:conversionDonor(i,items,target) end,genes)
     return p,d,p and nil or "Add a spare princess with fertility > 1 in both alleles; last pure princesses are protected",target
   end
