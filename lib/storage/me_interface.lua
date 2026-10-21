@@ -74,14 +74,15 @@ function M:catalogue(stack,deferSave)
 end
 function M:scan()
   local pooled={}
-  local function add(s)
+  local function add(s,private)
     if s and B.kind(s) and (s.size or 0)>0 then
       local key=B.identity(s); local entry=pooled[key]
-      if entry then entry.size=entry.size+s.size else pooled[key]=U.copy(s) end
+      if entry then entry.size=entry.size+s.size else pooled[key]=private and s or U.copy(s) end
       if B.scanned(s) then self.state.aeCatalog[key]=U.copy(s.individual) end
     end
   end
-  for _,s in pairs(assert(self:network().getItemsInNetwork(),"ME network unavailable")) do add(s) end
+  -- OC returns fresh tables: pool them directly instead of copying genomes.
+  B.eachInNetwork(self:network(),function(s) add(s,true) end)
   -- Stocked Interface inventories are local buffers, not cells on this same grid.
   -- Never attach a storage bus to these ports: that would expose them twice.
   for _,ep in ipairs(self.config.endpoints) do for _,i in ipairs(self.inv:scan(ep)) do add(i.stack) end end
@@ -272,8 +273,10 @@ function M:probe(ep)
     if not i.owner and B.kind(i.stack)=="drone" and i.stack.size>=2 then item=i; break end
   end
   assert(item,"probe needs at least two identical analysed drones in ME")
+  local filter={name=item.stack.name,damage=item.stack.damage,label=item.stack.label}
+  local identity=B.identity(item.stack)
   local before=0
-  for _,s in pairs(self:network().getItemsInNetwork()) do if B.identity(s)==B.identity(item.stack) then before=before+s.size end end
+  for _,s in pairs(assert(self:network().getItemsInNetwork(filter),"ME unavailable")) do if B.identity(s)==identity then before=before+s.size end end
   local success,err=pcall(function()
     local p=self:materialize(item,ep,"scanner",2)
     assert(B.scanned(p.stack),"probe sample is unanalysed; scan it first")
@@ -282,7 +285,7 @@ function M:probe(ep)
     self:poll(function() return not self.inv:get(ep,ep.returnSlot or 9) end,"probe return blocked")
     self:poll(function()
       local count=0
-      for _,s in pairs(self:network().getItemsInNetwork()) do if B.identity(s)==B.identity(item.stack) then count=count+s.size end end
+      for _,s in pairs(assert(self:network().getItemsInNetwork(filter),"ME unavailable")) do if B.identity(s)==identity then count=count+s.size end end
       return count==before
     end,"probe exact ME count did not return to its starting value")
   end)

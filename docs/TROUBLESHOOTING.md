@@ -83,6 +83,11 @@ legacy completed receipts are compacted as they are read, and the next successfu
 checkpoint writes the smaller form. Pending transfers, scanner batches and exact
 identities remain available for recovery. Do not delete `data/state.lua` to fix RAM.
 
+Older workers fetch the entire ME network before filtering bees, which can
+exhaust RAM at startup/resume. The updated version requests each bee caste
+separately and avoids an extra genome copy. Unrelated items no longer fill the
+scan response; distinct bee genotypes and their NBT still determine bee capacity.
+
 `Not enough disk space for checkpoint` means the new generation cannot fit with
 recovery protection. Beeomatic checks available space as it streams the temporary file and
 keeps the primary generation. Free unrelated disk space, then resume. Old backup

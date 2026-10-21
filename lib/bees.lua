@@ -20,6 +20,15 @@ function M.kind(s)
   if n:find("beequeen",1,true) then return "queen" end
   return nil -- Labels are localized and cannot establish caste reliably.
 end
+-- Filter inside OC before the response enters Lua RAM. Fetch one Forestry
+-- caste at a time, preserving every species/genotype and its exact NBT.
+function M.eachInNetwork(network,visit)
+  for _,kind in ipairs({"Princess","Drone","Queen"}) do
+    local items,why=network.getItemsInNetwork({name="Forestry:bee"..kind.."GE"})
+    assert(items,why or "ME network unavailable")
+    for _,stack in pairs(items) do if visit(stack) then return end end
+  end
+end
 function M.scanned(s)
   local i=s and s.individual
   return i and i.isAnalyzed~=false and i.active and i.inactive and i.active.species and i.inactive.species and true or false

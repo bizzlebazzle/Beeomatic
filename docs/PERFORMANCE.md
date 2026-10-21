@@ -4,6 +4,27 @@ This audit covers selection, ME requests, transposer movement, collection,
 scanner preparation/returns and recovery. Operation counts below come from Lua
 mocks; the server profile discussed separately below measures in-game time.
 
+## Bound ME response memory (21 October 2026)
+
+Startup/resume fetched the entire ME network before discarding unrelated items.
+OC must allocate that response in Lua RAM, so unrelated network growth could
+exhaust the 2 MiB computer before Beeomatic could filter anything.
+
+Both ME backends now request Forestry princesses, drones and queens separately
+using exact registry-name filters. Species, genotype, NBT and quantity remain
+unfiltered. Interface scans pool the fresh callback tables directly, avoiding
+another genome copy. Probe count checks use the selected item name/damage/label
+filter and still compare complete NBT identities. Startup compiles the largest
+worker modules before configuration parsing, reducing a separate source-buffer
+peak when manual garbage collection is unavailable.
+
+The allocator regression reproduces the old resume traceback with an unfiltered
+3,000-item response. Filtered resume now fits 2 MiB with 219 synthetic bee
+variants, 3,000 unrelated item types, full caches, a 384 KiB host reserve and
+profiling, on Lua 5.2 and 5.3. Disk use remains below 4 MiB. This is a synthetic
+capacity check; live bee snapshots/catalogues still grow with distinct genotypes
+and their NBT sizes. It does not establish unlimited bee capacity.
+
 ## Combine adjacent movement checkpoints (21 October 2026)
 
 The ninth profile took 70.5 seconds. Its 70 state checkpoints consumed 20.55
@@ -343,8 +364,8 @@ share reserves only when their exact identities match. Completion is checked aga
 the prior pairwise rules across 144 stock/template/equivalence cases, with a
 linear purity-check bound in the default mode. Bulk destination selection
 uses one snapshot even when a merge is blocked; fallback selection reads each slot
-once, including empty gaps. One unowned ME stack uses two full stack copies
-(network mock plus private pooling) instead of three, with genome isolation tested.
+once, including empty gaps. One unowned ME stack uses one full stack copy
+(the network mock's callback response) instead of three, with genome isolation tested.
 
 ## In-game profiling
 
@@ -413,10 +434,10 @@ normal operation. No profiler hooks remain after the invocation returns.
 - Independent dispatches still scan current stock. Reusing a snapshot after a
   withdrawal could allocate the same units to two machines, so there is no
   persistent cache of inventory contents or spendable counts.
-- ME stock discovery still reads the network and registered Interface buffers.
-  Exact request preparation may enumerate same-label genetic variants. A bee-only
-  API or filtered discovery could reduce large-network payloads but must preserve
-  all supported item names and the pinned server API contract.
+- ME stock discovery reads each Forestry caste separately and registered
+  Interface buffers. Unrelated network items never enter its Lua response.
+  Bee snapshots/catalogues still grow with distinct genotypes, and exact request
+  preparation may enumerate same-label genetic variants.
 - The worker now defaults to 0.5 seconds, and Interface/scanner checks to 0.1
   seconds, including existing saved configurations. Optional workerPollSeconds
   and per-subsystem pollSeconds settings override them with a 0.05-second minimum.

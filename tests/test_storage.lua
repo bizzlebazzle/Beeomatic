@@ -136,7 +136,8 @@ local function redstoneWorld(options)
   local entry
   w.proxies.me.store=function() entry=U.copy(current); return true end
   w.proxies.db.get=function() return U.copy(entry) end
-  w.proxies.me.getItemsInNetwork=function()
+  w.proxies.me.getItemsInNetwork=function(filter)
+    if filter and filter.name~=raw.name then return {} end
     local result={}
     if current.size>0 then result[#result+1]=U.copy(current) end
     -- The archive is exposed by the configured ME storage bus.

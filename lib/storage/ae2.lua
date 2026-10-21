@@ -18,7 +18,7 @@ function M:scan()
     local k=B.identity(i.stack); counts[k]=(counts[k] or 0)+i.stack.size
     if B.scanned(i.stack) then self.inv.state.aeCatalog[k]=U.copy(i.stack.individual) end
   end
-  for _,s in pairs(assert(self:network().getItemsInNetwork(),"ME subnet offline")) do
+  B.eachInNetwork(self:network(),function(s)
     if (s.size or 0)>0 then
       local k=B.identity(s); local used=math.min(counts[k] or 0,s.size)
       counts[k]=(counts[k] or 0)-used
@@ -27,7 +27,7 @@ function M:scan()
         localItems[#localItems+1]={network=true,slot=k,endpoint={id="ME"},stack=copy}
       end
     end
-  end
+  end)
   return localItems
 end
 function M:prepare(items)

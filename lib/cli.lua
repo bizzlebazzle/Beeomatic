@@ -111,17 +111,20 @@ local function main(root,args,profile)
     state=sp:load({jobs={},reservations={},transactions={},events={}})
     cancelWork(); return
   end
+  local workerCommand=cmd=="resume" or cmd=="breed" or cmd=="convert" or cmd=="populate" or cmd=="imprint" or cmd=="benchmark"
+  -- Compile the largest modules before even the configuration parser adds its
+  -- temporary tables; OpenOS concatenates module source during loadfile.
+  if workerCommand then require("lib.scheduler"); require("lib.ui.status") end
   local c=cp:load(Config.defaults())
   B.migrateIdentities(c)
   local Components=require("lib.components"); local Inventory=require("lib.inventory")
-  if cmd=="resume" or cmd=="breed" or cmd=="convert" or cmd=="populate" or cmd=="imprint" or cmd=="benchmark" then
+  local Storage=require("lib.storage."..c.storage.kind)
+  if workerCommand then
     -- OpenOS concatenates module source while loading it. Compile worker code
-    -- before storage backends and the large journal, even without manual GC.
+    -- before the large journal, even without manual GC.
     require("lib.nbt"); require("lib.scanner"); if c.storage.kind=="me_interface" then require("lib.scanner_me") end
-    require("lib.scheduler"); require("lib.ui.status")
     for _,machine in ipairs(c.alvearies) do require("lib.breeders."..(machine.backend or "alveary")) end
   end
-  local Storage=require("lib.storage."..c.storage.kind)
   state=sp:load({jobs={},reservations={},transactions={},events={}})
   U.collect()
   local worker,pendingKey; local checkpoint={}

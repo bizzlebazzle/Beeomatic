@@ -11,9 +11,9 @@ function M.nbt(storage,out)
   local q=state.scan
   local item=q and ((q.returnProbe and q.returnProbe.item) or q.resultItem or q.item)
   if not item then
-    for _,s in pairs(assert(storage:network().getItemsInNetwork(),"ME unavailable")) do
-      if B.kind(s) and (s.size or 0)>0 then item={stack=s}; break end
-    end
+    B.eachInNetwork(storage:network(),function(s)
+      if B.kind(s) and (s.size or 0)>0 then item={stack=s}; return true end
+    end)
   end
   local s=assert(item and item.stack,"no network bee available for NBT check")
   local function hex(tag)

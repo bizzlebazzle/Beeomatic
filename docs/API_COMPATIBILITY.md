@@ -29,6 +29,12 @@ inspected during research; it is not the deployment target.
 | `integration/appeng/DriverImportBus.scala` | No synchronous `importFromSlot`; Beeomatic does not invent one |
 | `integration/vanilla/ConverterItemStack.scala` | Compressed binary `tag` exists only with server setting `allowItemStackNBTTags`; `insertIdsInConverters` does not enable NBT |
 
+Network discovery uses three exact `name` filters: `Forestry:beePrincessGE`,
+`Forestry:beeDroneGE` and `Forestry:beeQueenGE`. The pinned `getItemsInNetwork`
+implementation applies field equality before returning its array to Lua. This
+keeps unrelated network items out of the 2 MiB computer without selecting by
+species, label or genotype. Exact variant selection still verifies full NBT.
+
 [Forestry `TileAlveary`](https://github.com/GTNewHorizons/ForestryMC/blob/4.11.37/src/main/java/forestry/apiculture/multiblock/TileAlveary.java)
 implements `IBeeHousing` and delegates inventory to its controller. Adapter queries
 and transposer inventory access are separate. Multiple adapters on blocks of the

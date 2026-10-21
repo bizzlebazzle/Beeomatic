@@ -531,7 +531,7 @@ test("ME unowned stock avoids another stack copy while returned genomes stay iso
     return copy(value)
   end
   local success,items=pcall(w.storage.scan,w.storage); U.copy=copy; ok(success,items)
-  eq(stackCopies,2); eq(#items,1)
+  eq(stackCopies,1); eq(#items,1)
   items[1].stack.individual.active.fertility=99; items[1].stack.size=1
   eq(w.cells[B.identity(bee)].size,8); eq(w.cells[B.identity(bee)].individual.active.fertility,3)
   eq(w.state.aeCatalog[B.identity(bee)].active.fertility,3)

@@ -51,9 +51,10 @@ def check(runtime, root, version):
         else:
             raise AssertionError("legacy receipt fixture must exceed 2 MiB")
         installed = sum((root / p).stat().st_size for p in seed.eval('assert(loadfile("manifest.lua"))()').values())
-        for mode, command, profile in (("missing", "resume", False), ("disabled", "resume", False),
-                                      ("missing", "cancel", False), ("disabled", "cancel", False),
-                                      ("missing", "resume", True), ("disabled", "resume", True)):
+        for mode, command, profile, large_network in (("missing", "resume", False, False), ("disabled", "resume", False, False),
+                                      ("missing", "cancel", False, False), ("disabled", "cancel", False, False),
+                                      ("missing", "resume", True, False), ("disabled", "resume", True, False),
+                                      ("missing", "resume", False, True), ("disabled", "resume", True, True)):
             for file in (path / "data").iterdir():
                 if file.name != "config.lua":
                     file.unlink()
@@ -66,7 +67,7 @@ def check(runtime, root, version):
                 peak_disk = max(peak_disk, used)
                 return used
             limited.globals().disk_used = disk_used
-            _, live_kib = limited.execute(source, path.as_posix(), True, mode, command, profile)
+            _, live_kib = limited.execute(source, path.as_posix(), True, mode, command, profile, large_network)
             current = (path / "data/state.lua").stat().st_size
             catalogue_path = path / "data/catalogue.lua"
             catalogue = catalogue_path.stat().st_size if catalogue_path.exists() else 0
@@ -75,7 +76,7 @@ def check(runtime, root, version):
             ratio = 0.5 if command == "resume" else 0.65
             assert current + catalogue < len(legacy) * ratio, (current, catalogue, len(legacy))
             assert peak_disk < 4 * 1024 * 1024, peak_disk
-            print(f"Lua {version}: full ME {command}{' --profile' if profile else ''} with collectgarbage {mode} fits 2 MiB "
+            print(f"Lua {version}: full ME {command}{' --profile' if profile else ''}{' with 219 bee variants + 3,000 unrelated types' if large_network else ''} with collectgarbage {mode} fits 2 MiB "
                   f"with 384 KiB host reserve; live {live_kib:.0f} KiB; "
                   f"checkpoint {len(legacy):,} -> {current:,} bytes; "
                   f"catalogue {catalogue:,} bytes; "

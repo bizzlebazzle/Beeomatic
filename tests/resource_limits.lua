@@ -1,5 +1,5 @@
 -- Fresh VM: no test framework or preloaded Beeomatic modules hide startup costs.
-local root,compact,gcMode,command,profile=...
+local root,compact,gcMode,command,profile,largeNetwork=...
 command=command or "resume"
 local hostGC=collectgarbage
 if gcMode=="missing" then collectgarbage=nil
@@ -43,7 +43,20 @@ end
 for _,address in ipairs({"if1","if2","if-scan"}) do
   devices[address]={getInterfaceConfiguration=function() end,setInterfaceConfiguration=function() return true end}
 end
-devices.me={getItemsInNetwork=function() return {} end,store=function() error("unexpected export") end}
+devices.me={getItemsInNetwork=function(filter)
+  if not largeNetwork then return {} end
+  -- These items live in AE, not Lua RAM, until an unfiltered callback returns.
+  local items={}
+  if not filter then
+    for n=1,3000 do items[n]={name="gregtech:machine",size=64,damage=n,
+      tag=string.rep(string.char(n%256),600)..n} end
+  end
+  if not filter or filter.name=="Forestry:beeDroneGE" then
+    for n=1,219 do items[#items+1]={name="Forestry:beeDroneGE",size=64,damage=0,maxSize=64,
+      label="Forest Drone",tag=string.rep(string.char(n%256),600)..n} end
+  end
+  return items
+end,store=function() error("unexpected export") end}
 devices.db={clear=function() end,get=function() end}
 package.preload.component=function()
   return {proxy=function(address) return assert(devices[address],address) end,
@@ -80,6 +93,7 @@ assert(messages>0)
 local receipts=require("lib.storage.receipts")
 local store=require("lib.persistence").new(root.."/data/state.lua",fs,receipts.decoded,receipts.skipField,root.."/data/catalogue.lua")
 local restored=store:load({})
+if largeNetwork then assert(restored.storageCounts.drone==219*64,"filtered scan lost bee variants/counts") end
 local entries=0; for _ in pairs(restored.aeCatalog) do entries=entries+1 end
 assert(entries==(command=="cancel" and 16 or 0),"split catalogue was not restored")
 store:save(restored) -- exercise a later checkpoint and the compact state's backup

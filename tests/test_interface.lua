@@ -2,6 +2,49 @@ local ME=require("tests.mocks.me"); local B=require("lib.bees"); local U=require
 local function select(w,s)
   return {network=true,endpoint={id="ME"},slot=B.identity(s),stack=U.copy(s)}
 end
+
+test("ME discovery filters all castes before fetching NBT and keeps every genotype",function()
+  local w=ME.new(); w.hideGenomes=false
+  for _,kind in ipairs({"princess","drone","queen"}) do
+    for n=1,3 do w:addStock(ME.bee("Spirit",kind,n,false,{fertility=n})) end
+  end
+  w.cells.junk={name="gregtech:machine",size=64,tag=string.rep("x",10000)}
+  local get=w.proxies.me.getItemsInNetwork; local calls={}
+  w.proxies.me.getItemsInNetwork=function(filter)
+    ok(filter and filter.name,"unfiltered network fetch")
+    eq(filter.label,nil); eq(filter.damage,nil)
+    calls[#calls+1]=filter.name; return get(filter)
+  end
+  local items=w.storage:scan(); eq(#items,9)
+  eq(calls,{"Forestry:beePrincessGE","Forestry:beeDroneGE","Forestry:beeQueenGE"})
+  local counts={}
+  for _,i in ipairs(items) do
+    local kind=B.kind(i.stack); counts[kind]=(counts[kind] or 0)+i.stack.size
+    ok(B.scanned(i.stack)); eq(i.stack.individual.active.fertility,i.stack.size)
+  end
+  eq(counts,{princess=6,drone=6,queen=6})
+end)
+
+test("failed caste query preserves catalogue entries instead of treating stock as absent",function()
+  local w=ME.new(); local bee=ME.bee("Spirit","drone",8)
+  w.state.aeCatalog[B.identity(bee)]=U.copy(bee.individual)
+  w.proxies.me.getItemsInNetwork=function(filter)
+    if filter.name==bee.name then return nil,"network unavailable during scan" end
+    return {}
+  end
+  raises(function() w.storage:scan() end,"network unavailable during scan")
+  ok(w.state.aeCatalog[B.identity(bee)])
+end)
+
+test("NBT diagnostics and Interface probes never fetch unrelated network items",function()
+  local w=ME.new(); w.hideGenomes=false; w:addStock(ME.bee("Spirit","drone",8))
+  local get=w.proxies.me.getItemsInNetwork
+  w.proxies.me.getItemsInNetwork=function(filter)
+    ok(filter and filter.name,"unfiltered network fetch"); return get(filter)
+  end
+  require("lib.ui.diagnostics").nbt(w.storage,function() end)
+  ok(w.storage:probe(w.c.scanner.storage))
+end)
 test("Interface recovery rebreeds fragmented target stock and scans offspring to stable 32 drones",function()
   local w=ME.new(); w.hideGenomes=false; w.c.storage.databaseSlots=16; w.state.nextId=1
   for _,species in ipairs({"Forest","Meadows"}) do
