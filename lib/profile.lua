@@ -83,7 +83,7 @@ function M:report()
   end
   local cache=self.stringCache
   if cache then out[#out+1]=string.format(
-    "Large-string cache: %d hits, %d misses; %d input bytes reused; %d/65536 bytes retained (accounted)",
+    "Large-string cache: %d hits, %d misses; %d input bytes reused; %d/262144 bytes retained (accounted)",
     cache.hits,cache.misses,cache.reused,cache.bytes) end
   out[#out+1]="\n    count      own_s    total_s      max_s errors operation"
   for _,label in ipairs(labels) do local r=self.rows[label]

@@ -10,7 +10,7 @@ test("profile reports encoding cache reuse without recording cached contents",fu
   ok(cache.hits>0); ok(cache.misses>0)
   ok(report:find("Large-string cache: "..cache.hits.." hits, "..cache.misses.." misses",1,true))
   ok(report:find(cache.reused.." input bytes reused",1,true))
-  ok(report:find(cache.bytes.."/65536 bytes retained",1,true))
+  ok(report:find(cache.bytes.."/262144 bytes retained",1,true))
   ok(not report:find("private-nbt",1,true))
 end)
 

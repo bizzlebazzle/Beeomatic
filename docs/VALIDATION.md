@@ -39,8 +39,10 @@ stock/journal sizes fit, and in-game acceptance on the actual computer is still 
 
 The encoding cache is also exercised by two successive 339 KB binary-string
 checkpoints and reload in a 2 MiB VM with 384 KiB host reserve. That fixture fills
-the cache's 64 KiB accounting budget. Unit checks cover eviction, exact binary
-output, changed identities/tables, persistent-store reuse and profile counters.
+the cache's 256 KiB accounting budget. Loading releases the encoded pieces before
+parsing; the fixture also disables manual collection. Unit checks cover eviction,
+exact binary output, changed identities/tables, persistent-store reuse, cache
+release on load with counters preserved, and profile counters.
 
 Interface coverage includes:
 

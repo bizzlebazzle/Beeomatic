@@ -73,7 +73,7 @@ function M.write(v,sink,cache)
     if cache then
       cache.misses=cache.misses+1
       local cost=#s+#encoded+128 -- include room for string/table entries
-      while #cache.queue>=64 or cache.bytes+cost>65536 do
+      while #cache.queue>=256 or cache.bytes+cost>262144 do
         local old=table.remove(cache.queue,1)
         cache.bytes=cache.bytes-#old-#cache.values[old]-128; cache.values[old]=nil
       end

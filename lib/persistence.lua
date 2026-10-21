@@ -15,6 +15,8 @@ function M:readFile(path)
   return nil,tostring(v)
 end
 function M:load(default)
+  -- Encoded save pieces are disposable; release them before parsing another state.
+  self.cache.values={}; self.cache.queue={}; self.cache.bytes=0
   local v,primaryError=self:readFile(self.path)
   if v then self.primaryVerified=true; return v end
   U.collect() -- release a partial parse before trying the backup when supported

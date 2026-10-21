@@ -63,10 +63,10 @@ end)
 
 test("string cache evicts old pieces and remains bounded under changing stock",function()
   local cache=U.stringCache(); local value={}
-  for n=1,180 do
+  for n=1,240 do
     value.tag=string.rep(string.char(n),512).."tail"
     U.write(value,function() end,cache)
-    ok(cache.bytes<=65536); ok(#cache.queue<=64)
+    ok(cache.bytes<=262144); ok(#cache.queue<=256)
   end
   local bytes,entries=0,0
   for key,encoded in pairs(cache.values) do
@@ -86,7 +86,10 @@ test("persistence reuses its encoding cache between saves without persisting cac
     store:save(value); local misses=store.cache.misses
     value.job.cycles=2; store:save(value)
     eq(store.cache.misses,misses); ok(store.cache.hits>0); ok(store.cache.reused>#value.tag)
+    local cache=store.cache; local hits=cache.hits
     eq(store:load({}),value); eq(assert(load(files["/state.lua"]))(),value)
+    eq(store.cache,cache); eq(cache.hits,hits) -- profile keeps the same counters
+    eq(cache.bytes,0); eq(cache.values,{}); eq(cache.queue,{})
     eq(P.new("/other.lua",fs).cache.hits,0)
   end)
 end)

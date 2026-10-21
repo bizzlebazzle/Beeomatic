@@ -4,15 +4,42 @@ This audit covers selection, ME requests, transposer movement, collection,
 scanner preparation/returns and recovery. Operation counts below come from Lua
 mocks; the server profile discussed separately below measures in-game time.
 
+## Cache sized against the saved catalogue (21 October 2026)
+
+The fifth in-game benchmark took 126.4 seconds. Its 74 checkpoints consumed
+76.8 seconds, with 54.4 seconds in serialization excluding children. The first
+encoding cache recorded 2,295 hits against 16,603 misses: its 64 KiB budget was
+too small to retain this catalogue between checkpoints.
+
+The supplied 259,964-byte state has 80 catalogue variants occupying 218,326
+encoded bytes. Its 203 distinct long-string pieces need 225,252 accounted cache
+bytes. Increasing the FIFO limits to 256 KiB and 256 entries retains these pieces.
+A 128 KiB FIFO still churned through most of them. In a local 74-save comparison,
+the previous cache took 0.89-0.94 seconds; the larger cache took 0.65 seconds
+(27-30% less CPU time). It recorded 17,927 hits and 203 misses, about 99% hits
+including the first save. This measures serialization only, not in-game elapsed
+time; small fields and table traversal still run on every save.
+
+The cache is released before loading a save so encoded pieces do not compete
+with the parser for RAM. Repeated 339 KB saves with a full cache and a reload
+fit a 2 MiB VM with 384 KiB host reserve, including without manual collection.
+The full startup/recovery tests also retain their RAM and disk limits.
+
+Run `python tests/benchmark_serialization.py "path/to/state.lua"` to compare
+cached and uncached encoding against a real save on the development PC. The
+file is parsed as data. The supplied state is not added to the repository.
+Run `Beeomatic benchmark` in-game next to measure the actual change. Direct
+scanner routing and NBT canonicalization remain unchanged.
+
 ## Bounded string-encoding cache (21 October 2026)
 
 The fourth in-game benchmark took 127.65 seconds. Its 70 checkpoints consumed
 78.4 seconds, including 58.65 seconds of serialization excluding children; disk
 writes took only 1.5 seconds. The state was 260,009 bytes.
 
-Each persistence store now retains escaped pieces of long strings between saves.
+The initial cache retained escaped pieces of long strings between saves.
 Pieces are at most 512 source bytes, so similar NBT identities can share unchanged
-parts. The cache evicts its oldest pieces within a 64 KiB accounting budget and
+parts. It evicted its oldest pieces within a 64 KiB accounting budget and
 64-entry limit. Accounting includes raw and escaped bytes plus an entry overhead
 allowance; actual VM memory is covered by the allocator tests. Small strings keep
 their direct path. Mutable tables are always traversed again, and changing a

@@ -56,6 +56,7 @@ for version, runtime in [('5.2', LuaRuntime), ('5.3', Lua53Runtime)]:
           for n=1,663 do chunks[n]=string.rep(string.char(n%256),512) end
           local state={tag=table.concat(chunks):sub(1,339000)}; chunks=nil
           collectgarbage("collect") -- release fixture-construction temporaries
+          collectgarbage=nil -- automatic collection must suffice for saves and reload
           local write=U.write; local calls=0
           U.write=function(...) calls=calls+1; return write(...) end
           local store=P.new(...,{exists=function(path)
@@ -63,7 +64,7 @@ for version, runtime in [('5.2', LuaRuntime), ('5.3', Lua53Runtime)]:
             end,remove=os.remove,rename=os.rename})
           store:save(state)
           assert(calls==1,"server-sized checkpoint must encode only once")
-          assert(store.cache.bytes>60000 and store.cache.bytes<=65536,"fixture must fill the bounded cache")
+          assert(store.cache.bytes>250000 and store.cache.bytes<=262144,"fixture must fill the bounded cache")
           store:save(state)
           assert(calls==2,"second checkpoint must still encode only once")
           assert(store:load({}).tag==state.tag)
