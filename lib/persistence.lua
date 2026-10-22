@@ -1,5 +1,18 @@
 local U=require("lib.util")
 local M={}; M.__index=M
+-- Buffered filesystem operations may never yield. Bound CPU time for both
+-- parsing and encoding, including legacy records discarded by the reader.
+local function cooperation(store,delay)
+  local computer=package.loaded.computer
+  local nextYield=computer and computer.uptime and delay and computer.uptime()+delay or 0
+  return function()
+    if computer and computer.uptime and os.sleep and computer.uptime()>=nextYield then
+      if store.wait then store.wait(0.05)
+      else os.sleep(0.05) end -- zero sleeps do not yield on some OpenOS versions
+      nextYield=computer.uptime()+0.5
+    end
+  end
+end
 local function index(value,skip)
   local copy={}; for key,v in pairs(value) do if key~=skip then copy[key]=v end end; return copy
 end
@@ -19,7 +32,9 @@ function M:readFile(path)
   local read=require("lib.state_codec").read
   local f,why=io.open(path,"rb"); if not f then return nil,why or "cannot open file" end
   if self.profile then f=self.profile:file(f) end
+  local cooperate=cooperation(self,0.5) -- small control/config reads need no sleep
   local ok,v=pcall(read,function()
+    cooperate()
     local chunk,err=f:read(4096); assert(not err,err); return chunk
   end,self.onTable,self.skipField)
   f:close()
@@ -66,15 +81,7 @@ function M:save(value)
   if computer and computer.freeMemory then
     self.cache.limit=math.max(4096,math.min(262144,math.floor(computer.freeMemory()/4)))
   end
-  -- Buffered writes need not yield, even outside the foreground worker.
-  local nextYield=0
-  local function cooperate()
-    if computer and computer.uptime and os.sleep and computer.uptime()>=nextYield then
-      if self.wait then self.wait(0.05)
-      else os.sleep(0.05) end -- zero sleeps do not yield on some OpenOS versions
-      nextYield=computer.uptime()+0.5
-    end
-  end
+  local cooperate=cooperation(self)
   cooperate()
   -- Check space as chunks arrive, without a sizing/encoding pass or a second
   -- document in RAM. A failed write leaves the primary in place.

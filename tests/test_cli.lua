@@ -1,5 +1,60 @@
 local W=require("tests.mocks.world"); local O=require("tests.mocks.openos"); local U=require("lib.util")
 
+test("status and cancel yield while loading buffered journals and catalogues",function()
+  for _,command in ipairs({"status","cancel"}) do
+    for _,layout in ipairs({"legacy","split","backup"}) do
+      local w=W.new(); w:build()
+      O.with(w,function(files,out)
+        local path="/project/data/state.lua"; local cat="/project/data/catalogue.lua"
+        local state={jobs={},reservations={},transactions={{stack={tag=string.rep("\0",20000)}}},
+          pending={phase="UNCERTAIN",identity="exact receipt",count=1},
+          aeCatalog={forest={tag=string.rep("\1",20000)}}}
+        files["/project/data/config.lua"]="return "..U.encode(w.c)
+        if layout~="legacy" then
+          files[cat]="return "..U.encode(state.aeCatalog); state.aeCatalog=nil
+        end
+        local saved="return "..U.encode(state)
+        files[path]=layout=="backup" and saved:sub(1,-2) or saved
+        if layout=="backup" then files[path..".bak"]=saved end
+        local original=files[path]; local open,sleep=io.open,os.sleep
+        local now,lastYield=0,0; local current="startup"; local yields={}
+        require("computer").uptime=function() return now end
+        io.open=function(name,mode)
+          local f,why=open(name,mode)
+          if f and mode=="rb" then
+            local read=f.read
+            f.read=function(self,n)
+              current=name; now=now+0.1
+              assert(now-lastYield<1,"too long without yielding")
+              return read(self,n) -- buffered reads do not yield on their own
+            end
+          end
+          return f,why
+        end
+        os.sleep=function(seconds)
+          ok(seconds>0); yields[current]=(yields[current] or 0)+1
+          coroutine.yield("watchdog"); lastYield=now
+        end
+        local thread=coroutine.create(function() return require("lib.cli").main("/project",{command}) end)
+        local success,why
+        repeat success,why=coroutine.resume(thread) until not success or coroutine.status(thread)=="dead"
+        io.open,os.sleep=open,sleep
+        ok(success,why); ok((yields[path] or 0)>0)
+        if layout~="legacy" then ok((yields[cat] or 0)>0) end
+        if layout=="backup" then ok((yields[path..".bak"] or 0)>0) end
+        if command=="status" then
+          eq(files[path],original); ok(table.concat(out,"\n"):find("BEEOMATIC",1,true))
+        else
+          local restored=assert(load(files[path]))()
+          ok(restored.cancelled); eq(restored.pending,state.pending)
+          eq(assert(load(files[cat]))().forest.tag,string.rep("\1",20000))
+        end
+        eq(w.moves,0)
+      end)
+    end
+  end
+end)
+
 test("startup analysis waits do not repeatedly checkpoint an unchanged progress message",function()
   local ME=require("tests.mocks.me"); local w=ME.new()
   w:addStock(ME.bee("Spirit","drone",8,true))

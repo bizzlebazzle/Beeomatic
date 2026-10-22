@@ -1,6 +1,18 @@
 local U=require("lib.util"); local P=require("lib.persistence")
 local W=require("tests.mocks.world"); local O=require("tests.mocks.openos")
 
+test("small buffered state reads do not sleep or consume foreground keys",function()
+  local w=W.new(); w:build()
+  O.with(w,function(files,_,fs)
+    files["/control.lua"]='return {action="cancel"}'
+    local sleep=os.sleep; local sleeps=0
+    os.sleep=function() sleeps=sleeps+1 end
+    local success,value=pcall(function() return P.new("/control.lua",fs):load({}) end)
+    os.sleep=sleep
+    ok(success,value); eq(value,{action="cancel"}); eq(sleeps,0)
+  end)
+end)
+
 test("loaded catalogue shares identical chromosomes without changing hybrid genes or exposing saved tables",function()
   local w=W.new(); w:build()
   O.with(w,function(files,_,fs)

@@ -8,11 +8,17 @@ flow still requires in-game acceptance.**
 
 ## Automated checks
 
-Current result: **385 tests, zero failures on each of Lua 5.2 and Lua 5.3**.
+Current result: **414 tests, zero failures on each of Lua 5.2 and Lua 5.3**.
 Run `python tests/run.py` in the development workspace. It syntax-checks every
 project Lua file, then runs the suite on both engines using local Lupa runtimes.
 Alternatively run `lua tests/run.lua` with a compatible runtime. These dependencies
 stay on the development PC and are not installed on the OpenComputer.
+
+Buffered journal reads yield periodically during parsing, including skipped legacy
+payloads, backup recovery and separate catalogues. A simulated watchdog exercises
+the public `status` and `cancel` commands with reads that never yield themselves;
+status preserves the saved files and cancellation retains unresolved receipts.
+Small control reads do not sleep or consume foreground keys.
 
 Resource checks run in fresh VMs with a hard **2 MiB allocator ceiling** and
 384 KiB reserved to represent host overhead. Both an absent `collectgarbage` and
