@@ -8,7 +8,7 @@ flow still requires in-game acceptance.**
 
 ## Automated checks
 
-Current result: **423 tests, zero failures on each of Lua 5.2 and Lua 5.3**.
+Current result: **428 tests, zero failures on each of Lua 5.2 and Lua 5.3**.
 Run `python tests/run.py` in the development workspace. It syntax-checks every
 project Lua file, then runs the suite on both engines using local Lupa runtimes.
 Alternatively run `lua tests/run.lua` with a compatible runtime. These dependencies
@@ -146,6 +146,12 @@ retains the batch. Output-count progress stays routine while timeouts stay visib
 Cross-climate conversion tests cover Wintry Icy/UP_1 princesses with Attuned and
 Cultivated Normal/NONE drones, queen genome retention, and redispatch to Normal
 after observing Normal offspring genes.
+
+Population tests plan and grow one pure Steadfast princess/drone pair to at least
+32 drones through the public CLI, including resume of a saved pending request.
+Scheduler recovery continues below the configured drone reserve; fertility-one
+princesses pause without movement. Protected/other-job stock, hybrids, conversion
+and mutation parents retain their reserve checks.
 
 Existing checks also cover route planning, purity/templates, climate/tolerances,
 reserves, chest transfers, gated routing, legacy export recovery, persistence,

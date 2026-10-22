@@ -1,9 +1,27 @@
 local W=require("tests.mocks.world"); local P=require("lib.planner"); local Config=require("lib.config")
-local function run(recipes,stock,target,c)
+local function run(recipes,stock,target,c,mode)
   local mutations=require("lib.mutations").new({getBeeParents=function(name) return recipes[name] or {} end},{})
-  return P.plan(target or "spirit",mutations,stock or {},c or Config.defaults())
+  return P.plan(target or "spirit",mutations,stock or {},c or Config.defaults(),nil,mode)
 end
 local function pair(s) return {W.bee(s,"princess"),W.bee(s,"drone",16)} end
+
+test("population plans from a single pure pair without a mutation recipe",function()
+  local stock={W.bee("Steadfast","princess"),W.bee("Steadfast","drone")}
+  local c=Config.defaults(); c.reserveDrones=8
+  local p=assert(run({},stock,"steadfast",c,"populate"))
+  ok(p.root.available); eq(#p.order,1); eq(p.root.route,nil)
+  for _,mode in ipairs({"breed","convert","imprint"}) do eq(run({},stock,"steadfast",c,mode),nil) end
+  c.templates={enabled=true,identity=require("lib.bees").identity(stock[2])}
+  eq(run({},stock,"steadfast",c,"populate"),nil)
+end)
+
+test("population planning keeps drone-only conversion and mutation parent reserves",function()
+  local c=Config.defaults()
+  eq(run({},{W.bee("Steadfast","drone")},"steadfast",c,"populate"),nil)
+  local stock={W.bee("Steadfast","princess"),W.bee("Steadfast","drone")}
+  for _,s in ipairs(pair("Meadows")) do stock[#stock+1]=s end
+  eq(run({spirit={W.route("Steadfast","Meadows")}},stock,"spirit",c,"populate"),nil)
+end)
 -- Model the OC watchdog with an instruction budget between OpenOS sleeps.
 local function watchdog(fn)
   local oldSleep=os.sleep

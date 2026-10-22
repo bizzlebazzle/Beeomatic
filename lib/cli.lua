@@ -274,7 +274,7 @@ local function main(root,args,profile)
                 phase="reading planning stock"
                 items=storage:scan(); m:index(items)
                 phase="planning "..req.target
-                plan,e=planner.plan(req.target,m,items,c); assert(plan,e)
+                plan,e=planner.plan(req.target,m,items,c,nil,req.mode); assert(plan,e)
               end
               phase="saving breeding plan"
               Jobs.create(state,plan,req.mode,req.count,req.flags,req); state.pendingRequest=nil; save()

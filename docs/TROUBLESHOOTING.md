@@ -20,6 +20,12 @@ drained plan with its already accepted pending request. Update and run
 resuming the old plan. Existing machine assignments still block replacement and
 require recovery. No manual state-file edits are needed.
 
+If `populate` reports one pure princess and one pure drone but refuses to plan,
+older code applied the drone reserve to the starting population pair. Update,
+reboot and run `Beeomatic resume` to continue the saved request. Population now
+uses the single pure pair to grow stock; active fertility <= 1 pauses before any
+insertion, and housing conditions still apply.
+
 | Report | Action |
 |---|---|
 | Complex `plan` targets fail with `too long without yielding` after scanning completes | The old planner scanned the full inventory repeatedly and compared unrelated princess/drone pairs without yielding to OpenOS. The corrected planner caches verified parent stock, checks relevant pairs and periodically yields during search and stock checks. Reboot after updating and retry `Beeomatic plan spirit`; keep your existing configuration and scanned bee data. |

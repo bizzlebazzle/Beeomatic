@@ -1,6 +1,6 @@
 local B=require("lib.bees"); local E=require("lib.environment"); local U=require("lib.util")
 local M={}
-function M.plan(target,mutations,items,c,mutationOnly)
+function M.plan(target,mutations,items,c,mutationOnly,mode)
   local requested=target
   target=mutations:resolve(target)
   local function display(name)
@@ -103,7 +103,8 @@ function M.plan(target,mutations,items,c,mutationOnly)
     checkpoint()
     local n=queue[index]; local name=n.species
     local seed=stock(name)
-    if not (mutationOnly and name==target) and #seed.princess>0 and seed.largest>c.reserveDrones then
+    local reserve=mode=="populate" and name==target and 0 or c.reserveDrones
+    if not (mutationOnly and name==target) and #seed.princess>0 and seed.largest>reserve then
       n.seed={species=name,available=true,cost=0,children={}}
     elseif not (mutationOnly and name==target) and seed.largest>c.reserveDrones then
       -- Known species can be recovered from spare drones even when they also

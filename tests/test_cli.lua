@@ -718,6 +718,31 @@ test("public CLI completes startup and breeding with input/output chests and ver
     eq(state.stockPhase,"READY"); eq(state.scan,nil); eq(state.pending,nil); eq(next(state.meRequests),nil)
   end)
 end)
+
+test("public populate and saved request resume grow one pure Steadfast pair to 32 drones",function()
+  local ME=require("tests.mocks.me"); local B=require("lib.bees")
+  for _,resume in ipairs({false,true}) do
+    local w=ME.new(); w:addStock(ME.bee("Steadfast","princess")); w:addStock(ME.bee("Steadfast","drone"))
+    w.immediate=true
+    local finish=w.finish
+    w.finish=function(self,id,p,d) finish(self,id,ME.bee("Steadfast","princess"),ME.bee("Steadfast","drone",d.size,true)) end
+    if resume then w.state.pendingRequest={target="steadfast",mode="populate",count=32,flags={}} end
+    O.with(w,function(files)
+      files["/project/data/config.lua"]="return "..U.encode(w.c)
+      files["/project/data/state.lua"]="return "..U.encode(w.state)
+      local _,err=require("lib.cli").main("/project",resume and {"resume"} or {"populate","steadfast","32"})
+      local state=assert(load(files["/project/data/state.lua"]))()
+      eq(err,nil,tostring(err).."\n"..require("lib.ui.status").render(state,w.c,true))
+      ok(state.finished,require("lib.ui.status").render(state,w.c,true)); eq(#state.jobs,1)
+      eq(state.jobs[1].mode,"populate"); eq(state.jobs[1].count,32); ok(state.jobs[1].cycles>1)
+      ok(state.jobs[1].confirmed>=w.c.confirmCycles); eq(state.pendingRequest,nil)
+      eq(files["/project/data/crash.log"],nil)
+      local drones=0
+      for _,stack in pairs(w.cells) do if B.kind(stack)=="drone" then drones=drones+stack.size end end
+      ok(drones>=32); ok(w.cells[B.identity(ME.bee("Steadfast","princess"))])
+    end)
+  end
+end)
 test("installer retires obsolete program files while preserving backups and user files",function()
   local w=W.new(); w:addMachine("a"); w:build()
   O.with(w,function(files)

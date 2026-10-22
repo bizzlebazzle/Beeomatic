@@ -177,8 +177,34 @@ test("population completes from offspring count and stable pair",function()
   eq(j.state,"DONE"); ok(B.count(w.storage:scan(),"spirit","drone",true)>=12)
 end)
 test("fertility one population pauses safely",function()
-  local w=stocked(); w.inventories.hub[1]=W.bee("Spirit","princess",1,nil,{fertility=1}); w.inventories.hub[2]=W.bee("Spirit","drone",8)
+  local w=stocked(); w.inventories.hub[1]=W.bee("Spirit","princess",1,nil,{fertility=1}); w.inventories.hub[2]=W.bee("Spirit","drone",1)
   local j=W.job(w,"one","Spirit","populate"); w.scheduler:step(); eq(j.state,"PAUSED"); eq(w.moves,0)
+  ok(j.error:find("Fertility <= 1",1,true),j.error)
+end)
+
+test("population spends its last pure drone and continues after restart",function()
+  local w=stocked(); w.c.reserveDrones=8; w.c.confirmCycles=1
+  w.inventories.hub[1]=W.bee("Steadfast","princess"); w.inventories.hub[2]=W.bee("Steadfast","drone")
+  local j=W.job(w,"one","Steadfast","populate"); j.count=5
+  w.scheduler:step(); eq(j.state,"RUNNING"); eq(w.inventories.hub[2],nil)
+  w:finish(j.machine,W.bee("Steadfast","princess"),W.bee("Steadfast","drone",3)); w.scheduler:advance(j)
+  eq(j.state,"WAITING"); ok(j.lineage)
+  w.state=assert(load("return "..require("lib.util").encode(w.state)))(); w:build(); w.scheduler:recover()
+  j=w.state.jobs[1]; w.scheduler:step(); eq(j.state,"RUNNING")
+  w:finish(j.machine,W.bee("Steadfast","princess"),W.bee("Steadfast","drone",3)); w.scheduler:step()
+  w.scheduler:step(); eq(j.state,"DONE"); eq(B.count(w.storage:scan(),"steadfast","drone",true),5)
+end)
+
+test("population cannot bypass protected reserved or hybrid drone stock",function()
+  for _,blocked in ipairs({"template","reserved","hybridDrone","hybridPrincess"}) do
+    local w=stocked(); w.inventories.hub[1]=W.bee("Steadfast","princess",1,blocked=="hybridPrincess" and "Forest" or nil)
+    w.inventories.hub[2]=W.bee("Steadfast","drone",1,blocked=="hybridDrone" and "Forest" or nil)
+    if blocked=="template" then w.c.templates={enabled=true,endpointId="hub",slot=2,reserve=1}
+    elseif blocked=="reserved" then w.state.reservations["hub:2"]={owner="other"} end
+    local j=W.job(w,"one","Steadfast","populate")
+    local p,d=w.scheduler:select(j,w.scheduler:items(j.id))
+    eq(p,nil,blocked); eq(d,nil,blocked); eq(w.moves,0)
+  end
 end)
 
 test("generic conversion excludes active and recessive fertility one donors",function()

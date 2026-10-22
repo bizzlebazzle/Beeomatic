@@ -219,9 +219,9 @@ function M:select(j,items,template)
   end
   local p=self:best(items,"princess",target,function(i) return G.purity(i.stack,target)>0 end,genes)
   if j.mode=="populate" then
-    p=self:best(items,"princess",target,function(i) return G.purity(i.stack,target)>0 and G.fertility(i.stack)>1 end,genes) or p
+    p=self:best(items,"princess",target,function(i) return G.purity(i.stack,target)==2 and G.fertility(i.stack)>1 end,genes) or
+      self:best(items,"princess",target,function(i) return G.purity(i.stack,target)>0 and G.fertility(i.stack)>1 end,genes) or p
   end
-  local d=self:best(items,"drone",target,function(i) return G.purity(i.stack,target)>0 and spend(i) end,genes)
   if j.lineage then
     local found=false
     for _,i in ipairs(items) do if i.endpoint.id==j.lineage.endpoint.id and i.slot==j.lineage.slot and B.kind(i.stack)=="princess" and
@@ -232,8 +232,14 @@ function M:select(j,items,template)
     -- an existing pure target princess and invalidate the conversion baseline.
     p=not j.rebreeding and self:best(items,"princess",target,function(i) return self:conversionDonor(i,items,target) end,genes) or nil
   end
+  local d=self:best(items,"drone",target,function(i)
+    -- Closed pure-species population grows its starting pair, even its last
+    -- drone. Hybrid crosses and protected/other-job stock retain their rules.
+    return G.purity(i.stack,target)>0 and (spend(i) or
+      (j.mode=="populate" and p and G.purity(p.stack,target)==2 and G.purity(i.stack,target)==2))
+  end,genes)
   if p and d then
-    -- Same target stabilization may use its only princess, preserving reserve drones.
+    -- Template crossings still need spare stock even during population.
     if template and G.purity(p.stack,target)==2 and not G.templateMatch(p.stack,genes) and G.purity(d.stack,target)==2 then
       if spend(template,nil,true) and spend(p) then d=template
       else

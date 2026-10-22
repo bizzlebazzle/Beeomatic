@@ -398,7 +398,7 @@ test("selection reserve accounting is linear and rebuilt after stock changes",fu
     local stack=W.bee("Spirit","drone",2); stack.tag="variant"..n
     items[#items+1]={endpoint={id="hub"},slot=n+1,stack=stack}
   end
-  local job={species="spirit",mode="populate"}
+  local job={species="spirit",mode="breed"}
   local identity=B.identity; local calls=0
   B.identity=function(stack) calls=calls+1; return identity(stack) end
   local success,p,d=pcall(w.scheduler.select,w.scheduler,job,items)
@@ -414,10 +414,10 @@ test("selection adds split stacks of the same exact genotype before protecting r
   local drone=W.bee("Spirit","drone",1); drone.tag="same-genotype"
   local items={{endpoint={id="hub"},slot=1,stack=W.bee("Spirit","princess")},
     {endpoint={id="hub"},slot=2,stack=drone},{endpoint={id="hub"},slot=3,stack=U.copy(drone)}}
-  local _,selected=w.scheduler:select({species="spirit",mode="populate"},items)
+  local _,selected=w.scheduler:select({species="spirit",mode="breed"},items)
   ok(selected)
   items[3].stack.tag="other-genotype"
-  local _,protected=w.scheduler:select({species="spirit",mode="populate"},items)
+  local _,protected=w.scheduler:select({species="spirit",mode="breed"},items)
   eq(protected,nil)
 end)
 

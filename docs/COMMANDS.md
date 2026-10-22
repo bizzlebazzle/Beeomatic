@@ -111,6 +111,14 @@ add matching drones to reach `reserveDrones+1` in one group, then `Beeomatic res
 Protected reference drones are counted separately; other jobs' reserved stock is
 excluded. Hybrids carrying the target in either species allele count as candidates.
 
+`populate SPECIES COUNT` can start with just one pure target princess and one
+pure target drone, even below `reserveDrones`. It breeds that pair repeatedly to
+reach the requested stock and stable-cycle requirement; no mutation recipe is
+needed. A princess with active fertility <= 1 pauses before insertion. Protected
+reference stock and other jobs' reservations remain excluded, and hybrid crosses,
+conversion and mutation parents still require spendable drones above the reserve.
+Housing climate and readiness checks still apply.
+
 `plan` reads runtime routes and actual storage. If bees lack verified genes, it asks
 `Would you like to scan all unscanned bees now? [y/N]`. Answer `y` or `yes` to
 inspect/analyse all those bees using the configured scanner, then plan from the
