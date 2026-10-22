@@ -5,6 +5,10 @@ without quotes: `Beeomatic plan end dust` and `Beeomatic plan "End Dust"` are
 equivalent. For `populate`, put the count last: `Beeomatic populate end dust 32`.
 Full Forestry species UIDs and configured aliases are accepted.
 
+`populate` requires a drone count (a whole number from 1 to 1000000). For example,
+use `Beeomatic populate water 32` or `Beeomatic populate monastic 32` to build
+drone stock. Omitting the count displays the command syntax without starting work.
+
 ```sh
 Beeomatic setup
 Beeomatic setup --reconfigure

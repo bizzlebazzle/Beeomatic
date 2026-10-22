@@ -75,6 +75,43 @@ test("species commands accept quoted and unquoted multiword names and preserve f
   eq(CLI.parse({"doctor","--interface","scanner_port"}),{"doctor","scanner_port"})
 end)
 
+test("populate reports missing or invalid counts without loading or changing saved work",function()
+  for _,args in ipairs({{"populate"},{"populate","water"},{"populate","monastic"},
+    {"populate","end","dust"},{"populate","water","many"},{"populate","water","0"},
+    {"populate","water","-1"},{"populate","water","1.5"},{"populate","water","1000001"}}) do
+    local w=W.new(); w:addMachine("a"); w:build()
+    O.with(w,function(files,out)
+      files["/project/data/config.lua"]="unreadable config"
+      files["/project/data/state.lua"]="saved work"
+      local _,err=require("lib.cli").main("/project",args)
+      ok(err and err:find("Beeomatic populate SPECIES COUNT",1,true),err)
+      ok(err:find("whole number from 1 to 1000000",1,true),err)
+      ok(err:find("Beeomatic populate water 32",1,true),err)
+      eq(out,{err}); eq(w.moves,0)
+      eq(files["/project/data/config.lua"],"unreadable config")
+      eq(files["/project/data/state.lua"],"saved work")
+      eq(files["/project/data/worker.lock"],nil)
+      eq(files["/project/data/crash.log"],nil)
+    end)
+  end
+end)
+
+test("populate accepts explicit drone counts for Water and Monastic stock",function()
+  for _,species in ipairs({"Water","Monastic"}) do
+    local w=W.new(); w:addMachine("a"); w:build(); w.c.confirmCycles=1; w.c.minDrones=2
+    w.inventories.hub[1]=W.bee(species,"princess")
+    w.inventories.hub[2]=W.bee(species,"drone",8)
+    O.with(w,function(files)
+      files["/project/data/config.lua"]="return "..U.encode(w.c)
+      local _,err=require("lib.cli").main("/project",{"populate",species:lower(),"8"})
+      eq(err,nil,err)
+      local state=assert(load(files["/project/data/state.lua"]))()
+      ok(state.finished); eq(state.target,"test.species"..species:lower())
+      eq(state.jobs[1].count,8)
+    end)
+  end
+end)
+
 test("plan resolves the full unquoted End Dust species from verified stock",function()
   local w=W.new(); w:addMachine("a"); w:build()
   w.inventories.hub[1]=W.bee("End Dust","princess")

@@ -48,6 +48,14 @@ local function main(root,args,profile)
   local a,f=M.parse(args); local cmd=U.lower(a[1]); local sub=U.lower(a[2])
   if cmd=="stop" then cmd="cancel" end
   if cmd=="" or cmd=="help" then print(help); return end
+  local count
+  if cmd=="populate" then
+    count=tonumber(a[3])
+    if not count or count%1~=0 or count<1 or count>1000000 then
+      local message="Use Beeomatic populate SPECIES COUNT; COUNT must be a whole number from 1 to 1000000. Example: Beeomatic populate water 32"
+      print(message); return nil,message
+    end
+  end
   local crashPath=data.."/crash.log"
   -- Crash reports must remain readable even if loading configuration/state fails.
   if cmd=="logs" and (f.crash or f.profile) then
@@ -525,7 +533,6 @@ local function main(root,args,profile)
     else assert(a[2],"Specify a species") end
     assert(not state.pendingRequest,"Saved request exists; use resume")
     assert(#state.jobs==0 or state.finished or state.stopped,"Existing work is preserved; use resume, or cancel to abandon it")
-    local count=cmd=="populate" and U.assertNumber(a[3],1,1000000) or nil
     state.pendingRequest={target=a[2] or "benchmark",mode=cmd,count=count,flags=f}; state.cancelled=nil; save(); return run()
   end
   error("Unknown command. Run Beeomatic help")
