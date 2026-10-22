@@ -110,3 +110,12 @@ working hardware or a completed cycle. Bees remain in-world; occupied housings
 must be emptied manually before reuse. Already-inserted scanner batches and
 unresolved transfers remain as inactive recovery records for the next fresh
 request. `resume` does not restart a cancelled plan.
+
+If `setup --reconfigure` still reports `reconcile outstanding movements/scanning`,
+keep the old hardware connected and run `Beeomatic doctor --cleanup` before
+retrying setup. Cancellation preserves physical recovery records; cleanup
+reconciles those transfers, clears Interface requests and returns the existing
+scanner batch without restarting breeding or scanning new stock. Supply scanner
+power/honey and available ME capacity. If cleanup reports an ambiguous movement,
+audit the recorded source/destination as described above and rerun cleanup.
+Do not delete `data/state.lua` to bypass this check.

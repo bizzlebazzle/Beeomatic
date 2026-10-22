@@ -555,6 +555,85 @@ test("reconfiguration refuses to migrate saved unresolved movements",function()
   end)
 end)
 
+test("cancel cleanup returns only the existing scanner batch and permits reconfiguration",function()
+  local ME=require("tests.mocks.me"); local B=require("lib.bees"); local w=ME.new()
+  local raw=ME.bee("Spirit","drone",8,true)
+  w:addStock(ME.bee("Forest","drone",3,true))
+  w.inventories.analyser[1]=U.copy(raw)
+  w.state.scan={phase="PROCESSING",inserted=true,started=0,count=8,name=raw.name,damage=raw.damage,
+    item={stack=raw},identity=B.identity(raw),batchId="old"}
+  w.state.meBatches.old={root="old",owner="old-job",identity=B.identity(raw),stack=U.copy(raw),count=8}
+  O.with(w,function(files,out)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    files["/project/data/state.lua"]="return "..U.encode(w.state)
+    local cli=require("lib.cli")
+    cli.main("/project",{"cancel"})
+    raises(function() cli.main("/project",{"setup","--reconfigure"}) end,"doctor --cleanup")
+    cli.main("/project",{"doctor","--cleanup"})
+    local state=assert(load(files["/project/data/state.lua"]))()
+    ok(state.cancelled); eq(#state.jobs,0); eq(state.scan,nil); eq(state.cancelCleanup,nil)
+    eq(next(state.meRequests),nil); eq(next(state.meBatches),nil); eq(next(state.reservations),nil)
+    eq(w.moves,1); eq(w.inventories.analyser[1],nil); eq(w.inventories["scan-output"][1],nil)
+    eq(w.cells[B.identity(ME.bee("Spirit","drone",8))].size,8)
+    eq(w.cells[B.identity(ME.bee("Forest","drone",3,true))].size,3)
+    local setup=package.loaded["lib.setup"]; local opened=false
+    package.loaded["lib.setup"]={new=function() return {run=function(_,reconfigure) opened=reconfigure end} end}
+    local yes,err=pcall(cli.main,"/project",{"setup","--reconfigure"})
+    package.loaded["lib.setup"]=setup; ok(yes,err); ok(opened)
+    cli.main("/project",{"doctor","--cleanup"}); eq(w.moves,1)
+    ok(table.concat(out,"\n"):find("Storage can now be reconfigured",1,true))
+  end)
+end)
+
+test("cancel cleanup abandons a reconciled untouched scanner insertion without replay",function()
+  local ME=require("tests.mocks.me"); local B=require("lib.bees"); local w=ME.new()
+  local raw=ME.bee("Spirit","drone",8,true); local ep=w.c.scanner.storage
+  w.inventories[ep.id][2]=U.copy(raw); w.filters[ep.id][2]=U.copy(raw)
+  w.state.scan={phase="INSERTING",count=8,source={endpoint=ep,slot=2}}
+  w.state.meRequests[U.location(ep,2)]={owner="scanner",phase="READY",ep=ep,slot=2,identity=B.identity(raw),count=8}
+  w.state.pending={owner="scanner",scanning=true,source=ep,slot=2,dest=w.c.scanner.input,destSlot=1,
+    identity=B.identity(raw),before=8,destBefore=0,count=8,returned=0,phase="MOVED"}
+  O.with(w,function(files)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    files["/project/data/state.lua"]="return "..U.encode(w.state)
+    local cli=require("lib.cli"); cli.main("/project",{"cancel"}); cli.main("/project",{"doctor","--cleanup"})
+    local state=assert(load(files["/project/data/state.lua"]))()
+    eq(state.scan,nil); eq(state.pending,nil); eq(state.cancelCleanup,nil); eq(next(state.meRequests),nil)
+    eq(w.moves,0); eq(w.inventories.analyser[1],nil); eq(w.cells[B.identity(raw)].size,8)
+  end)
+end)
+
+test("cancel cleanup preserves ambiguous movement evidence without clearing Interface filters",function()
+  local ME=require("tests.mocks.me"); local B=require("lib.bees"); local w=ME.new()
+  local raw=ME.bee("Spirit","drone",8,true); local ep=w.c.scanner.storage
+  w.inventories[ep.id][2]=U.copy(raw); w.filters[ep.id][2]=U.copy(raw)
+  w.state.pending={owner="scanner",scanning=true,source=ep,slot=2,dest=w.c.scanner.input,destSlot=1,
+    identity=B.identity(raw),before=8,destBefore=0,count=8,phase="INTENT"}
+  w.state.meRequests[U.location(ep,2)]={owner="scanner",phase="READY",ep=ep,slot=2,identity=B.identity(raw),count=8}
+  O.with(w,function(files)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    files["/project/data/state.lua"]="return "..U.encode(w.state)
+    local cli=require("lib.cli"); cli.main("/project",{"cancel"})
+    local saved=files["/project/data/state.lua"]; local filter=U.copy(w.filters[ep.id][2])
+    raises(function() cli.main("/project",{"doctor","--cleanup"}) end,"Ambiguous Interface movement")
+    eq(files["/project/data/state.lua"],saved); eq(w.filters[ep.id][2],filter); eq(w.moves,0)
+  end)
+end)
+
+test("cancel cleanup refuses active work and worker locks",function()
+  for _,locked in ipairs({false,true}) do
+    local w=W.new(); w:build()
+    O.with(w,function(files)
+      files["/project/data/config.lua"]="return "..U.encode(w.c)
+      files["/project/data/state.lua"]="return "..U.encode(w.state)
+      if locked then files["/project/data/worker.lock"]="running" end
+      raises(function() require("lib.cli").main("/project",{"doctor","--cleanup"}) end,
+        locked and "worker lock exists" or "Use cancel")
+      eq(w.moves,0)
+    end)
+  end
+end)
+
 test("public CLI completes startup and breeding with input/output chests and verified ME scanner deposits",function()
   local ME=require("tests.mocks.me"); local B=require("lib.bees"); local w=ME.new()
   w.c.confirmCycles=1; w.c.minDrones=2

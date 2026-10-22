@@ -2,7 +2,7 @@ local U=require("lib.util"); local Config=require("lib.config"); local P=require
 local B=require("lib.bees"); local Jobs=require("lib.jobs")
 local M={}
 local help=[[Beeomatic setup [--reconfigure]
-Beeomatic doctor [--nbt | --probe | --interface PORT | --adopt JOB | --retry JOB | --confirm ALVEARY]
+Beeomatic doctor [--cleanup | --nbt | --probe | --interface PORT | --adopt JOB | --retry JOB | --confirm ALVEARY]
 Beeomatic plan SPECIES [--verbose] [--no-pager]
 Beeomatic breed SPECIES [--noFinalImprint | --onlyFinalImprint]
 Beeomatic convert SPECIES | populate SPECIES COUNT | imprint SPECIES
@@ -114,6 +114,7 @@ local function main(root,args,profile)
     end
     if fs.exists(data.."/control.lua") then fs.remove(data.."/control.lua") end
     print("Cancelled all work. Bees remain in place; no cycles will be resumed.")
+    if state.cancelCleanup then print("Before reconfiguring storage, run Beeomatic doctor --cleanup with the current hardware connected.") end
   end
   if cmd=="cancel" then
     state=sp:load({jobs={},reservations={},transactions={},events={}})
@@ -378,7 +379,7 @@ local function main(root,args,profile)
     unlocked()
     if cmd=="setup" and (f.reconfigure or Config.scannerSetupRequired(c)) then
       assert(not state.pending and not state.pendingExternal and not state.scan and not next(state.meRequests or {}) and not next(state.meBatches or {}),
-        "reconcile outstanding movements/scanning before reconfiguring storage")
+        "reconcile outstanding movements/scanning before reconfiguring storage: run Beeomatic doctor --cleanup after cancel")
       for _,j in ipairs(state.jobs) do
         assert(j.state=="DONE" or (state.stopped and not j.machine),"finish or cancel saved jobs before reconfiguring storage")
       end
@@ -413,6 +414,27 @@ local function main(root,args,profile)
     else error("Use alveary list, add, remove ID, configure ID, or rename ID NAME") end; return
   end
   if cmd=="doctor" then
+    if f.cleanup then
+      unlocked()
+      assert(state.cancelled and #state.jobs==0 and not state.pendingRequest,"Use cancel before doctor --cleanup")
+      local ok,why=inv:reconcile(); assert(ok,why)
+      -- Recheck cancellation after reconciliation: a proven untouched scanner
+      -- insertion can now be abandoned without inserting any new bees.
+      Jobs.cancel(state); save()
+      if storage.reconcile then local yes,err=storage:reconcile(); assert(yes,err) end
+      assert(not state.pendingExternal and not next(state.meRequests or {}),"Unresolved storage journal; keep the previous hardware/configuration and run doctor")
+      if state.scan then state.scan.started=computer.uptime(); save() end
+      while state.scan do
+        local _,why=scanner():step({}) -- only the recorded batch; never fetch new stock
+        if state.scan then
+          print(why or "Waiting for cancelled scanner batch")
+          local name,_,char=event.pull(scanInterval())
+          assert(name~="interrupted" and not (name=="key_down" and char==113),"Cleanup interrupted; recovery records preserved")
+        end
+      end
+      Jobs.releaseCancelled(state); save()
+      print("Cancelled transfer/scanner records reconciled. Storage can now be reconfigured."); return
+    end
     if f.nbt then
       unlocked(); require("lib.ui.diagnostics").nbt(storage); return
     end

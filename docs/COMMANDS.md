@@ -259,6 +259,20 @@ receipts and already-inserted scanner batches remain recorded but inactive. A ne
 request reconciles those physical records before planning fresh work, without
 resuming the cancelled jobs. Unstarted scanner fetches are discarded immediately.
 
+Before changing storage or scanner wiring after cancellation, run:
+
+```sh
+Beeomatic doctor --cleanup
+Beeomatic setup --reconfigure
+```
+
+Keep the current hardware connected during cleanup. It reconciles recorded
+transfers, clears cancelled Interface requests, waits for an already-inserted
+scanner batch to finish and returns it using the saved configuration. It never
+starts another batch or breeding cycle. Ctrl+C interrupts cleanup with recovery
+records preserved; rerun it after fixing scanner power/honey or ME capacity.
+Ambiguous movements still require the physical audit described in troubleshooting.
+
 Recovery tools for a reserved job:
 
 ```sh
@@ -312,5 +326,5 @@ stopped. It needs two identical analysed drones, requests two, transfers one int
 its unconfigured return slot, clears/refunds local stock and checks that the original
 exact network count returns. `doctor --probe` remains the read-only capability dump.
 Use `setup --reconfigure` only after old work is finished or cancelled and
-journals are reconciled. Setup offers `me`/`chest`; existing export-bus configurations
+journals are reconciled (`doctor --cleanup` after cancellation). Setup offers `me`/`chest`; existing export-bus configurations
 remain supported for recovery without exposing old export questions in new setup.
