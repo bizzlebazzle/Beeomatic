@@ -439,7 +439,7 @@ function M.new(config,components,inv,save,read,out)
     if t.enabled then
       if self.c.storage.kind=="me_interface" then
         local ep=self:endpoint("Temporary reference drone witness inventory")
-        local slot=self:number("Analysed reference drone witness slot",1,self.inv:size(ep))
+        local slot=self:number("Analysed reference drone witness slot",1,(self.inv:size(ep)))
         local s=self.inv:get(ep,slot)
         assert(B.kind(s)=="drone" and B.scanned(s) and type(s.tag)=="string","reference must be an analysed drone with exact NBT")
         t.identity=B.identity(s); t.endpointId=nil; t.slot=nil
