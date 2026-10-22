@@ -70,7 +70,7 @@ test("startup analysis waits do not repeatedly checkpoint an unchanged progress 
       local source=files["/project/data/state.lua"]
       local state=source and assert(load(source))()
       if state and state.scan and state.scan.phase=="PROCESSING" and not next(state.meRequests)
-        and state.error=="Shared scanner processing reserved batch" then
+        and state.error=="Shared scanner waiting for output: 0/8 analysed bees in scan-output" then
         waits=waits+1
         if waits>1 then eq(writes,lastWrites,"unchanged analysis wait wrote another checkpoint") end
         lastWrites=writes
@@ -616,6 +616,7 @@ test("cancel cleanup preserves ambiguous movement evidence without clearing Inte
     local cli=require("lib.cli"); cli.main("/project",{"cancel"})
     local saved=files["/project/data/state.lua"]; local filter=U.copy(w.filters[ep.id][2])
     raises(function() cli.main("/project",{"doctor","--cleanup"}) end,"Ambiguous Interface movement")
+    raises(function() cli.main("/project",{"doctor","--cleanup","--scanner-cleared"}) end,"Ambiguous Interface movement")
     eq(files["/project/data/state.lua"],saved); eq(w.filters[ep.id][2],filter); eq(w.moves,0)
   end)
 end)
@@ -632,6 +633,77 @@ test("cancel cleanup refuses active work and worker locks",function()
       eq(w.moves,0)
     end)
   end
+end)
+
+test("manual scanner recovery clears cancelled ownership without fabricating scanned stock",function()
+  local ME=require("tests.mocks.me"); local w=ME.new(); local raw=ME.bee("Spirit","drone",8,true)
+  w:addStock(ME.bee("Spirit","drone",8)) -- operator already scanned and returned these
+  w.state.scan={phase="PROCESSING",inserted=true,count=8,item={stack=raw},name=raw.name}
+  w.state.meBatches.old={owner="abandoned",count=8,identity=require("lib.bees").identity(raw),stack=raw}
+  w.state.reservations.old={owner="scanner"}
+  w.proxies.me.getItemsInNetwork=function() error("manual recovery must not guess from network stock") end
+  O.with(w,function(files,out)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    files["/project/data/state.lua"]="return "..U.encode(w.state)
+    local cli=require("lib.cli"); cli.main("/project",{"cancel"})
+    local catalogue=files["/project/data/catalogue.lua"]
+    cli.main("/project",{"doctor","--cleanup","--scanner-cleared"})
+    local state=assert(load(files["/project/data/state.lua"]))()
+    ok(state.cancelled); eq(state.scan,nil); eq(state.cancelCleanup,nil); eq(#state.jobs,0)
+    eq(next(state.reservations),nil); eq(next(state.meBatches),nil); eq(w.moves,0)
+    eq(files["/project/data/catalogue.lua"],catalogue)
+    ok(table.concat(out,"\n"):find("Cleared manually recovered scanner batch",1,true))
+  end)
+end)
+
+test("manual scanner recovery refuses occupied or unavailable scanner buffers",function()
+  for _,where in ipairs({"analyser","scan-output","missing"}) do
+    local ME=require("tests.mocks.me"); local w=ME.new(); local raw=ME.bee("Spirit","drone",8,true)
+    w.state.scan={phase="PROCESSING",inserted=true,count=8,item={stack=raw},name=raw.name}
+    if where=="missing" then w.inventories.analyser=nil else w.inventories[where][1]=raw end
+    O.with(w,function(files)
+      files["/project/data/config.lua"]="return "..U.encode(w.c)
+      files["/project/data/state.lua"]="return "..U.encode(w.state)
+      local cli=require("lib.cli"); cli.main("/project",{"cancel"})
+      raises(function() cli.main("/project",{"doctor","--cleanup","--scanner-cleared"}) end,
+        where=="missing" and "unloaded inventory" or "still contains bees")
+      local state=assert(load(files["/project/data/state.lua"]))()
+      eq(state.scan,w.state.scan); ok(state.cancelCleanup); eq(w.moves,0)
+    end)
+  end
+end)
+
+test("cleanup prints unchanged scanner waits once and preserves batch on interruption",function()
+  local ME=require("tests.mocks.me"); local w=ME.new(); local raw=ME.bee("Spirit","drone",8,true)
+  w.state.scan={phase="PROCESSING",inserted=true,count=8,item={stack=raw},name=raw.name}
+  O.with(w,function(files,out)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    files["/project/data/state.lua"]="return "..U.encode(w.state)
+    local cli=require("lib.cli"); cli.main("/project",{"cancel"})
+    local waits=0
+    require("event").pull=function(seconds)
+      waits=waits+1; w.time=w.time+seconds
+      if waits==4 then return "key_down","keyboard",113 end
+    end
+    raises(function() cli.main("/project",{"doctor","--cleanup"}) end,"Cleanup interrupted")
+    local messages=0
+    for _,line in ipairs(out) do if line:find("Shared scanner waiting for output:",1,true) then
+      messages=messages+1; ok(line:find("0/8 analysed bees in scan-output",1,true))
+    end end
+    eq(waits,4); eq(messages,1); eq(w.moves,0)
+    ok(table.concat(out,"\n"):find("8 x Spirit drone (PROCESSING)",1,true))
+    local state=assert(load(files["/project/data/state.lua"]))()
+    eq(state.scan.phase,"PROCESSING"); eq(state.scan.count,8); ok(state.cancelCleanup)
+  end)
+end)
+
+test("scanner cleared flag requires the cleanup command",function()
+  local w=W.new(); w:build()
+  O.with(w,function(files)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    raises(function() require("lib.cli").main("/project",{"doctor","--scanner-cleared"}) end,"Use doctor --cleanup --scanner-cleared")
+    eq(w.moves,0)
+  end)
 end)
 
 test("public CLI completes startup and breeding with input/output chests and verified ME scanner deposits",function()

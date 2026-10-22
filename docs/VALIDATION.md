@@ -8,7 +8,7 @@ flow still requires in-game acceptance.**
 
 ## Automated checks
 
-Current result: **418 tests, zero failures on each of Lua 5.2 and Lua 5.3**.
+Current result: **423 tests, zero failures on each of Lua 5.2 and Lua 5.3**.
 Run `python tests/run.py` in the development workspace. It syntax-checks every
 project Lua file, then runs the suite on both engines using local Lupa runtimes.
 Alternatively run `lua tests/run.lua` with a compatible runtime. These dependencies
@@ -138,6 +138,10 @@ queen completion or opens a worker screen when invoked at the shell.
 Cancelled-work cleanup tests return only the existing scanner batch, refund a
 proven untouched insertion without replay, retain ambiguous movement/filter
 evidence, reject active work/worker locks and permit subsequent reconfiguration.
+Manual scanner recovery checks empty input/output buffers without inventing
+genomes or fetching AE stock, refuses occupied/unavailable buffers and preserves
+ambiguous transfer evidence. Repeated cleanup waits print once; interruption
+retains the batch. Output-count progress stays routine while timeouts stay visible.
 
 Cross-climate conversion tests cover Wintry Icy/UP_1 princesses with Attuned and
 Cultivated Normal/NONE drones, queen genome retention, and redispatch to Normal

@@ -51,6 +51,7 @@ local function routine(message)
     or message=="Scanner batch returned; rescanning ME stock"
     or message=="Waiting for analysed bees to return through ME"
     or message=="Shared scanner processing reserved batch"
+    or (message and message:match("^Shared scanner waiting for output: %d+/%d+ analysed bees in [^;\r\n]+$"))
     or message=="Scanner processing a reserved stack"
     or message=="Retrying proven untouched scanner source"
     or (message and (message:match("^Shared scanner analysing %d+ bees$") or message:match("^Scanning ")))

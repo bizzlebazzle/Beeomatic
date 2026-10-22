@@ -85,8 +85,9 @@ function M:step(items)
       if q.ident then assert(r.stack.individual.ident==q.ident,"scanner changed bee species identity") end
     end
     if not r or r.stack.size<q.count then
-      assert(self.now()-q.started<(c.timeout or 600),"Shared scanner timeout: check honey/power; batch preserved")
-      return false,"Shared scanner processing reserved batch"
+      local message="Shared scanner waiting for output: "..(r and r.stack.size or 0).."/"..q.count.." analysed bees in "..c.output.id
+      assert(self.now()-q.started<(c.timeout or 600),message.."; timeout: check input chest, pipes, scanner power/honey and output route; batch preserved")
+      return false,message
     end
     for _,i in ipairs(self.inv:scan(c.input)) do assert(not B.kind(i.stack),"scanner still contains input when output appeared") end
     q.outputSlot=r.slot; q.result=U.copy(r.stack)

@@ -2,7 +2,7 @@ local U=require("lib.util"); local Config=require("lib.config"); local P=require
 local B=require("lib.bees"); local Jobs=require("lib.jobs")
 local M={}
 local help=[[Beeomatic setup [--reconfigure]
-Beeomatic doctor [--cleanup | --nbt | --probe | --interface PORT | --adopt JOB | --retry JOB | --confirm ALVEARY]
+Beeomatic doctor [--cleanup [--scanner-cleared] | --nbt | --probe | --interface PORT | --adopt JOB | --retry JOB | --confirm ALVEARY]
 Beeomatic plan SPECIES [--verbose] [--no-pager]
 Beeomatic breed SPECIES [--noFinalImprint | --onlyFinalImprint]
 Beeomatic convert SPECIES | populate SPECIES COUNT | imprint SPECIES
@@ -414,6 +414,7 @@ local function main(root,args,profile)
     else error("Use alveary list, add, remove ID, configure ID, or rename ID NAME") end; return
   end
   if cmd=="doctor" then
+    assert(not f["scanner-cleared"] or f.cleanup,"Use doctor --cleanup --scanner-cleared after manually recovering all scanner bees")
     if f.cleanup then
       unlocked()
       assert(state.cancelled and #state.jobs==0 and not state.pendingRequest,"Use cancel before doctor --cleanup")
@@ -423,11 +424,28 @@ local function main(root,args,profile)
       Jobs.cancel(state); save()
       if storage.reconcile then local yes,err=storage:reconcile(); assert(yes,err) end
       assert(not state.pendingExternal and not next(state.meRequests or {}),"Unresolved storage journal; keep the previous hardware/configuration and run doctor")
-      if state.scan then state.scan.started=computer.uptime(); save() end
+      if state.scan and f["scanner-cleared"] then
+        assert(c.scanner.input and c.scanner.output,"Reconnect the saved scanner input/output before clearing its record")
+        for _,ep in ipairs({c.scanner.input,c.scanner.output}) do for _,item in ipairs(inv:scan(ep)) do
+          assert(not B.kind(item.stack),"Scanner buffer "..ep.id.." still contains bees; recover them before --scanner-cleared")
+        end end
+        -- This flag confirms the operator also emptied the scanner and pipes,
+        -- which OC cannot inspect. Do not invent an analysed genome or receipt.
+        state.scan=nil; inv:release("scanner"); save()
+        print("Cleared manually recovered scanner batch; no scan result assumed.")
+      end
+      if state.scan then
+        local q=state.scan; local stack=q.item and q.item.stack or {}
+        print("Recorded scanner batch: "..tostring(q.count or q.size).." x "..tostring(stack.label or q.name).." ("..tostring(q.phase)..")")
+        print("Waiting for the existing batch. If manually recovered, empty scanner/chests/pipes, then use doctor --cleanup --scanner-cleared.")
+        state.scan.started=computer.uptime(); save()
+      end
+      local lastMessage
       while state.scan do
         local _,why=scanner():step({}) -- only the recorded batch; never fetch new stock
         if state.scan then
-          print(why or "Waiting for cancelled scanner batch")
+          local message=why or "Waiting for cancelled scanner batch"
+          if message~=lastMessage then print(message); lastMessage=message end
           local name,_,char=event.pull(scanInterval())
           assert(name~="interrupted" and not (name=="key_down" and char==113),"Cleanup interrupted; recovery records preserved")
         end

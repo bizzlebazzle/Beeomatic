@@ -119,3 +119,10 @@ scanner batch without restarting breeding or scanning new stock. Supply scanner
 power/honey and available ME capacity. If cleanup reports an ambiguous movement,
 audit the recorded source/destination as described above and rerun cleanup.
 Do not delete `data/state.lua` to bypass this check.
+
+If cleanup waits for a batch you already recovered manually, stop it with Ctrl+C.
+Ensure the input/output chests, scanner and pipes contain no bees, then run
+`Beeomatic doctor --cleanup --scanner-cleared` and retry setup. The flag confirms
+you have recovered the batch; only the chests can be checked automatically.
+Ordinary cleanup waits for the recorded analysed count in its configured output
+chest, even if you manually returned the bees to AE. It does not fetch them again.

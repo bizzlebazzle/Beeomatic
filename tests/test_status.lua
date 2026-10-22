@@ -38,6 +38,15 @@ test("compact status keeps real scanner and job failures visible",function()
   ok(text:find("BEEOMATIC | Needs attention",1,true)); ok(text:find("b: cannot read housing",1,true))
 end)
 
+test("scanner output counts are routine progress but timeout remains an error",function()
+  local state=sample(); state.error="Shared scanner waiting for output: 3/8 analysed bees in scan-output"
+  local text=Status.render(state,config,false)
+  ok(text:find("BEEOMATIC | Working",1,true)); ok(not text:find("Attention:",1,true))
+  state.error=state.error.."; timeout: check input chest, pipes, scanner power/honey and output route; batch preserved"
+  text=Status.render(state,config,false)
+  ok(text:find("BEEOMATIC | Needs attention",1,true)); ok(text:find("timeout:",1,true))
+end)
+
 test("parent population waits are normal planned status with counts and stability",function()
   for _,message in ipairs({"Waiting for parent drone population and stable confirmation cycles","Waiting for stable parent population"}) do
     local state=sample()

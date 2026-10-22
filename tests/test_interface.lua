@@ -520,7 +520,7 @@ test("running alveary is monitored and collected while newly added bees scan in 
   w.time=w.scheduler.nextStockScan; w.scheduler:step()
   eq(j.state,"RUNNING"); eq(w.state.scan.phase,"PROCESSING"); eq(w.state.stockPhase,"SCANNING")
   w:addStock(ME.bee("Meadows","drone",32,true)); w.scheduler:step()
-  eq(j.state,"RUNNING"); eq(w.state.error,"Shared scanner processing reserved batch")
+  eq(j.state,"RUNNING"); eq(w.state.error,"Shared scanner waiting for output: 0/3 analysed bees in scan-output")
   w:finish(machine,ME.bee("Spirit","princess"),ME.bee("Spirit","drone",4,true))
   w.scheduler:step(); eq(j.state,"ASSESSING"); eq(w.state.pending,nil)
   for _=1,20 do

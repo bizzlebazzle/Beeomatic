@@ -273,6 +273,14 @@ starts another batch or breeding cycle. Ctrl+C interrupts cleanup with recovery
 records preserved; rerun it after fixing scanner power/honey or ME capacity.
 Ambiguous movements still require the physical audit described in troubleshooting.
 
+If you already removed or manually analysed the cancelled scanner bees and
+returned them to storage, empty the scanner, both chests and connecting pipes of
+bees, then run `Beeomatic doctor --cleanup --scanner-cleared`. This flag confirms
+your manual recovery, verifies the saved input/output inventories contain no
+bees, and clears the stale scanner record without assuming a successful scan.
+Unresolved transfer journals still need reconciliation. Cleanup identifies the
+recorded batch and reports output counts only when they change.
+
 Recovery tools for a reserved job:
 
 ```sh
