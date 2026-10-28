@@ -386,6 +386,12 @@ function M:dispatch(j)
       (reason~="" and reason or "All registered alvearies are busy or disabled.")
     return
   end
+  -- Inherited target alleles and pure-species stabilization need no new
+  -- mutation. Check lunar restrictions only when crossing mutation parents.
+  if cycleTarget==j.species and G.purity(p.stack,j.species)==0 and G.purity(d.stack,j.species)==0 then
+    local ready,message=E.moon(j.route)
+    if not ready then j.error=message; return end
+  end
   assert(j.cycles<self.c.maxCycles,"Cycle limit reached; inspect genetic progress and replan")
   local a=backend.config
   if self.observations then self.observations[a.id]=nil end
@@ -661,10 +667,11 @@ function M:step()
     end
     self.state.cursor=start+1
   end
-  local complete,active=true,false
+  local complete,active,timed=true,false,false
   for _,j in ipairs(self.state.jobs) do
     if j.state~="DONE" then complete=false end
     if j.state=="RUNNING" or j.state=="COLLECTING" or j.state=="ASSESSING" then active=true end
+    if j.state=="WAITING" and j.error and j.error:match("^Waiting for moon phase:") then timed=true end
   end
   complete=complete and scanned; self.state.finished=complete
   local reserved=false; for _,m in pairs(self.state.machines) do if m.job then reserved=true end end
@@ -687,6 +694,7 @@ function M:step()
   -- and terminal flags here as well.
   if not U.equal(saveStatus(self.state),self.savedStatus) then self.save() end
   return active,complete and "DONE" or self.state.stopped and "STOPPED" or active and "RUNNING" or
-    (scanOk and not scanned and "SCANNING") or (progress()~=before and "PROGRESS") or "BLOCKED"
+    (scanOk and not scanned and "SCANNING") or (timed and scanOk and not self.state.stopping and "WAITING") or
+    (progress()~=before and "PROGRESS") or "BLOCKED"
 end
 return M

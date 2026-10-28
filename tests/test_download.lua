@@ -60,7 +60,14 @@ test("missing last release file leaves installed program and data untouched",fun
 end)
 
 test("compact download avoids tiny temporary disk and cleans staging after upgrades",function()
-  scenario({quotas={root=512*1024,tmp=1024}},function(files,requests)
+  -- Allow the current release plus its staging copy and small launchers, while
+  -- retaining the real 4 MiB HDD ceiling and the deliberately tiny /tmp disk.
+  local bytes=0
+  for _,path in ipairs(assert(loadfile("manifest.lua"))()) do
+    local f=assert(io.open(path,"rb")); bytes=bytes+#f:read("*a"); f:close()
+  end
+  local quota=2*bytes+1024; ok(quota<=4*1024*1024)
+  scenario({quotas={root=quota,tmp=1024}},function(files,requests)
     files["/home/Beeomatic/data/config.lua"]="saved configuration"
     files["/tmp/unrelated"]="keep"
     assert(loadfile("get.lua"))(revision)

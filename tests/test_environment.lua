@@ -36,9 +36,9 @@ test("optional lunar bonuses allow compatible princesses in all four alvearies",
     housings[1].environment.temperature="NORMAL"
   end
 end)
-test("lunar restrictions and unknown mutation requirements still need confirmation",function()
+test("unknown mutation requirements still need confirmation",function()
   local a={id="a",environment=W.environment(),confirmed={}}
-  for _,req in ipairs({"Occurs between the Waxing Half and Waning Half","During the Full Moon",
+  for _,req in ipairs({"Occurs between the Blue Moon and Waning Half","During the Blue Moon",
     "Requires Diamond as a foundation","Unknown mutation condition"}) do
     local route=W.route("Esoteric","Mysterious",8,
       {"Better success during the Full Moon.",req})
@@ -50,6 +50,56 @@ test("lunar restrictions and unknown mutation requirements still need confirmati
   end
   local success,why=E.mutation({environment={temperature="COLD"}},a)
   ok(not success); eq(why,"Mutation requires temperature=COLD")
+end)
+test("all lunar single phases and inclusive ranges use Magic Bees phase order",function()
+  local names={"Full Moon","Waning Gibbous","Waning Half","Waning Crescent",
+    "New Moon","Waxing Crescent","Waxing Half","Waxing Gibbous"}
+  for phase=0,7 do W.withWorldTime(6000+phase*24000,function()
+    eq(E.moonPhase(),phase)
+    for first=0,7 do
+      local single="During the "..names[first+1]
+      eq(E.moonRequirement(single),first); eq(E.moonRequirement(single.."."),first)
+      eq(E.moon({specialConditions={single}}),phase==first)
+      for last=0,7 do
+        local req="Occurs between the "..names[first+1].." and "..names[last+1]
+        local a,b=E.moonRequirement(req); eq(a,first); eq(b,last)
+        local expected=first<=last and phase>=first and phase<=last or
+          first>last and (phase>=first or phase<=last)
+        eq(E.moon({specialConditions={req}}),expected)
+      end
+    end
+  end) end
+end)
+test("moon clock matches the source offset at boundaries and the first morning",function()
+  for _,case in ipairs({{0,0},{5999,0},{6000,0},{29999,0},{30000,1},
+    {173999,6},{174000,7},{197999,7},{198000,0},{6000+24000*800,0}}) do
+    W.withWorldTime(case[1],function() eq(E.moonPhase(),case[2]) end)
+  end
+end)
+test("static mutation checks defer recognised lunar requirements without confirming them",function()
+  local a={id="a",environment=W.environment(),confirmed={}}
+  local route={specialConditions={"During the New Moon","Occurs between the Waxing Half and Waning Half"}}
+  ok(E.mutation(route,a)); eq(next(a.confirmed),nil)
+  route.specialConditions[#route.specialConditions+1]="Requires Diamond as a foundation"
+  local ready,why=E.mutation(route,a); eq(ready,false)
+  ok(why:find("Unconfirmed mutation requirement: Requires Diamond",1,true)); ok(not why:find("Moon",1,true))
+end)
+test("lunar restrictions intersect and optional bonuses never require a clock",function()
+  W.withWorldTime(6000,function()
+    eq(E.moon({specialConditions={"During the Full Moon","During the New Moon"}}),false)
+  end)
+  local original=os.time
+  local success,why=pcall(function()
+    os.time=function() error("clock unavailable") end
+    local ready,message=E.moon({specialConditions={"During the Full Moon"}})
+    eq(ready,false); ok(message:find("Cannot read in-game moon phase",1,true))
+    ok(E.moon({specialConditions={"Requires foundation","Better success during the Full Moon."}}))
+    for _,time in ipairs({false,math.huge,-math.huge,0/0,-86400}) do
+      os.time=function() return time end; eq(E.moonPhase(),nil)
+    end
+    os.time=function() end; eq(E.moonPhase(),nil)
+  end)
+  os.time=original; ok(success,why)
 end)
 test("flower, day/night, rain and sky declarations do not gate scheduling",function()
   local p=W.bee("Forest","princess"); local e=W.environment(); e.flowers=nil; ok(E.bee(p,e))

@@ -112,7 +112,8 @@ for version, runtime in [('5.2', LuaRuntime), ('5.3', Lua53Runtime)]:
           function ok(v,message) assert(v,message) end
           local count=0
           function test(name,fn)
-            if name=="plan scanning defers mutation modules and releases stock between snapshots" then
+            if name=="plan scanning defers mutation modules and releases stock between snapshots" or
+              name=="foreground worker stays alive through lunar waits and starts when the phase changes" then
               collectgarbage=nil; fn(); count=count+1
             end
           end
@@ -125,8 +126,8 @@ for version, runtime in [('5.2', LuaRuntime), ('5.3', Lua53Runtime)]:
           end
           nativeGC("collect")
           require("tests.test_cli")
-          assert(count==1 and #reserve==384*1024 and nbt.cache.bytes>125000)
+          assert(count==2 and #reserve==384*1024 and nbt.cache.bytes>125000)
         ''', str(nbt_path))
-        print(f'Lua {version}: standalone plan scans raw princess/drone stock and plans with 24 known variants within 2 MiB, full NBT cache, 384 KiB host reserve and no manual GC', flush=True)
+        print(f'Lua {version}: standalone plan scans/plans with 24 known variants; lunar wait/start/restart fits 2 MiB with full NBT cache, 384 KiB host reserve and no manual GC', flush=True)
     check_startup(runtime, ROOT, version)
     check_planning(runtime, ROOT, version)

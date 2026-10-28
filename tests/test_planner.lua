@@ -5,6 +5,17 @@ local function run(recipes,stock,target,c,mode)
 end
 local function pair(s) return {W.bee(s,"princess"),W.bee(s,"drone",16)} end
 
+test("planning lunar routes does not require the current phase or manual confirmation",function()
+  local stock={}; for _,s in ipairs({"Forest","Meadows"}) do
+    for _,bee in ipairs(pair(s)) do stock[#stock+1]=bee end
+  end
+  local c=Config.defaults(); c.alvearies={{id="normal",environment=W.environment()}}
+  W.withWorldTime(6000,function()
+    local p=assert(run({other={W.route("Forest","Meadows",8,{"During the New Moon"})}},stock,"other",c))
+    eq(p.root.suitable,{"normal"}); eq(#p.root.unresolved,0)
+  end)
+end)
+
 test("population plans from a single pure pair without a mutation recipe",function()
   local stock={W.bee("Steadfast","princess"),W.bee("Steadfast","drone")}
   local c=Config.defaults(); c.reserveDrones=8

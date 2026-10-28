@@ -78,9 +78,11 @@ proved, manual audit is required; the program does not issue another export and
 risk double allocation. Keep the journal while investigating.
 
 Mutation conditions are saved by exact text and alveary ID. If a special foundation
-is installed, use `doctor --confirm ID` and explicitly confirm it. Day/time/weather
-or equipment-dependent descriptions may become false later: revoke their saved
-confirmation after changes.
+is installed, use `doctor --confirm ID` and explicitly confirm it. Recognised
+Magic Bees moon-phase requirements use the live world clock and need no manual
+confirmation. Leave the worker running while it shows `Waiting for moon phase`;
+it will recheck automatically. Other day/time/weather or equipment-dependent
+descriptions may become false later: revoke their saved confirmation after changes.
 
 
 ## Limited RAM and disk space

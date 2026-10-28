@@ -197,6 +197,29 @@ requiring callbacks to have Lua type `function`; metadata value `false` means an
 indirect callback, not a missing method. This probe confirms network visibility
 and NBT exposure, not exact export or breeding behavior.
 
+## Automatic moon-phase requirements
+
+The Beta 3 manifest pins Magic Bees to **2.10.12-GTNH**. Its
+[English condition descriptions](https://github.com/GTNewHorizons/MagicBees/blob/2.10.12-GTNH/src/main/resources/assets/magicbees/lang/en_US.lang)
+use `During the PHASE` and `Occurs between the PHASE and PHASE`.
+[MoonPhase](https://github.com/GTNewHorizons/MagicBees/blob/2.10.12-GTNH/src/main/java/magicbees/main/utils/MoonPhase.java)
+orders the eight phases from Full Moon, uses inclusive ranges, and computes
+`((worldTicks - 6000) / 24000) % 8` with Java's truncation toward zero.
+OC's pinned
+[OSAPI](https://github.com/GTNewHorizons/OpenComputers/blob/1.12.61-GTNH/src/main/scala/li/cil/oc/server/machine/luac/OSAPI.scala)
+returns `(worldTicks + 6000) * 3.6` from `os.time()`. Beeomatic converts that clock
+directly, including the first morning's truncation case, with no hardware sensor.
+This assumes the computer and housing share the same dimension clock.
+
+Recognised lunar restrictions are automatic for every species, independent of
+saved manual confirmations. Planning treats them as schedulable; dispatch waits
+without reserving/moving parents and the foreground worker stays alive. Existing
+target alleles can be inherited without a new mutation, so those crossings and
+stabilisation do not wait. Optional lunar bonuses remain optional and unknown
+condition descriptions retain manual confirmation. Running queens are not removed
+or stopped: Forestry checks mutation chance during offspring generation, and the
+start-time phase does not guarantee an end-time mutation.
+
 ## Confirmed blocker during multiplayer export testing
 
 The user's Beta 3 installation successfully copied the Wintry Drone into the OC

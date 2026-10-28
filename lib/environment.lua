@@ -2,6 +2,8 @@ local U=require("lib.util"); local B=require("lib.bees")
 local M={}
 local temps={ICY=1,COLD=2,NORMAL=3,WARM=4,HOT=5,HELLISH=6}
 local hums={ARID=1,NORMAL=2,DAMP=3}
+local moons={"Full Moon","Waning Gibbous","Waning Half","Waning Crescent",
+  "New Moon","Waxing Crescent","Waxing Half","Waxing Gibbous"}
 local function upper(v) return tostring(v or ""):upper() end
 local function accepted(preference,tolerance,levels)
   local values={}
@@ -47,10 +49,48 @@ function M.optionalCondition(req)
   return type(req)=="string" and (req:match("^Better success between the .+ and .+%.$")~=nil or
     req:match("^Better success during the .+%.$")~=nil)
 end
+-- Runtime Magic Bees descriptions, independent of species. Unknown text still
+-- requires manual confirmation; optional phase bonuses never gate a mutation.
+function M.moonRequirement(req)
+  if type(req)~="string" then return end
+  req=req:gsub("%.$","")
+  local first,last=req:match("^Occurs between the (.+) and (.+)$")
+  if not first then first=req:match("^During the (.+)$"); last=first end
+  local start,finish
+  for n,name in ipairs(moons) do
+    if name==first then start=n-1 end
+    if name==last then finish=n-1 end
+  end
+  if start and finish then return start,finish end
+end
+function M.moonPhase()
+  local ok,time=pcall(os.time)
+  if not ok or type(time)~="number" or time~=time or math.abs(time)==math.huge then return end
+  -- OC: seconds=(worldTicks+6000)*3.6. Magic Bees: (worldTicks-6000)/24000.
+  -- Java truncates toward zero, including the first world's morning.
+  local days=(time-43200)/86400
+  days=days<0 and math.ceil(days) or math.floor(days)
+  if days>=0 then return days%8 end
+end
+function M.moon(route)
+  local phase
+  for _,req in ipairs(route and route.specialConditions or {}) do
+    local first,last=M.moonRequirement(req)
+    if first then
+      if phase==nil then phase=M.moonPhase() end
+      if phase==nil then return false,"Cannot read in-game moon phase; check OpenOS world time" end
+      if (phase-first)%8>(last-first)%8 then
+        return false,"Waiting for moon phase: "..moons[first+1]..
+          (first~=last and (" to "..moons[last+1]) or "").."; current: "..moons[phase+1]
+      end
+    end
+  end
+  return true
+end
 function M.mutation(route,a)
   local e=a.environment or {}; local missing={}
   for _,req in ipairs(route and route.specialConditions or {}) do
-    if not M.optionalCondition(req) and not (a.confirmed and a.confirmed[req]) then
+    if not M.optionalCondition(req) and not M.moonRequirement(req) and not (a.confirmed and a.confirmed[req]) then
       missing[#missing+1]="Unconfirmed mutation requirement: "..req..
         " (run Beeomatic doctor --confirm "..a.id..")"
     end

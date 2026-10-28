@@ -1,5 +1,10 @@
 local U=require("lib.util"); local Config=require("lib.config")
 local M={}
+function M.withWorldTime(ticks,fn)
+  local original=os.time
+  os.time=function() return ((type(ticks)=="function" and ticks() or ticks)+6000)*3.6 end
+  local yes,why=xpcall(fn,debug.traceback); os.time=original; assert(yes,why)
+end
 local function callable(v)
   local mt=type(v)=="table" and getmetatable(v)
   return type(v)=="function" or (type(mt)=="table" and type(mt.__call)=="function")

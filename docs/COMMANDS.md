@@ -250,6 +250,21 @@ Confirmation asks about each exact requirement string and saves only explicit
 block, biome, dimension, equipment or world condition changes. Structured route `environment` constraints
 are supported by the planner/backend if supplied by an extension/configuration.
 
+Magic Bees lunar restrictions are checked automatically for every species.
+`During the PHASE` and `Occurs between the PHASE and PHASE` descriptions support
+all eight named phases and inclusive ranges wrapping through Full Moon. A job
+shows `Waiting for moon phase` and the current phase; the worker stays running
+and retries automatically. `doctor --confirm` skips these requirements, and old
+manual confirmations do not override the live clock. Optional lunar bonuses
+remain optional; unknown/localised condition text still needs confirmation.
+
+The calculation follows Magic Bees' world-time offset using OpenComputers
+`os.time()`. Keep the computer and alvearies on the same dimension's clock.
+Only new mutation crosses wait: inheriting existing target alleles and ordinary
+population/stabilisation do not. Running queens finish normally. Forestry rolls
+mutations when generating offspring, so an allowed phase at insertion cannot
+guarantee the phase at completion; normal retries and `maxCycles` still apply.
+
 To abandon the entire process, use one command:
 
 ```sh

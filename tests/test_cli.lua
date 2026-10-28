@@ -91,11 +91,12 @@ local function withAnswer(answer,fn)
   assert(success,err)
 end
 
-test("doctor confirmation prompts exclude optional moon bonuses",function()
+test("doctor confirmation prompts exclude automatic lunar checks and optional moon bonuses",function()
   local w=W.new(); w:addMachine("a"); w:build()
   local bonus="Better success between the Waxing Crescent and Waxing Gibbous."
   local req="Requires Diamond as a foundation"
-  W.job(w,"one","Arcane","breed",W.route("Esoteric","Mysterious",8,{bonus,req}))
+  local single="During the Full Moon"; local range="Occurs between the Waning Crescent and Waxing Crescent"
+  W.job(w,"one","Arcane","breed",W.route("Esoteric","Mysterious",8,{bonus,req,single,range}))
   O.with(w,function(files,out)
     files["/project/data/config.lua"]="return "..U.encode(w.c)
     files["/project/data/state.lua"]="return "..U.encode(w.state)
@@ -104,6 +105,38 @@ test("doctor confirmation prompts exclude optional moon bonuses",function()
     eq(saved.alvearies[1].confirmed[req],true); eq(saved.alvearies[1].confirmed[bonus],nil)
     local text=table.concat(out,"\n")
     ok(text:find(req,1,true)); ok(not text:find(bonus,1,true),text); eq(w.moves,0)
+    ok(not text:find(single,1,true)); ok(not text:find(range,1,true))
+    eq(saved.alvearies[1].confirmed[single],nil); eq(saved.alvearies[1].confirmed[range],nil)
+  end)
+end)
+test("foreground worker stays alive through lunar waits and starts when the phase changes",function()
+  local w=W.new(); w:addMachine("a"); w:build(); w.c.minDrones=2
+  w.inventories.hub[1]=W.bee("Forest","princess"); w.inventories.hub[3]=W.bee("Forest","princess")
+  w.inventories.hub[2]=W.bee("Meadows","drone",8); w.inventories.hub[12]=W.bee("Forest","drone",8)
+  W.job(w,"lunar","Other Species","breed",W.route("Forest","Meadows",8,{"During the Full Moon"}))
+  local ticks=6000+4*24000
+  W.withWorldTime(function() return ticks end,function()
+    O.with(w,function(files,out)
+      files["/project/data/config.lua"]="return "..U.encode(w.c)
+      files["/project/data/state.lua"]="return "..U.encode(w.state)
+      local waits,started=0,false
+      require("event").pull=function(seconds)
+        if seconds==0 then return end
+        local state=assert(load(files["/project/data/state.lua"]))()
+        if state.jobs[1].state=="RUNNING" then started=true; return "interrupted" end
+        waits=waits+1; ok(waits<=3,"worker did not start when the moon changed"); eq(w.moves,0)
+        ok(state.jobs[1].error:find("Waiting for moon phase:",1,true))
+        if waits==3 then ticks=6000 end
+        w.time=w.time+seconds
+      end
+      local _,why=require("lib.cli").main("/project",{"resume"}); eq(why,nil,why)
+      eq(waits,3); ok(started); ok(w.moves>0); eq(files["/project/data/worker.lock"],nil)
+      local text=table.concat(out,"\n")
+      ok(text:find("Planned: Other species - Waiting for moon phase:",1,true),text)
+      ok(not text:find("Repair the reported condition",1,true),text)
+      local moves=w.moves; ticks=6000+4*24000
+      _,why=require("lib.cli").main("/project",{"resume"}); eq(why,nil,why); eq(w.moves,moves)
+    end)
   end)
 end)
 

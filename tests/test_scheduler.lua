@@ -15,6 +15,48 @@ test("saved mutation route with an optional lunar bonus dispatches without confi
   local j=W.job(w,"one","Arcane","breed",route)
   w.scheduler:dispatch(j); eq(j.state,"RUNNING"); eq(j.error,nil); eq(j.machine,"a")
 end)
+test("lunar mutations for different species wait automatically without leasing parents",function()
+  for _,case in ipairs({{"Vis","Occurs between the Waxing Half and Waning Half",4,6},
+    {"Wispy","Occurs between the Waning Crescent and Waxing Crescent",0,3},
+    {"Pure","During the New Moon",0,4},{"Big Bad","During the Full Moon",4,0},
+    {"Arbitrary Species","During the Waxing Gibbous",0,7}}) do
+    local w=stocked(); local req=case[2]; local ticks=6000+case[3]*24000
+    w.c.alvearies[1].confirmed[req]=true -- legacy confirmation cannot bypass live time
+    local j=W.job(w,"lunar",case[1],"breed",W.route("Forest","Meadows",8,{req}))
+    W.withWorldTime(function() return ticks end,function()
+      local active,status=w.scheduler:step()
+      eq(active,false); eq(status,"WAITING"); eq(j.state,"WAITING"); eq(w.moves,0)
+      ok(j.error:find("Waiting for moon phase:",1,true),j.error)
+      eq(j.machine,nil); eq(next(w.state.reservations),nil)
+      local saves=w.saves
+      _,status=w.scheduler:step(); eq(status,"WAITING"); eq(w.saves,saves)
+      ticks=6000+case[4]*24000
+      w.scheduler:step(); eq(j.state,"RUNNING"); eq(j.cycles,1); eq(j.error,nil)
+      local moves=w.moves; ticks=6000+case[3]*24000
+      w.scheduler:step(); eq(j.state,"RUNNING"); eq(w.moves,moves)
+    end)
+  end
+end)
+test("lunar mutation waiting does not block independent breeding",function()
+  local w=stocked(true)
+  local lunar=W.job(w,"lunar","Vis","breed",W.route("Forest","Meadows",8,{"During the New Moon"}))
+  local ordinary=W.job(w,"ordinary","Forest","populate")
+  W.withWorldTime(6000,function()
+    local active,status=w.scheduler:step()
+    ok(active); eq(status,"RUNNING"); eq(lunar.state,"WAITING"); eq(ordinary.state,"RUNNING")
+  end)
+end)
+test("inherited target bees do not wait for an unnecessary mutation phase",function()
+  for _,hybrid in ipairs({false,true}) do
+    local w=stocked()
+    w.inventories.hub[1]=W.bee("Spirit","princess",1,hybrid and "Forest" or nil)
+    w.inventories.hub[10]=W.bee("Spirit","princess",1,hybrid and "Forest" or nil)
+    if not hybrid then w.inventories.hub[12]=W.bee("Spirit","drone",8) end
+    local j=W.job(w,"one","Spirit","breed",W.route("Forest","Meadows",8,{"During the New Moon"}))
+    W.withWorldTime(6000,function() w.scheduler:step(); eq(j.state,"RUNNING") end)
+  end
+end)
+
 test("blocked mutation explains the requirement and how to confirm it",function()
   local w=stocked(); local route=W.route("Forest","Meadows",8,
     {"Better success during the Full Moon.","Requires Diamond as a foundation"})

@@ -42,7 +42,7 @@ test("compact status lists shared mutation requirements once with a confirmation
   local W=require("tests.mocks.world"); local E=require("lib.environment")
   local c={alvearies={}}
   for n=1,6 do c.alvearies[n]={id="alveary_"..n,name="Alveary "..n,environment=W.environment()} end
-  local req="Occurs between the Waxing Half and Waning Half"
+  local req="Requires a magical biome"
   local foundation="Requires Diamond as a foundation"
   local _,why=E.select(c.alvearies,W.route("Ethereal","Infernal",8,{req,foundation}),
     W.bee("Ethereal","princess"),W.bee("Infernal","drone"))
@@ -70,6 +70,19 @@ test("scanner output counts are routine progress but timeout remains an error",f
   state.error=state.error.."; timeout: check input chest, pipes, scanner power/honey and output route; batch preserved"
   text=Status.render(state,config,false)
   ok(text:find("BEEOMATIC | Needs attention",1,true)); ok(text:find("timeout:",1,true))
+end)
+
+test("lunar waits show planned progress once while real failures remain visible",function()
+  local state=sample(); state.jobs[2].error="Waiting for moon phase: New Moon; current: Full Moon"
+  local text=Status.render(state,config,false)
+  ok(text:find("BEEOMATIC | Working",1,true),text)
+  ok(text:find("Planned: Charmed - "..state.jobs[2].error,1,true),text)
+  ok(not text:find("Attention:",1,true)); ok(not text:find("--confirm",1,true))
+  local _,count=text:gsub("Waiting for moon phase:",""); eq(count,1)
+  state.jobs[1].error="missing flowers"
+  text=Status.render(state,config,false); ok(text:find("Attention:\n  Common: missing flowers",1,true),text)
+  state.jobs[2].error="Cannot read in-game moon phase; check OpenOS world time"
+  ok(Status.render(state,config,false):find("Charmed: "..state.jobs[2].error,1,true))
 end)
 
 test("parent population waits are normal planned status with counts and stability",function()
