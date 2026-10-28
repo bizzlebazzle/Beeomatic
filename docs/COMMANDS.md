@@ -237,6 +237,10 @@ one machine is paused. The default maximum is two concurrent machines.
 
 To attest special requirements reported by runtime mutations:
 
+The compact status lists each unconfirmed requirement once with a confirmation
+command for one affected alveary. `Beeomatic status --verbose` retains the full
+per-alveary conditions, climate and selected-parent diagnostics.
+
 ```sh
 Beeomatic doctor --confirm hot_dry_1
 ```

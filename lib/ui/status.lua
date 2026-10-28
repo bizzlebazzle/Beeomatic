@@ -63,6 +63,21 @@ local function reason(message)
   -- Strip Lua source locations from the overview; verbose retains the original.
   return tostring(message):gsub("[^%s]+%.lua:%d+: ",""):gsub("\r\n","\n"):gsub("\r","\n")
 end
+local function jobReason(message)
+  local text=reason(message)
+  if text:find("Cannot start this pairing in any available alveary.",1,true) then
+    local missing,seen={},{}
+    for requirement,id in text:gmatch("Unconfirmed mutation requirement: (.-) %(run Beeomatic doctor %-%-confirm ([^%)]+)%)") do
+      if not seen[requirement] then
+        seen[requirement]=true
+        missing[#missing+1]="Unconfirmed mutation requirement: "..requirement..
+          "\n(run Beeomatic doctor --confirm "..id..")"
+      end
+    end
+    if #missing>0 then return table.concat(missing,"\n") end
+  end
+  return text
+end
 local function parentWait(j)
   return j.state=="WAITING" and (j.error=="Waiting for stable parent population"
     or j.error=="Waiting for parent drone population and stable confirmation cycles")
@@ -81,7 +96,7 @@ function M.render(state,c,verbose)
     elseif j.state=="WAITING" then queued=queued+1
     elseif j.state=="PAUSED" then paused=paused+1
     else busy=busy+1 end
-    if j.error and not parentWait(j) and not rebreedWait(j) then warnings[#warnings+1]=speciesName(j.species)..": "..reason(j.error) end
+    if j.error and not parentWait(j) and not rebreedWait(j) then warnings[#warnings+1]=speciesName(j.species)..": "..jobReason(j.error) end
   end
   for _,a in ipairs(c.alvearies or {}) do
     local housing=(state.housings or {})[a.id]

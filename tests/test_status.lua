@@ -38,6 +38,31 @@ test("compact status keeps real scanner and job failures visible",function()
   ok(text:find("BEEOMATIC | Needs attention",1,true)); ok(text:find("b: cannot read housing",1,true))
 end)
 
+test("compact status lists shared mutation requirements once with a confirmation command",function()
+  local W=require("tests.mocks.world"); local E=require("lib.environment")
+  local c={alvearies={}}
+  for n=1,6 do c.alvearies[n]={id="alveary_"..n,name="Alveary "..n,environment=W.environment()} end
+  local req="Occurs between the Waxing Half and Waning Half"
+  local foundation="Requires Diamond as a foundation"
+  local _,why=E.select(c.alvearies,W.route("Ethereal","Infernal",8,{req,foundation}),
+    W.bee("Ethereal","princess"),W.bee("Infernal","drone"))
+  local original="Cannot start this pairing in any available alveary.\nSelected parents: Ethereal princess + Infernal drone.\n"..why
+  local state={jobs={{id="job",species="icy",mode="breed",state="WAITING",cycles=0,confirmed=0,error=original}}}
+  local text=Status.render(state,c,false)
+  local _,count=text:gsub("Unconfirmed mutation requirement:",""); eq(count,2)
+  ok(text:find("Icy: Unconfirmed mutation requirement: "..req.."\n    (run Beeomatic doctor --confirm alveary_1)",1,true),text)
+  ok(text:find("Unconfirmed mutation requirement: "..foundation,1,true),text)
+  for _,noise in ipairs({"Selected parents:","Cannot start this pairing","[temp ","--confirm alveary_6"}) do
+    ok(not text:find(noise,1,true),text)
+  end
+  local details=Status.render(state,c,true)
+  ok(details:find("  "..original:gsub("\n","\n  "),1,true),details)
+  ok(details:find("Selected parents: Ethereal princess + Infernal drone.",1,true),details)
+  ok(details:find("--confirm alveary_6",1,true),details); eq(state.jobs[1].error,original)
+  state.error="scanner output contaminated"
+  ok(Status.render(state,c,false):find(state.error,1,true))
+end)
+
 test("scanner output counts are routine progress but timeout remains an error",function()
   local state=sample(); state.error="Shared scanner waiting for output: 3/8 analysed bees in scan-output"
   local text=Status.render(state,config,false)
