@@ -530,10 +530,12 @@ local function main(root,args,profile)
         local lf,reason=io.open(lock,"w")
         if not lf then return blocked("Cannot start scanner: "..tostring(reason)) end
         lf:write(tostring(computer.address())); lf:close()
+        -- A previous cancelled breeding job must not hide this scan's outcome.
+        local cancelled=false
         ok,why=pcall(function()
           local lastMessage
           while true do
-            if cancellationPending() then cancelWork(c); return end
+            if cancellationPending() then cancelled=true; cancelWork(c); return end
             -- A pending scanner batch carries its own exact source/return state.
             -- Refresh all stock only when selecting the next batch.
             items=state.scan and {} or storage:scan()
@@ -544,16 +546,16 @@ local function main(root,args,profile)
             if message and message~=lastMessage then print(message); lastMessage=message end
             if profile then profile:flush() end
             local name,_,char=event.pull(scanInterval())
-            if name=="key_down" and char==113 then cancelWork(c); return end
+            if name=="key_down" and char==113 then cancelled=true; cancelWork(c); return end
             if name=="interrupted" then
               error("Scanning stopped; progress saved. Run Beeomatic plan "..a[2].." again to continue.",0)
             end
           end
           items=storage:scan(); print("Scanning complete.")
         end)
-        if cancellationPending() then cancelWork(c) end
+        if cancellationPending() then cancelled=true; cancelWork(c) end
         fs.remove(lock)
-        if state.cancelled then return end
+        if cancelled then return end
         if not ok then return blocked("Scanning paused: "..tostring(why).."\nProgress preserved; repair the scanner and rerun Beeomatic plan "..a[2]..".") end
       end
     end

@@ -479,6 +479,65 @@ test("plan scans all raw castes then plans from refreshed ME stock without creat
   end)
 end)
 
+test("plan after cancellation reports scanner failure instead of silently exiting",function()
+  local w=require("tests.mocks.me").new(); w.c.scanner.enabled=false
+  w:addStock(require("tests.mocks.me").bee("Spirit","drone",2,true))
+  require("lib.jobs").cancel(w.state)
+  O.with(w,function(files,out)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    files["/project/data/state.lua"]="return "..U.encode(w.state)
+    withAnswer("y",function()
+      local _,why=require("lib.cli").main("/project",{"plan","spirit"})
+      ok(why and why:find("Shared scanner required",1,true),table.concat(out,"\n"))
+    end)
+    ok(table.concat(out,"\n"):find("Scanning paused:",1,true)); eq(w.moves,0)
+    eq(files["/project/data/worker.lock"],nil)
+  end)
+end)
+
+test("plan after cancellation scans and displays its plan without reviving cancelled jobs",function()
+  local ME=require("tests.mocks.me"); local w=ME.new()
+  W.job(w,"old","Forest"); require("lib.jobs").cancel(w.state)
+  w:addStock(ME.bee("Spirit","princess",1,true)); w:addStock(ME.bee("Spirit","drone",8,true))
+  O.with(w,function(files,out)
+    files["/project/data/config.lua"]="return "..U.encode(w.c)
+    files["/project/data/state.lua"]="return "..U.encode(w.state)
+    withAnswer("y",function() require("lib.cli").main("/project",{"plan","spirit"}) end)
+    local text=table.concat(out,"\n")
+    ok(text:find("Scanning complete.",1,true),text); ok(text:find("Stock present: Spirit",1,true),text)
+    local state=assert(load(files["/project/data/state.lua"]))()
+    eq(#state.jobs,0); eq(state.pendingRequest,nil); eq(state.scan,nil); ok(state.cancelled)
+    eq(files["/project/data/worker.lock"],nil); ok(w.moves>0)
+  end)
+end)
+
+test("plan scanner still honours a new cancellation after earlier work was cancelled",function()
+  for _,action in ipairs({"q","mailbox"}) do
+    local ME=require("tests.mocks.me"); local w=ME.new()
+    require("lib.jobs").cancel(w.state); w:addStock(ME.bee("Spirit","drone",2,true))
+    O.with(w,function(files,out)
+      files["/project/data/config.lua"]="return "..U.encode(w.c)
+      files["/project/data/state.lua"]="return "..U.encode(w.state)
+      local event=require("event"); local pull=event.pull
+      event.pull=function(seconds)
+        local source=files["/project/data/state.lua"]; local state=source and assert(load(source))()
+        if seconds~=0 and state and state.scan and state.scan.phase=="PROCESSING" then
+          if action=="q" then return "key_down","keyboard",113 end
+          files["/project/data/control.lua"]='return {action="cancel"}'; return
+        end
+        return pull(seconds)
+      end
+      withAnswer("y",function() require("lib.cli").main("/project",{"plan","spirit"}) end)
+      local text=table.concat(out,"\n")
+      ok(text:find("Cancelled all work.",1,true),text); ok(not text:find("Scanning complete.",1,true),text)
+      ok(not text:find("Cannot plan",1,true),text); ok(not text:find("Stock present:",1,true),text)
+      local state=assert(load(files["/project/data/state.lua"]))()
+      ok(state.cancelled); eq(state.scan.phase,"PROCESSING"); eq(#state.jobs,0)
+      eq(files["/project/data/worker.lock"],nil)
+    end)
+  end
+end)
+
 test("plan scan failure preserves progress and can continue on a later plan",function()
   local ME=require("tests.mocks.me"); local w=ME.new(); w.c.scanner.timeout=1
   w:addStock(ME.bee("Spirit","princess",1,true)); w:addStock(ME.bee("Spirit","drone",8,true))
