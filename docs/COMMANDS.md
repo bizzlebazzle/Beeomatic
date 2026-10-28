@@ -351,6 +351,19 @@ not a Rocky species blacklist. If a required species has pure princesses but non
 has active fertility > 1, its automatic drone threshold becomes `reserveDrones+1`
 instead of `minDrones`; exact-genotype drone reserves and confirmation cycles still
 apply. Supply more drones or improve fertility when that reserve is exhausted.
+
+`imprint SPECIES` selectively breeds that species towards the registered reference
+drone's non-species genes. If an initial reference cross would spend the last pure
+princess, it queues a same-species conversion helper to create a spare first.
+That helper breeds and stabilises ordinary target stock without imprinting or
+spending reference drones. Existing saved helpers use the same rule on resume.
+Same-species reference crosses need no spare; depleted reference stock requests
+replenishment rather than queuing another princess helper.
+Once target drones carry the reference genes in both alleles, they can continue
+the imprint without further reference crosses or extra spare-princess jobs.
+The reference reserve, target reserves and each job's princess lineage remain
+protected; independent jobs can run while a helper is paused.
+
 An explicit population count is never reduced: an active fertility-one princess
 pauses population with an explanation. Population prefers a princess with active
 fertility > 1 when one is available. Already tracked breeding/conversion lineages

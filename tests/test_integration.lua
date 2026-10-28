@@ -168,6 +168,40 @@ test("cycle timeout affects one operation while another keeps running",function(
   end
   w.time=20; w.scheduler:step(); eq(w.state.jobs[1].state,"PAUSED"); eq(w.state.jobs[2].state,"RUNNING")
 end)
+test("imprint spare helper converts without consuming the reference and survives restart",function()
+  local ME=require("tests.mocks.me"); local w=ME.new(); w.hideGenomes=false
+  w.c.minDrones=2; w.c.confirmCycles=1; w.state.nextId=1; w.state.target="spirit"
+  local reference=ME.bee("Forest","drone",2,false,{nocturnal=true})
+  w.c.templates={enabled=true,identity=B.identity(reference),reserve=1}; w:addStock(reference)
+  w:addStock(ME.bee("Spirit","princess")); w:addStock(ME.bee("Spirit","drone",16))
+  for n=1,2 do w:addStock(ME.bee("Meadows","princess",1,false,{lifespan=n})) end
+  for n=1,24 do
+    local s=ME.bee("Unrelated","drone",32,false,{lifespan=n})
+    s.tag=string.rep(string.char(n+32),600)..n; w:addStock(s)
+  end
+  local j=W.job(w,"job1","Spirit","imprint")
+  w.scheduler:step(); eq(j.state,"WAITING"); eq(#w.state.jobs,2)
+  local helper=w.state.jobs[2]; eq(helper.mode,"convert"); eq(helper.parent,j.id)
+  eq(w.scheduler:template(helper,w.storage:scan()),nil)
+  w.scheduler:step(); eq(helper.state,"RUNNING"); eq(j.cycles,0)
+  eq(w.cells[B.identity(reference)].size,2)
+  -- Recreate the worker from saved job data while the helper's queen is live.
+  local state=U.copy(w.state); for k in pairs(w.state) do w.state[k]=nil end
+  for k,v in pairs(state) do w.state[k]=v end; state=nil
+  local Scheduler=require("lib.scheduler")
+  w.scheduler=Scheduler.new(w.c,w.state,w.components,w.inv,w.storage,w.scanner,w.save,function() return w.time end)
+  w.scheduler:recover(); j=w.state.jobs[1]; helper=w.state.jobs[2]
+  w:finish(helper.machine,ME.bee("Spirit","princess"),ME.bee("Spirit","drone",8))
+  w.scheduler:step(); w.scheduler:step()
+  eq(helper.state,"DONE"); eq(j.state,"RUNNING"); eq(#w.state.jobs,2)
+  eq(w.cells[B.identity(reference)].size,1)
+  w:finish(j.machine,ME.bee("Spirit","princess",1,false,{nocturnal=true}),
+    ME.bee("Spirit","drone",8,false,{nocturnal=true}))
+  for _=1,4 do w.scheduler:step(); if w.state.finished then break end end
+  ok(w.state.finished,require("lib.ui.status").render(w.state,w.c,true))
+  eq(j.state,"DONE"); eq(#w.state.jobs,2); eq(w.cells[B.identity(reference)].size,1)
+end)
+
 test("imprinting crosses a reserved reference genotype and preserves it",function()
   local w=W.new(); w:addMachine("a"); w:build(); w.c.minDrones=2; w.c.confirmCycles=1
   w.c.templates={enabled=true,endpointId="hub",slot=20,reserve=1}

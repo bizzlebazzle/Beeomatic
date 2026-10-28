@@ -44,16 +44,20 @@ def check_planning(runtime, root, version, variants=80):
           w.state.pendingRequest={target="spirit",mode="breed",flags={}}
           write("data/state.lua",w.state)
           for caste,items in pairs(stock) do write(caste..".lua",items) end
+          w.c.templates={enabled=true,identity=B.identity(stock.Drone[1]),reserve=1}
+          write("imprint-config.lua",w.c)
         ''', path.as_posix(), variants)
         initial = {p.name: p.read_bytes() for p in (path / "data").iterdir()}
         source = (root / "tests/resource_limits.lua").read_text(encoding="utf-8")
-        for command, scenario in (("breed", True), ("resume", True), ("resume", "rebreed")):
+        for command, scenario in (("breed", True), ("imprint", True), ("resume", True), ("resume", "rebreed")):
             for file in (path / "data").iterdir():
                 file.unlink()
             for name, data in initial.items():
                 (path / "data" / name).write_bytes(data)
-            if command == "breed":
+            if command in ("breed", "imprint"):
                 (path / "data/state.lua").write_text('return {jobs={},reservations={},transactions={}}')
+                if command == "imprint":
+                    (path / "data/config.lua").write_bytes((path / "imprint-config.lua").read_bytes())
             elif scenario == "rebreed":
                 (path / "data/state.lua").write_text('''return {reservations={},transactions={},jobs={
                   {id="job1",species="spirit",mode="convert",state="WAITING",cycles=0,confirmed=0,dependencies={}}}}''')

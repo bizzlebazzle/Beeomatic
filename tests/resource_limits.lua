@@ -128,7 +128,7 @@ if planning then hostGC("collect") end -- release only fixture-construction garb
 local messages=0
 print=function() messages=messages+1 end
 local args={command}
-if planning and command=="breed" then args[#args+1]="spirit" end
+if planning and (command=="breed" or command=="imprint") then args[#args+1]="spirit" end
 if profile then args[#args+1]="--profile" end
 local _,why=require("lib.cli").main(root,args)
 assert(not why,phase..": "..tostring(why))

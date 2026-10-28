@@ -28,12 +28,12 @@ function M.plan(target,mutations,items,c,mutationOnly,mode)
         local n=B.count({s},name,kind,true)
         entry.counts[kind]=entry.counts[kind]+n
         local t=c.templates or {}
-        local protected=n>0 and t.enabled and ((t.identity and B.identity(s)==t.identity) or
+        local protected=n>0 and t.enabled and ((t.identity and B.itemIdentity(item)==t.identity) or
           (not t.identity and item.endpoint and item.endpoint.id==t.endpointId and item.slot==t.slot))
         if n>0 and not protected then
           entry[kind][#entry[kind]+1]=s
           if kind=="drone" then
-            local key=item.network and not item.batchId and item.slot or B.identity(s)
+            local key=B.itemIdentity(item)
             drones[key]=(drones[key] or 0)+n
             entry.largest=math.max(entry.largest,drones[key])
           end

@@ -678,6 +678,49 @@ test("Interface releases variant response before copying and reading the databas
   eq(B.identity(w.database[slot]),B.identity(s)); eq(copies,1)
 end)
 
+test("imprint selection reuses exact ME snapshot identities without reencoding NBT",function()
+  local w=ME.new(); w.hideGenomes=false
+  local ref=ME.bee("Forest","drone",2,false,{nocturnal=true})
+  w.c.templates={enabled=true,identity=B.identity(ref),reserve=1}; w:addStock(ref)
+  w:addStock(ME.bee("Spirit","princess",2)); w:addStock(ME.bee("Spirit","drone",8))
+  for n=1,80 do w:addStock(ME.bee("Other","drone",16,false,{lifespan=n})) end
+  local items=w.storage:scan(); local j=W.job(w,"one","Spirit","imprint")
+  local identity=B.identity; B.identity=function() error("logical selection reencoded stack NBT") end
+  local yes,p,d=pcall(function()
+    local template=w.scheduler:template(j,items)
+    return w.scheduler:select(j,items,template)
+  end)
+  B.identity=identity; ok(yes,p); ok(p); eq(d.stack.label,ref.label)
+  local owned={network=true,batchId="receipt/1",slot="receipt/1",stack=ref}
+  eq(B.itemIdentity(owned),B.identity(ref)); eq(B.itemIdentity(ref),B.identity(ref))
+end)
+
+test("offspring assessment releases unrelated stock before checkpointing",function()
+  local w=ME.new(); w.hideGenomes=false; w.c.minDrones=2
+  w:addStock(ME.bee("Spirit","princess")); w:addStock(ME.bee("Spirit","drone",8))
+  w:addStock(ME.bee("Unrelated","drone",64))
+  local j=W.job(w,"one","Spirit","populate"); w.scheduler:dispatch(j)
+  w:finish(j.machine,ME.bee("Spirit","princess"),ME.bee("Spirit","drone",8))
+  w.scheduler:advance(j,true); eq(j.state,"WAITING")
+  -- Assess the already collected result locations once more with fresh reads.
+  local princess
+  for id,batch in pairs(w.state.meBatches) do if batch.owner==j.id and B.kind(batch.stack)=="princess" then princess=id end end
+  ok(princess)
+  j.state="ASSESSING"; j.machine="a"; j.resultLocations={{root=w.state.meBatches[princess].root}}
+  local weak=setmetatable({},{__mode="v"}); local scan=w.storage.scan
+  w.storage.scan=function(self)
+    local items=scan(self); weak[1]=items
+    for _,i in ipairs(items) do if i.stack.label=="Unrelated drone" then weak[2]=i end end
+    return items
+  end
+  local save=w.scheduler.save; local checks=0
+  w.scheduler.save=function()
+    collectgarbage("collect"); eq(weak[1],nil); eq(weak[2],nil)
+    checks=checks+1; return save()
+  end
+  w.scheduler:advance(j,true); eq(checks,1)
+end)
+
 test("optional memory collection tolerates missing and disabled host APIs",function()
   local native=collectgarbage
   local success,why=pcall(function()

@@ -86,7 +86,8 @@ for version, runtime in [('5.2', LuaRuntime), ('5.3', Lua53Runtime)]:
           function ok(value,message) assert(value,message) end
           local count=0
           function test(name,fn)
-            if name:match("^saved blocked conversion rebreeds") or name:match("^automatic rebreeding adds prerequisite") then
+            if name:match("^saved blocked conversion rebreeds") or name:match("^automatic rebreeding adds prerequisite") or
+              name=="imprint spare helper converts without consuming the reference and survives restart" then
               fn(); count=count+1
             end
           end
@@ -100,9 +101,9 @@ for version, runtime in [('5.2', LuaRuntime), ('5.3', Lua53Runtime)]:
           end
           collectgarbage=nil
           require("tests.test_integration")
-          assert(count==2 and #reserve==384*1024 and cache.cache.bytes>125000)
+          assert(count==3 and #reserve==384*1024 and cache.cache.bytes>125000)
         ''', str(nbt_path))
-        print(f'Lua {version}: mutation recovery, prerequisite expansion and restart fit 2 MiB with full NBT cache and 384 KiB host reserve', flush=True)
+        print(f'Lua {version}: mutation recovery, imprint/spare conversion and restart fit 2 MiB with full NBT cache and 384 KiB host reserve', flush=True)
         scanning = runtime(max_memory=2 * 1024 * 1024, unpack_returned_tuples=True)
         scanning.execute('''
           local reserve=string.rep("O",384*1024)

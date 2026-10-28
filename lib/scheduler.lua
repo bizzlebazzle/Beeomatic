@@ -52,7 +52,7 @@ function M:items(owner,snapshot)
     local held=self.state.reservations[U.location(i.endpoint,i.slot)]
     if self.storage.interface and i.owner and i.owner~=owner then held=true end
     local bySlot=lineages[i.endpoint.id]; local identities=bySlot and bySlot[i.slot]
-    if identities and identities[B.identity(i.stack)] then held=true end
+    if identities and identities[B.itemIdentity(i)] then held=true end
     if not held then items[#items+1]=i end
   end
   return items
@@ -62,6 +62,10 @@ function M:template(j,items)
   local enabled=self.c.templates.enabled
   if j.mode=="imprint" then assert(enabled,"Register an analyzed reference drone with setup first") end
   if not enabled then return nil end
+  if j.helper and j.mode=="convert" then
+    local parent=J.find(self.state,j.parent)
+    if parent and parent.species==j.species then return nil end -- spare stock, not another imprint
+  end
   local f=self.state.flags or {}
   if j.mode~="imprint" and ((j.species==self.state.target and f.nofinalimprint) or
     (j.species~=self.state.target and f.onlyfinalimprint)) then return nil end
@@ -69,7 +73,7 @@ function M:template(j,items)
 end
 function M:protected(i)
   local t=self.c.templates
-  return t.enabled and ((t.identity and B.identity(i.stack)==t.identity) or
+  return t.enabled and ((t.identity and B.itemIdentity(i)==t.identity) or
     (not t.identity and i.endpoint.id==t.endpointId and i.slot==t.slot))
 end
 function M:count(items,target,kind) return B.count(items,target,kind,true) end
@@ -109,9 +113,9 @@ function M:canSpend(i,items,paired,templateUse,droneCounts)
   if B.kind(s)=="drone" then
     if templateUse and s.size<=(self.c.templates.reserve or 1) then return false end
     -- Reserve at least one of this exact useful genotype, not merely visible species.
-    local identity=B.identity(s); local same=droneCounts and droneCounts[identity] or 0
+    local identity=B.itemIdentity(i); local same=droneCounts and droneCounts[identity] or 0
     if not droneCounts then
-      for _,x in ipairs(items) do if B.kind(x.stack)=="drone" and B.identity(x.stack)==identity then same=same+x.stack.size end end
+      for _,x in ipairs(items) do if B.kind(x.stack)=="drone" and B.itemIdentity(x)==identity then same=same+x.stack.size end end
     end
     return same>self.c.reserveDrones
   end
@@ -133,7 +137,7 @@ function M:droneShortage(j,items,counts)
   local total,largest,protected=0,0,0
   for _,i in ipairs(items) do if B.kind(i.stack)=="drone" and G.purity(i.stack,j.species)>0 then
     if self:protected(i) then protected=protected+i.stack.size else
-      total=total+i.stack.size; largest=math.max(largest,counts[B.identity(i.stack)] or 0)
+      total=total+i.stack.size; largest=math.max(largest,counts[B.itemIdentity(i)] or 0)
     end
   end end
   local name=B.displayName(j.species); local reserve=self.c.reserveDrones; local minimum=reserve+1
@@ -168,6 +172,7 @@ function M:rebreed(j,items)
   local routes,err=source.getBeeParents(j.species)
   if not routes then return false,"Cannot read mutation recipes: "..tostring(err) end
   if not next(routes) then return false,"No mutation recipe reported for "..B.displayName(j.species).."." end
+  routes=nil -- the planner obtains its own recipes; do not retain this probe
   local mutations=require("lib.mutations").new(source,self.c.aliases); mutations:index(items)
   local plan,why=require("lib.planner").plan(j.species,mutations,items,self.c,true)
   mutations=nil; package.loaded["lib.planner"]=nil; package.loaded["lib.mutations"]=nil
@@ -212,7 +217,7 @@ function M:select(j,items,template)
   -- scans again so a committed withdrawal cannot be spent a second time.
   local droneCounts={}
   for _,i in ipairs(items) do if B.kind(i.stack)=="drone" then
-    local key=B.identity(i.stack); droneCounts[key]=(droneCounts[key] or 0)+i.stack.size
+    local key=B.itemIdentity(i); droneCounts[key]=(droneCounts[key] or 0)+i.stack.size
   end end
   local function spend(i,paired,templateUse)
     return self:canSpend(i,items,paired,templateUse,droneCounts)
@@ -239,9 +244,14 @@ function M:select(j,items,template)
       (j.mode=="populate" and p and G.purity(p.stack,target)==2 and G.purity(i.stack,target)==2))
   end,genes)
   if p and d then
-    -- Template crossings still need spare stock even during population.
-    if template and G.purity(p.stack,target)==2 and not G.templateMatch(p.stack,genes) and G.purity(d.stack,target)==2 then
-      if spend(template,nil,true) and spend(p) then d=template
+    -- Cross-species template matings preserve a spare pure target princess.
+    if template and G.purity(p.stack,target)==2 and not G.templateMatch(p.stack,genes) and
+      G.purity(d.stack,target)==2 and not G.templateMatch(d.stack,genes) then
+      if not spend(template,nil,true) then
+        return nil,nil,"Replenish reference drones above the protected reserve before template crossing"
+      end
+      local paired=G.purity(template.stack,target)==2 and target or nil
+      if spend(p,paired) then d=template
       else
         self:stockJob(target,"convert",nil,j)
         return nil,nil,"Waiting for a spare target princess before template crossing"
@@ -250,12 +260,14 @@ function M:select(j,items,template)
     return p,d,nil,target
   end
   if (j.mode=="populate" or j.mode=="convert" or j.mode=="imprint" or not j.route) and not j.rebreeding and (not p or not d) then
+    local shortage=not d and self:droneShortage(j,items,droneCounts)
+    droneCounts=nil -- selection's reserve index must not overlap planner loading
     local recovered,why=self:rebreed(j,items)
     if recovered then
       if J.ready(self.state,j) then return self:select(j,items,template) end
       return nil,nil,j.error
     end
-    if not d then return nil,nil,self:droneShortage(j,items,droneCounts).."\nAutomatic rebreeding unavailable: "..why end
+    if not d then return nil,nil,shortage.."\nAutomatic rebreeding unavailable: "..why end
   end
   if j.mode=="populate" and not j.rebreeding then
     return nil,nil,"Need a target princess; fertility must exceed one"
@@ -471,6 +483,7 @@ function M:advance(j,stockReady,stockReason)
     end end
     local p=self:best(own,"princess",j.species)
     local d=self:best(own,"drone",j.species)
+    all=nil; items=nil; own=nil -- only offspring and reference genes are needed for assessment/save
     assert(p,"No analyzed princess in this job's collected offspring; inspect archive")
     if j.mode=="benchmark" then assert(d,"No analyzed drone in benchmark offspring; inspect archive") end
     j.lineage={endpoint=p.endpoint,slot=p.slot,identity=B.identity(p.stack)}

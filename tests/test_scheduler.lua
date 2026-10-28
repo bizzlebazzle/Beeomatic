@@ -57,6 +57,28 @@ test("inherited target bees do not wait for an unnecessary mutation phase",funct
   end
 end)
 
+test("imprint uses target drones that already carry the reference genes",function()
+  local w=stocked(); w.c.templates={enabled=true,endpointId="hub",slot=20,reserve=1}
+  w.inventories.hub[1]=W.bee("Spirit","princess")
+  w.inventories.hub[10]=nil -- the only target princess need not cross species
+  w.inventories.hub[12]=W.bee("Spirit","drone",8,nil,{nocturnal=true})
+  w.inventories.hub[20]=W.bee("Forest","drone",1,nil,{nocturnal=true})
+  local j=W.job(w,"one","Spirit","imprint")
+  w.scheduler:step(); eq(j.state,"RUNNING"); eq(#w.state.jobs,1)
+  eq(w.inventories.hub[20].size,1); eq(w.inventories.hub[12].size,7)
+end)
+test("same-species reference crosses need no spare and depleted references do not queue helpers",function()
+  for _,sameSpecies in ipairs({false,true}) do
+    local w=stocked(); w.c.templates={enabled=true,endpointId="hub",slot=20,reserve=1}
+    w.inventories.hub[1]=W.bee("Spirit","princess"); w.inventories.hub[10]=nil
+    w.inventories.hub[12]=W.bee("Spirit","drone",8)
+    w.inventories.hub[20]=W.bee(sameSpecies and "Spirit" or "Forest","drone",sameSpecies and 2 or 1,nil,{nocturnal=true})
+    local j=W.job(w,"one","Spirit","imprint"); w.scheduler:step(); eq(#w.state.jobs,1)
+    if sameSpecies then eq(j.state,"RUNNING"); eq(w.inventories.hub[20].size,1)
+    else eq(j.state,"WAITING"); eq(w.moves,0); ok(j.error:find("Replenish reference drones",1,true),j.error) end
+  end
+end)
+
 test("blocked mutation explains the requirement and how to confirm it",function()
   local w=stocked(); local route=W.route("Forest","Meadows",8,
     {"Better success during the Full Moon.","Requires Diamond as a foundation"})

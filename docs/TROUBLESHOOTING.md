@@ -87,6 +87,18 @@ descriptions may become false later: revoke their saved confirmation after chang
 
 ## Limited RAM and disk space
 
+`imprint` shares the same worker/startup path as `breed`, including scanner and
+planning memory fixes. It may add a conversion helper to protect the last pure
+target princess before a reference cross. The helper now produces ordinary spare
+stock rather than applying the template itself. Target drones already carrying
+the reference genes can continue imprinting without another reference cross.
+Selection reuses exact identities already present in ME snapshots, drops its
+reserve index before mutation recovery, and releases unrelated stock before the
+offspring-assessment checkpoint. Fresh physical receipts still verify actual NBT.
+If imprint or its helper paused with `not enough memory`, preserve the saved
+jobs, install the fix, reboot and run `Beeomatic resume`. Verbose status distinguishes
+the main `imprint` job from its `convert` helper and their individual cycle counts.
+
 `not enough memory` while starting a breeding job means the computer's Lua RAM
 is exhausted. It does not mean the database upgrade is full. The Interface
 backend clears and reuses database slots; insufficient capacity instead reports

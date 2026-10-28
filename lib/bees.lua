@@ -44,6 +44,11 @@ function M.identity(s)
   return U.encode({name=s.name,damage=s.damage,tag=s.tag,nbt_hash=s.nbt_hash,
     individual=s.individual})
 end
+-- Unowned ME snapshot slots are already the exact genotype identity. Physical
+-- receipts and owned batches still read the actual stack, never a receipt ID.
+function M.itemIdentity(item)
+  return item.network and not item.batchId and item.slot or M.identity(item.stack or item)
+end
 -- Old checkpoints contain identities made from compressed bytes. Upgrade both
 -- references and dictionary keys before reconciliation; raw stack tags stay
 -- intact for OC callbacks. The next ordinary checkpoint persists the upgrade.
