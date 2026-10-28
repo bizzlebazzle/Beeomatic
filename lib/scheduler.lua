@@ -363,6 +363,9 @@ function M:dispatch(j)
   if j.mode=="convert" and j.baseline==nil then j.baseline=self:count(items,j.species,"princess"); self.save() end
   local p,d,why,cycleTarget=self:select(j,items,template)
   if not p or not d then j.error=why; return end
+  -- Selection is complete. Keep only the two parents while reading housings,
+  -- rebuilding database entries and checkpointing physical transfers.
+  items=nil; template=nil
   if j.mode=="populate" and G.fertility(p.stack)<=1 then
     self:pause(j,"Fertility <= 1 cannot grow drone reserves; improve fertility or add drones"); return
   end

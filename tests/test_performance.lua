@@ -635,6 +635,49 @@ test("scheduler releases its observation inventory before obtaining a dispatch s
 end)
 
 
+test("dispatch releases stock before housing checks and physical requests",function()
+  local w=ME.new()
+  w:addStock(ME.bee("Spirit","princess",1)); w:addStock(ME.bee("Spirit","drone",8))
+  w:addStock(ME.bee("Forest","drone",64))
+  -- Catalogue the selected parents just as the scanner does before dispatch.
+  for _,s in pairs(w.cells) do w.storage:catalogue(s) end
+  local weak=setmetatable({},{__mode="v"}); local scan=w.storage.scan
+  w.storage.scan=function(self)
+    local items=scan(self); weak[1]=items
+    for _,i in ipairs(items) do if B.matches(i.stack.individual.active.species,"forest") then weak[2]=i end end
+    return items
+  end
+  local function released()
+    collectgarbage("collect")
+    eq(weak[1],nil,"dispatch retained full stock"); eq(weak[2],nil,"dispatch retained unrelated bees")
+  end
+  local b=w.scheduler:backend("a"); local ready=b.isReady; local checks=0
+  b.isReady=function(self) checks=checks+1; released(); return ready(self) end
+  local materialize=w.storage.materialize; local requests=0
+  w.storage.materialize=function(self,...)
+    requests=requests+1; released(); return materialize(self,...)
+  end
+  local job=W.job(w,"job","Spirit","populate")
+  w.scheduler:dispatch(job)
+  eq(job.state,"RUNNING"); eq(checks,1); eq(requests,2)
+end)
+
+test("Interface releases variant response before copying and reading the database",function()
+  local w=ME.new(); local s=ME.bee("Spirit","drone",8); w:addStock(s)
+  local other=ME.bee("Spirit","drone",8,false,{nocturnal=true}); w:addStock(other)
+  local weak=setmetatable({},{__mode="v"}); local network=w.proxies.me
+  local get,store=network.getItemsInNetwork,network.store; local copies=0
+  network.getItemsInNetwork=function(filter)
+    local result=get(filter); weak[1]=result; weak[2]=result[1]; return result
+  end
+  network.store=function(...)
+    collectgarbage("collect"); eq(weak[1],nil); eq(weak[2],nil)
+    copies=copies+1; return store(...)
+  end
+  local slot=w.storage:selectEntry({stack=s})
+  eq(B.identity(w.database[slot]),B.identity(s)); eq(copies,1)
+end)
+
 test("optional memory collection tolerates missing and disabled host APIs",function()
   local native=collectgarbage
   local success,why=pcall(function()

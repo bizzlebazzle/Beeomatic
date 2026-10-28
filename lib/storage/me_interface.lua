@@ -163,6 +163,7 @@ function M:selectEntry(item)
     for _,s in pairs(matches) do n=n+1; if B.identity(s)==identity then total=total+s.size end end
     assert(total>0,"selected ME variant is unavailable")
     assert(n<=self.config.databaseSlots,"same-label variants exceed dedicated database capacity")
+    matches=nil -- release the network response before database read-back allocates NBT
     -- store fills empty slots starting at one. Only the n slots we read need
     -- clearing; old entries above n are never considered for this request.
     for slot=1,n do db.clear(slot) end

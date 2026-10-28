@@ -83,6 +83,17 @@ confirmation after changes.
 
 ## Limited RAM and disk space
 
+`not enough memory` while starting a breeding job means the computer's Lua RAM
+is exhausted. It does not mean the database upgrade is full. The Interface
+backend clears and reuses database slots; insufficient capacity instead reports
+`same-label variants exceed dedicated database capacity`. The worker now drops
+the full stock snapshot after selecting parents, and releases the variant lookup
+response before copying/read-back of database entries, reducing overlapping NBT
+allocations. Update, reboot, then run `Beeomatic resume` with saved work intact.
+If it recurs, run `Beeomatic status --verbose` and `Beeomatic logs` to capture the
+job error and the actual error behind any `cannot read housing` warning. Such a
+warning can result from RAM pressure or a separate component/connection problem.
+
 For the 2048 KiB RAM / 4 MB disk computer, update and reboot OpenOS before running
 `Beeomatic resume` so old loaded modules are released. Existing state is retained:
 legacy completed receipts are compacted as they are read, and the next successful
