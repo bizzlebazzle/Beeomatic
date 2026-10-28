@@ -103,5 +103,30 @@ for version, runtime in [('5.2', LuaRuntime), ('5.3', Lua53Runtime)]:
           assert(count==2 and #reserve==384*1024 and cache.cache.bytes>125000)
         ''', str(nbt_path))
         print(f'Lua {version}: mutation recovery, prerequisite expansion and restart fit 2 MiB with full NBT cache and 384 KiB host reserve', flush=True)
+        scanning = runtime(max_memory=2 * 1024 * 1024, unpack_returned_tuples=True)
+        scanning.execute('''
+          local reserve=string.rep("O",384*1024)
+          local nbt=require("tests.fixtures.nbt_cache")(...)
+          local U=require("lib.util"); local nativeGC=collectgarbage
+          function eq(a,b,message) assert(U.equal(a,b),message or (tostring(a).." ~= "..tostring(b))) end
+          function ok(v,message) assert(v,message) end
+          local count=0
+          function test(name,fn)
+            if name=="plan scanning defers mutation modules and releases stock between snapshots" then
+              collectgarbage=nil; fn(); count=count+1
+            end
+          end
+          local native=package.searchers[2]
+          package.searchers[2]=function(name)
+            if name:sub(1,4)~="lib." then return native(name) end
+            local f=assert(io.open(name:gsub("%.","/")..".lua","rb")); local chunks={}
+            while true do local chunk=f:read(1024); if not chunk then break end; chunks[#chunks+1]=chunk end
+            f:close(); return assert(load(table.concat(chunks),"="..name,"t",_G))
+          end
+          nativeGC("collect")
+          require("tests.test_cli")
+          assert(count==1 and #reserve==384*1024 and nbt.cache.bytes>125000)
+        ''', str(nbt_path))
+        print(f'Lua {version}: standalone plan scans raw princess/drone stock and plans with 24 known variants within 2 MiB, full NBT cache, 384 KiB host reserve and no manual GC', flush=True)
     check_startup(runtime, ROOT, version)
     check_planning(runtime, ROOT, version)

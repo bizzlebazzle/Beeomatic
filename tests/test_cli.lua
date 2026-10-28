@@ -479,6 +479,47 @@ test("plan scans all raw castes then plans from refreshed ME stock without creat
   end)
 end)
 
+test("plan scanning defers mutation modules and releases stock between snapshots",function()
+  local ME=require("tests.mocks.me"); local w=ME.new(); w.hideGenomes=false
+  w:addStock(ME.bee("Spirit","princess",1,true)); w:addStock(ME.bee("Spirit","drone",8,true))
+  for n=1,24 do
+    local s=ME.bee("Forest","drone",64,false,{lifespan=n})
+    s.tag=string.rep(string.char(32+n),600)..n; w:addStock(s)
+  end
+  local scanner=require("lib.scanner_me"); local storage=require("lib.storage.me_interface")
+  local step,scan=scanner.step,storage.scan
+  local planner,mutations=package.loaded["lib.planner"],package.loaded["lib.mutations"]
+  package.loaded["lib.planner"]=nil; package.loaded["lib.mutations"]=nil
+  local weak=setmetatable({},{__mode="v"}); local snapshots,steps=0,0
+  storage.scan=function(self)
+    if collectgarbage then
+      collectgarbage("collect"); eq(weak[1],nil,"previous stock retained while allocating another snapshot")
+    end
+    local items=scan(self); weak[1]=items; snapshots=snapshots+1; return items
+  end
+  scanner.step=function(self,...)
+    eq(package.loaded["lib.planner"],nil,"planner loaded during scanning")
+    eq(package.loaded["lib.mutations"],nil,"mutation module loaded during scanning")
+    steps=steps+1; return step(self,...)
+  end
+  local success,why=xpcall(function()
+    O.with(w,function(files,out)
+      files["/project/data/config.lua"]="return "..U.encode(w.c)
+      withAnswer("y",function()
+        local _,err=require("lib.cli").main("/project",{"plan","spirit","--no-pager"}); eq(err,nil,err)
+      end)
+      local text=table.concat(out,"\n")
+      ok(text:find("Scanning complete.",1,true),text); ok(text:find("Stock present: Spirit",1,true),text)
+      local state=assert(load(files["/project/data/state.lua"]))()
+      eq(state.scan,nil); eq(#state.jobs,0); eq(state.pendingRequest,nil)
+      eq(files["/project/data/worker.lock"],nil); ok(w.moves>0)
+    end)
+  end,debug.traceback)
+  scanner.step=step; storage.scan=scan
+  package.loaded["lib.planner"]=planner; package.loaded["lib.mutations"]=mutations
+  ok(success,why); ok(snapshots>=3); ok(steps>=3)
+end)
+
 test("plan after cancellation reports scanner failure instead of silently exiting",function()
   local w=require("tests.mocks.me").new(); w.c.scanner.enabled=false
   w:addStock(require("tests.mocks.me").bee("Spirit","drone",2,true))

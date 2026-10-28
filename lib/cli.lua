@@ -128,11 +128,13 @@ local function main(root,args,profile)
   B.migrateIdentities(c)
   local Components=require("lib.components"); local Inventory=require("lib.inventory")
   local Storage=require("lib.storage."..c.storage.kind)
-  if workerCommand then
+  if workerCommand or cmd=="plan" then
     -- OpenOS concatenates module source while loading it. Compile worker code
     -- before the large journal, even without manual GC.
     require("lib.nbt"); require("lib.scanner"); if c.storage.kind=="me_interface" then require("lib.scanner_me") end
-    for _,machine in ipairs(c.alvearies) do require("lib.breeders."..(machine.backend or "alveary")) end
+    if workerCommand then
+      for _,machine in ipairs(c.alvearies) do require("lib.breeders."..(machine.backend or "alveary")) end
+    end
   end
   state=sp:load({jobs={},reservations={},transactions={},events={}})
   U.collect()
@@ -504,10 +506,10 @@ local function main(root,args,profile)
     end; return
   end
   if cmd=="plan" then
-    assert(a[2],"Specify a species"); local m=mutations()
-    local planner=require("lib.planner"); local items=storage:scan()
+    assert(a[2],"Specify a species"); local items=storage:scan()
     local unscanned=0
     for _,i in ipairs(items) do if B.kind(i.stack) and not B.scanned(i.stack) then unscanned=unscanned+(i.stack.size or 1) end end
+    items=nil -- only the count is needed until scanning and module loading finish
     if unscanned>0 or state.scan then
       print(tostring(unscanned).." bees in storage lack verified genes.")
       print("Would you like to scan all unscanned bees now? [y/N]")
@@ -533,15 +535,16 @@ local function main(root,args,profile)
         -- A previous cancelled breeding job must not hide this scan's outcome.
         local cancelled=false
         ok,why=pcall(function()
-          local lastMessage
+          local scan=scanner(); local lastMessage
           while true do
             if cancellationPending() then cancelled=true; cancelWork(c); return end
             -- A pending scanner batch carries its own exact source/return state.
             -- Refresh all stock only when selecting the next batch.
-            items=state.scan and {} or storage:scan()
+            local scanItems=state.scan and {} or storage:scan()
             local ready,message
-            if storage.prepare and not storage:prepare(items) then message="Inspecting ME stock"
-            else ready,message=scanner():step(items) end
+            if storage.prepare and not storage:prepare(scanItems) then message="Inspecting ME stock"
+            else ready,message=scan:step(scanItems) end
+            scanItems=nil -- pending batches carry their own source; release stock before waiting/rescanning
             if ready then break end
             if message and message~=lastMessage then print(message); lastMessage=message end
             if profile then profile:flush() end
@@ -551,7 +554,7 @@ local function main(root,args,profile)
               error("Scanning stopped; progress saved. Run Beeomatic plan "..a[2].." again to continue.",0)
             end
           end
-          items=storage:scan(); print("Scanning complete.")
+          print("Scanning complete.")
         end)
         if cancellationPending() then cancelled=true; cancelWork(c) end
         fs.remove(lock)
@@ -559,7 +562,10 @@ local function main(root,args,profile)
         if not ok then return blocked("Scanning paused: "..tostring(why).."\nProgress preserved; repair the scanner and rerun Beeomatic plan "..a[2]..".") end
       end
     end
-    m:index(items)
+    -- As in breed, compile the planner only after scanner preparation, then
+    -- obtain fresh stock without overlapping module source and stock snapshots.
+    local m=mutations(); local planner=require("lib.planner")
+    items=storage:scan(); m:index(items)
     local plan,reason=planner.plan(a[2],m,items,c)
     if not plan then
       local message=reason or ("Not enough verified parent stock to reach "..a[2]..".")
